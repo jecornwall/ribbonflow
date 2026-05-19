@@ -14,23 +14,28 @@
  * ---------------
  *   { formatVersion: <int>, flow: <flow-object> }
  *
- * The envelope carries a version integer so future milestones (M2 evolves
- * the data model) can migrate older exports forward. M1 ships version 1 and
- * does NOT change the data model — the `flow` payload is exactly the shape
- * the current deck flows use (viewBox, baseSpeed, entryId, nodes[], register
- * knobs). M2 owns data-model evolution and will bump this version + add a
- * migration step here.
+ * The envelope carries a version integer so exports can be migrated forward.
+ * M1 shipped version 1. M2 (bd ai-engineer-8aee) bumps it to version 2 — real
+ * multi-source nodes, first-class forks, width/rate coupling, authored register
+ * knobs — and adds a migration step: deserializeFlow() runs any older envelope
+ * through format/migrate.js up to the current version, so a v1 export always
+ * loads forward losslessly.
+ *
+ * serializeFlow()/deserializeFlow() stay byte-FAITHFUL — they carry exactly the
+ * fields present and never fill defaults. Default-filling is normalizeFlow()'s
+ * job (format/model.js), kept separate so the round-trip invariant holds.
  *
  * The on-disk form is pretty-printed JSON. Flow definitions are pure data
  * (no functions), so JSON is a faithful, human-diffable carrier.
  */
 
+import { migrateFlow } from './migrate.js'
+
 /**
- * Current flow-format version. M1 = 1. Bumped by M2 when the data model
- * gains real multi-source nodes / first-class forks; a migration step is
- * added to deserializeFlow() at that point.
+ * Current flow-format version. M1 = 1; M2 = 2 (multi-source nodes, first-class
+ * forks). deserializeFlow() migrates any lower version forward via migrate.js.
  */
-export const FLOW_FORMAT_VERSION = 1
+export const FLOW_FORMAT_VERSION = 2
 
 /**
  * Deep structural clone of a flow object.
@@ -95,16 +100,27 @@ export function deserializeFlow(input) {
     throw new TypeError('deserializeFlow: expected a JSON string or envelope object')
   }
 
-  if (envelope.formatVersion !== FLOW_FORMAT_VERSION) {
+  const version = envelope.formatVersion
+  if (!Number.isInteger(version) || version < 1) {
     throw new Error(
-      `deserializeFlow: unsupported flow format version ${envelope.formatVersion} ` +
+      `deserializeFlow: missing or invalid flow format version (${version})`,
+    )
+  }
+  if (version > FLOW_FORMAT_VERSION) {
+    throw new Error(
+      `deserializeFlow: unsupported flow format version ${version} ` +
       `(this library reads version ${FLOW_FORMAT_VERSION})`,
     )
   }
   if (envelope.flow == null || typeof envelope.flow !== 'object') {
     throw new Error('deserializeFlow: envelope carries no flow payload')
   }
-  return cloneFlow(envelope.flow)
+  // Migrate older exports forward to the current data model, then hand back a
+  // fresh deep copy. A current-version envelope skips migration entirely.
+  const flow = version < FLOW_FORMAT_VERSION
+    ? migrateFlow(envelope.flow, version)
+    : envelope.flow
+  return cloneFlow(flow)
 }
 
 /**

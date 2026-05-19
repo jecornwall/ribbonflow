@@ -22,6 +22,7 @@ import {
 
 import n4Flow from './fixtures/flows/n4-toc-baseline.js'
 import n9Flow from './fixtures/flows/n9-multilane.js'
+import m2Flow from './fixtures/flows/m2-coverage.v2.js'
 
 test('FLOW_FORMAT_VERSION is a positive integer', () => {
   assert.equal(typeof FLOW_FORMAT_VERSION, 'number')
@@ -77,6 +78,57 @@ test('deserializeFlow rejects a payload with no flow', () => {
     () => deserializeFlow(JSON.stringify({ formatVersion: FLOW_FORMAT_VERSION })),
     /flow/i,
   )
+})
+
+// ── M2 (bd ai-engineer-8aee): the evolved v2 data model ──────────────────────
+// Every field M2 added must survive serialize → deserialize byte-faithfully.
+// m2-coverage.v2.js sets every new field explicitly (no default reliance).
+
+test('round-trip is lossless for the full M2 v2 coverage flow', () => {
+  const restored = deserializeFlow(serializeFlow(m2Flow))
+  assert.deepEqual(restored, m2Flow)
+})
+
+test('round-trip preserves the two real source nodes and their rates', () => {
+  const restored = deserializeFlow(serializeFlow(m2Flow))
+  const sources = restored.nodes.filter(n => n.kind === 'source')
+  assert.equal(sources.length, 2)
+  assert.deepEqual(
+    sources.map(s => [s.id, s.rate]),
+    [['src-frontend', 0.6], ['src-backend', 0.4]],
+  )
+})
+
+test('round-trip preserves first-class forks with per-branch rateShare', () => {
+  const restored = deserializeFlow(serializeFlow(m2Flow))
+  assert.deepEqual(restored.forks, m2Flow.forks)
+  assert.equal(restored.forks[0].branches[0].rateShare, 0.7)
+})
+
+test('round-trip preserves first-class merges (to / from)', () => {
+  const restored = deserializeFlow(serializeFlow(m2Flow))
+  assert.deepEqual(restored.merges, m2Flow.merges)
+})
+
+test('round-trip preserves widthMode and per-node width overrides', () => {
+  const restored = deserializeFlow(serializeFlow(m2Flow))
+  assert.equal(restored.widthMode, 'coupled')
+  for (let i = 0; i < m2Flow.nodes.length; i++) {
+    assert.equal(restored.nodes[i].width, m2Flow.nodes[i].width)
+  }
+})
+
+test('round-trip preserves the pinchPreset and constraintKind register knobs', () => {
+  const restored = deserializeFlow(serializeFlow(m2Flow))
+  assert.equal(restored.pinchPreset, 'constraint-pinch')
+  const constraint = restored.nodes.find(n => n.kind === 'constraint')
+  assert.equal(constraint.constraintKind, 'pinch')
+})
+
+test('round-trip of the M2 flow is idempotent (byte-stable)', () => {
+  const once = serializeFlow(m2Flow)
+  const twice = serializeFlow(deserializeFlow(once))
+  assert.equal(once, twice)
 })
 
 test('cloneFlow returns a deep, independent copy', () => {

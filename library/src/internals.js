@@ -72,3 +72,18 @@ export {
   cloneFlow,
   normalizeFlowInput,
 } from './format/index.js'
+
+// ── Data model (M2 — designer-only) ─────────────────────────────────────────
+// The v2 model layer: default-filling, validation, named pinch presets, and
+// the version-migration entry point. Designer-face only — slides receive a
+// flow already normalized by <FlowEmbed> and never touch these.
+export {
+  normalizeFlow,
+  validateFlow,
+  PINCH_PRESETS,
+  FLOW_DEFAULTS,
+  NODE_DEFAULTS,
+  DEFAULT_SOURCE_RATE,
+} from './format/model.js'
+
+export { migrateFlow } from './format/migrate.js'
