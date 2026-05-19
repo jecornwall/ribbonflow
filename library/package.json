@@ -1,0 +1,17 @@
+{
+  "name": "@flow-designer/library",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared flow library — simulation engine, curve maths, renderer, and the flow format. Two faces: <FlowEmbed> (slide-facing) and /internals (designer-facing).",
+  "exports": {
+    ".": "./src/index.js",
+    "./internals": "./src/internals.js"
+  },
+  "scripts": {
+    "test": "node --test src/core/*.test.js test/*.test.js"
+  },
+  "peerDependencies": {
+    "vue": "^3.4.0"
+  }
+}
