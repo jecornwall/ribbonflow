@@ -535,11 +535,17 @@ const pinchZones = computed(() => {
 // from the actual node position. Anchoring directly at node.{x,y} gives a
 // clean vertical leader from label to node and reads as "the label belongs
 // to this node" — which is the entire point.
+// bd ai-engineer-8aee (M2 §5.3): forks/merges are first-class v2 objects.
+// A v2 fork's branches are `{ to, rateShare }` objects (the rateShare carries
+// the rate split); a v2 merge's upstream nodes live under `from`. The
+// `typeof b === 'string'` and `m.branches` fallbacks keep any v1-shaped flow
+// (pre-migration) rendering unchanged.
 const forkRootIds = new Set(
-  (props.flow.forks || []).flatMap(f => f.branches || [])
+  (props.flow.forks || []).flatMap(f =>
+    (f.branches || []).map(b => (typeof b === 'string' ? b : b.to))),
 )
 const preMergeIds = new Set(
-  (props.flow.merges || []).flatMap(m => m.branches || [])
+  (props.flow.merges || []).flatMap(m => m.from || m.branches || []),
 )
 
 function markerPropsFor(node) {

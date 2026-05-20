@@ -6,6 +6,7 @@ import n4Flow from '../../test/fixtures/flows/n4-toc-baseline.js'
 import n4FlowA from '../../test/fixtures/flows/n4-flow-a.js'
 import n4FlowB from '../../test/fixtures/flows/n4-flow-b.js'
 import n9MultiLane from '../../test/fixtures/flows/n9-multilane.js'
+import m2Coverage from '../../test/fixtures/flows/m2-coverage.v2.js'
 
 // ──────────────────────────────────────────────────────────────────────────
 // Headless-testing note: createFlowSimulation is RAF-free; it exposes
@@ -1060,3 +1061,98 @@ test('§Frame-rate independence (N4): 1/1440s rAF-emulated stepping advances for
 // (iter-4 et seq) must not regress these without an explicit waiver in
 // toc-diagrams.md and a paired test-file update.
 // ──────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────
+// M2 — real multi-source spawning (bd ai-engineer-8aee, spec §5.1).
+//
+// A v2 flow has real `kind:'source'` nodes — no `flow.entryId`, no off-canvas
+// `_start` round-robin hack. Each source emits independently at its own
+// `rate`, gated by a per-source spawn accumulator. The engine resolves
+// sources from the node list and maintains one accumulator each.
+// ──────────────────────────────────────────────────────────────────────────
+
+// Two real sources feeding a shared merge → sink. src-fast emits at 2×
+// src-slow. Downstream capacity is generous so the sources run near their
+// nominal rate (no constraint back-pressure throttling the test).
+const multiSourceFlow = {
+  viewBox: { w: 1600, h: 900 },
+  baseSpeed: 200,
+  widthMode: 'manual',
+  nodes: [
+    { id: 'src-fast', x: 200, y: 300, kind: 'source', rate: 2.0,
+      capacity: 8, latency: 0.4, successors: ['merge'] },
+    { id: 'src-slow', x: 200, y: 700, kind: 'source', rate: 1.0,
+      capacity: 8, latency: 0.4, successors: ['merge'] },
+    { id: 'merge', x: 800, y: 500, capacity: 8, latency: 0.4, successors: ['sink'] },
+    { id: 'sink',  x: 1400, y: 500, capacity: 8, latency: 0.4, successors: [] },
+  ],
+}
+
+test('Multi-source (M2): a flow with real source nodes builds without an entryId', () => {
+  assert.doesNotThrow(() => createFlowSimulation(multiSourceFlow, { initialAgents: 12 }),
+    'a v2 flow with kind:source nodes must not require flow.entryId')
+})
+
+test('Multi-source (M2): seeds one in-process agent per source at t=0', () => {
+  const sim = createFlowSimulation(multiSourceFlow, { initialAgents: 24 })
+  assert.equal(sim.agents.length, 24)
+  const inProcess = sim.agents.filter(a => a.lifecycle === 'in-process')
+  // Exactly one seeded per source (2 sources → 2 in-process).
+  assert.equal(inProcess.length, 2, `expected 2 in-process (one/source); got ${inProcess.length}`)
+  const seededAt = new Set(inProcess.map(a => a.currentNodeId))
+  assert.ok(seededAt.has('src-fast') && seededAt.has('src-slow'),
+    'each source should have one seeded in-process agent')
+  // Remaining agents pending, each targeting one of the two sources.
+  const pending = sim.agents.filter(a => a.lifecycle === 'pending')
+  assert.equal(pending.length, 22)
+  for (const a of pending) {
+    assert.ok(a.targetNodeId === 'src-fast' || a.targetNodeId === 'src-slow',
+      `pending agent should target a source; got ${a.targetNodeId}`)
+  }
+})
+
+test('Multi-source (M2): both sources emit, and per-source rate is respected', () => {
+  const sim = createFlowSimulation(multiSourceFlow, { initialAgents: 30 })
+  for (let i = 0; i < 1800; i++) sim.step(1 / 60)  // 30s
+  const fast = sim.traces.entries.filter(e => e.nodeId === 'src-fast').length
+  const slow = sim.traces.entries.filter(e => e.nodeId === 'src-slow').length
+  assert.ok(fast > 0, `src-fast should emit; got ${fast} entries`)
+  assert.ok(slow > 0, `src-slow should emit; got ${slow} entries`)
+  // src-fast's rate is 2× src-slow's — its emission count should be clearly
+  // higher. Lenient band [1.4, 3.0] absorbs recycling + FP timing jitter.
+  const ratio = fast / slow
+  assert.ok(ratio >= 1.4 && ratio <= 3.0,
+    `expected src-fast/src-slow entry ratio ≈ 2 (band 1.4–3.0); got ${ratio.toFixed(2)} (fast=${fast}, slow=${slow})`)
+})
+
+test('Multi-source (M2): agents from both sources reach the sink', () => {
+  const sim = createFlowSimulation(multiSourceFlow, { initialAgents: 30 })
+  for (let i = 0; i < 1800; i++) sim.step(1 / 60)
+  assert.ok(sim.traces.exits.length >= 5,
+    `expected ≥5 completions at the sink over 30s; got ${sim.traces.exits.length}`)
+})
+
+test('Multi-source (M2): the real v2 m2-coverage fixture runs through the engine', () => {
+  // m2-coverage.v2.js is the canonical v2 fixture — two source nodes, a
+  // rate-split fork, a merge, a pinch-mode constraint. It must drive the
+  // engine end-to-end and produce real motion.
+  const sim = createFlowSimulation(m2Coverage, { initialAgents: m2Coverage.initialAgents ?? 20 })
+  const inProcess0 = sim.agents.filter(a => a.lifecycle === 'in-process').length
+  assert.equal(inProcess0, 2, `expected one in-process per source at t=0; got ${inProcess0}`)
+  const lastPos = sim.agents.map(a => ({ x: a.x, y: a.y }))
+  const pathLength = sim.agents.map(() => 0)
+  for (let i = 0; i < 1800; i++) {
+    sim.step(1 / 60)
+    for (let k = 0; k < sim.agents.length; k++) {
+      const a = sim.agents[k]
+      const d = Math.hypot(a.x - lastPos[k].x, a.y - lastPos[k].y)
+      if (d < 50) pathLength[k] += d
+      lastPos[k] = { x: a.x, y: a.y }
+    }
+  }
+  const totalPath = pathLength.reduce((a, b) => a + b, 0)
+  assert.ok(totalPath > 1000, `expected total path > 1000 (sim running); got ${totalPath.toFixed(0)}`)
+  // The teleport backstop must never fire — agents stay inside the ribbon.
+  assert.equal(sim.traces.escapes.length, 0,
+    `m2-coverage: teleport backstop fired ${sim.traces.escapes.length}×`)
+})

@@ -50,6 +50,11 @@ const PROJECTION_NOISE_TOL = 0.75
 let nextAgentId = 0
 const freshAgentId = () => `agent-${nextAgentId++}`
 
+// Default source emit rate (particles/sec) — mirrors format/model.js's
+// DEFAULT_SOURCE_RATE. Inlined so the engine carries no format-layer
+// dependency (M2 spec §5.1).
+const DEFAULT_SOURCE_RATE = 1.0
+
 // ──────────────────────────────────────────────────────────────────────────
 // Centerline projection — coarse-to-fine bisection (bead ai-engineer-1al).
 //
@@ -180,7 +185,42 @@ export function selectBranch(agent, branches) {
  *   - traces: { entries, exits, escapes, revisions } — instrumentation for Tier 1 assertions
  */
 export function createFlowSimulation(flow, opts = {}) {
-  if (!flow.entryId) throw new Error('createFlowSimulation: flow.entryId is required')
+  // ── Source resolution (M2 spec §5.1 — real multi-source) ──────────────────
+  // v2: real source nodes — every `kind:'source'` node emits independently at
+  //     its own `rate` (default DEFAULT_SOURCE_RATE).
+  // v1: a single top-level `entryId`, rate-limited only if `spawnRate` is set;
+  //     otherwise legacy bulk-fill. Kept as a back-compat adapter so the v1
+  //     fixtures (n4 / n9 / synthetic) run unchanged on the evolved engine.
+  const sourceNodes = flow.nodes.filter(n => n.kind === 'source')
+  let sources
+  if (sourceNodes.length > 0) {
+    sources = sourceNodes.map(n => ({
+      id: n.id,
+      node: n,
+      rate: typeof n.rate === 'number' ? n.rate : DEFAULT_SOURCE_RATE,
+    }))
+  } else {
+    if (!flow.entryId) {
+      throw new Error(
+        "createFlowSimulation: flow needs a source node (kind:'source') "
+        + 'or a legacy entryId',
+      )
+    }
+    const entry = flow.nodes.find(n => n.id === flow.entryId)
+    if (!entry) {
+      throw new Error(`createFlowSimulation: entryId "${flow.entryId}" not found`)
+    }
+    sources = [{
+      id: entry.id,
+      node: entry,
+      rate: typeof flow.spawnRate === 'number' ? flow.spawnRate : null,
+    }]
+  }
+  // Rate-limited when every source declares a numeric rate. v2 source nodes
+  // always do (default applied above); a v1 entryId with no spawnRate stays in
+  // legacy bulk-fill mode.
+  const rateLimited = sources.every(s => s.rate !== null)
+  const sourceIdSet = new Set(sources.map(s => s.id))
 
   const initialAgents = opts.initialAgents ?? 8
   const { branches } = buildBranches(flow)
@@ -353,7 +393,28 @@ export function createFlowSimulation(flow, opts = {}) {
     return succ[i]
   }
 
-  const entryNode = flow.nodes.find(n => n.id === flow.entryId)
+  // Primary source — the fallback used by the legacy bulk-fill seeding and
+  // the escape-teleport backstop, both of which only ever apply to a single-
+  // source (v1) flow or treat "some source" as good enough.
+  const entryNode = sources[0].node
+
+  // Weighted source assignment (M2 §5.1). Every pending agent — initially
+  // seeded or recycled after completing a leaf — is assigned to a source in
+  // proportion to that source's rate, so each source's long-run promotion
+  // count tracks its rate. Picks the source with the lowest assigned/rate
+  // ratio. For a single-source (v1) flow this trivially always returns it.
+  const sourceAssignCount = Object.fromEntries(sources.map(s => [s.id, 0]))
+  function pickSourceWeighted() {
+    let best = sources[0]
+    let bestScore = Infinity
+    for (const s of sources) {
+      const r = s.rate > 0 ? s.rate : 1e-9
+      const score = sourceAssignCount[s.id] / r
+      if (score < bestScore) { bestScore = score; best = s }
+    }
+    sourceAssignCount[best.id] += 1
+    return best.node
+  }
 
   // Spawn position helper (bead ai-engineer-bnp, surfaced by n9-multilane).
   //
@@ -393,31 +454,24 @@ export function createFlowSimulation(flow, opts = {}) {
     return { x: node.x + nx * k, y: node.y + ny * k }
   }
 
-  // Rate-limited source spawn (bead ai-engineer-y70).
+  // Rate-limited source spawn (bead ai-engineer-y70; M2 §5.1 multi-source).
   //
-  // When flow.spawnRate is set, the simulation behaves as a "1:1 source":
-  // agents enter the entry node one at a time at the configured rate, rather
-  // than the legacy bulk-fill behaviour that primed initialAgents up to entry
-  // capacity at t=0. This eliminates the visible t=0 spike at the constraint
-  // (which masked the anticipatory-queue work in bead ai-engineer-2ip by
-  // dumping a full backlog into the channel before the deceleration physics
-  // had any chance to engage).
+  // In rate-limited mode each source is a "1:1 source": agents enter it one at
+  // a time at the source's configured rate, rather than the legacy bulk-fill
+  // behaviour that primed initialAgents up to entry capacity at t=0. This
+  // eliminates the visible t=0 spike at the constraint.
   //
   // Semantics:
-  //   - flow.spawnRate undefined  → legacy bulk behaviour (preserves backwards
-  //     compatibility for the synthetic linearFlow / cycleFlow / forkFlow
+  //   - no source declares a rate (v1 entryId, no spawnRate) → legacy bulk
+  //     behaviour (preserves the synthetic linearFlow / cycleFlow / forkFlow
   //     used by older tests).
-  //   - flow.spawnRate set        → all initialAgents start in 'pending'
-  //     off-canvas; ONE agent is promoted to the entry at t=0 so the visible
-  //     band is not empty on first frame; subsequent promotions are gated by
-  //     a spawnAccumulator that accrues at flow.spawnRate per second.
-  const spawnRate = flow.spawnRate ?? null
-  const rateLimited = spawnRate !== null
-  // Accumulator starts at 1 so the FIRST step grants a promotion immediately
-  // when an upstream-completed agent returns to the pending pool. The t=0
-  // seed below uses up the initial 1.0 of "credit" so we start at 0 after
-  // construction; in legacy bulk mode the accumulator is unused.
-  let spawnAccumulator = rateLimited ? 0 : 0
+  //   - every source declares a rate → all initialAgents start in 'pending'
+  //     off-canvas EXCEPT one seeded in-process per source (so each source's
+  //     band is non-empty on the first frame); subsequent promotions are gated
+  //     PER SOURCE by a spawn accumulator that accrues at that source's rate.
+  //
+  // M2: one accumulator per source (was a single scalar in v1).
+  const spawnAccumulators = Object.fromEntries(sources.map(s => [s.id, 0]))
 
   // FIFO pending counter (bead ai-engineer-a1m).
   //
@@ -439,30 +493,34 @@ export function createFlowSimulation(flow, opts = {}) {
   const occupancy = Object.fromEntries(flow.nodes.map(n => [n.id, 0]))
   const agents = []
   if (rateLimited) {
-    // Rate-limited mode: seed ONE agent in-process at the entry (so the
-    // visible band is non-empty at t=0 — required by the Smoke (N4) "at
-    // least one in-process at t=0" invariant). The rest are pending.
+    // Rate-limited mode: seed ONE agent in-process per source (so every
+    // source's band is non-empty at t=0 — for a single-source v1 flow this is
+    // exactly one in-process agent, satisfying the Smoke (N4) invariant). The
+    // remaining agents are pending, distributed across sources by rate.
     for (let i = 0; i < initialAgents; i++) {
-      if (i === 0 && occupancy[entryNode.id] < entryNode.capacity) {
-        occupancy[entryNode.id]++
-        const nextTarget = nextSuccessor(entryNode)
-        const pos = spawnPosition(entryNode, nextTarget)
+      const seedSource = i < sources.length ? sources[i].node : null
+      if (seedSource && occupancy[seedSource.id] < seedSource.capacity) {
+        occupancy[seedSource.id]++
+        const nextTarget = nextSuccessor(seedSource)
+        const pos = spawnPosition(seedSource, nextTarget)
         agents.push({
           id: freshAgentId(),
           x: pos.x, y: pos.y,
           vx: 0, vy: 0,
-          currentNodeId: entryNode.id,
+          currentNodeId: seedSource.id,
           targetNodeId: nextTarget,
           lifecycle: 'in-process',
           age: 0,
         })
       } else {
+        // Pending — assigned to a source in proportion to that source's rate.
+        const src = pickSourceWeighted()
         const a = {
           id: freshAgentId(),
-          x: entryNode.x - 100, y: entryNode.y,
+          x: src.x - 100, y: src.y,
           vx: 0, vy: 0,
           currentNodeId: null,
-          targetNodeId: entryNode.id,
+          targetNodeId: src.id,
           lifecycle: 'pending',
           age: 0,
         }
@@ -530,10 +588,12 @@ export function createFlowSimulation(flow, opts = {}) {
       // the previous occupant exited, keeping net occupancy = 0.
       const nodesWithExitsThisStep = new Set()
 
-      // Rate-limited source: accrue spawn tokens. The pending-promotion
-      // pass at the end of step() decrements one token per successful
-      // entry-node promotion (see bead ai-engineer-y70).
-      if (rateLimited) spawnAccumulator += dtc * spawnRate
+      // Rate-limited source: accrue spawn tokens PER SOURCE at that source's
+      // rate. The pending-promotion pass at the end of step() decrements one
+      // token from a source per successful promotion into it (bd y70; M2 §5.1).
+      if (rateLimited) {
+        for (const s of sources) spawnAccumulators[s.id] += dtc * s.rate
+      }
 
       // ── Lookahead pre-pass (bead ai-engineer-2ip + ai-engineer-ebv) ────
       // Compute each in-process agent's branch + arc-length ONCE per step.
@@ -1250,14 +1310,15 @@ export function createFlowSimulation(flow, opts = {}) {
             traces.exits.push({ id: agent.id, nodeId: currentNode.id, t: agent.age })
             if (rateLimited) {
               // Rate-limited mode: completed agents ALWAYS go pending; the
-              // shared promotion pass below gates re-entry behind the
-              // spawnAccumulator. This keeps source cadence honest after a
-              // long run (legacy "instant respawn when entry clears" let a
-              // single agent ping-pong faster than the configured spawn rate).
+              // shared promotion pass below gates re-entry behind the source's
+              // spawn accumulator. This keeps source cadence honest after a
+              // long run. M2 §5.1: the recycled agent is reassigned to a
+              // source by rate proportion (single-source v1 → that source).
+              const src = pickSourceWeighted()
               agent.currentNodeId = null
-              agent.targetNodeId = entryNode.id
+              agent.targetNodeId = src.id
               agent.lifecycle = 'pending'
-              agent.x = entryNode.x - 100; agent.y = entryNode.y
+              agent.x = src.x - 100; agent.y = src.y
               agent.vx = 0; agent.vy = 0
               markPending(agent)  // FIFO stamp (bead a1m)
             } else if (occupancy[entryNode.id] < entryNode.capacity) {
@@ -1537,15 +1598,15 @@ export function createFlowSimulation(flow, opts = {}) {
         const targetNode = flow.nodes.find(n => n.id === targetId)
         if (!targetNode) continue
         if (occupancy[targetId] >= targetNode.capacity) continue
-        // Rate-limited source gate (bd ai-engineer-y70): only the ENTRY node's
-        // promotion is throttled. Revising agents returning to a mid-stream
-        // reviseTo target are NOT subject to the spawn rate — they're already
-        // in the system and are simply being repositioned. This matches the
-        // visual intent: "particles come from the source 1:1", not "the
-        // entire flow is 1:1 everywhere".
-        if (rateLimited && targetId === entryNode.id) {
-          if (spawnAccumulator < 1) continue
-          spawnAccumulator -= 1
+        // Rate-limited source gate (bd ai-engineer-y70; M2 §5.1): only a
+        // SOURCE node's promotion is throttled, each by its OWN accumulator.
+        // Revising agents returning to a mid-stream reviseTo target are NOT
+        // subject to the spawn rate — they're already in the system and are
+        // simply being repositioned. This matches the visual intent:
+        // "particles come from the source 1:1", not "the entire flow is 1:1".
+        if (rateLimited && sourceIdSet.has(targetId)) {
+          if (spawnAccumulators[targetId] < 1) continue
+          spawnAccumulators[targetId] -= 1
         }
         occupancy[targetId]++
         // Centerline-aligned spawn jitter (see spawnPosition() above).
