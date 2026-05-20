@@ -12,7 +12,12 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { slugify, uniqueSlug, buildIndex } from '../server/indexBuilder.js'
+import {
+  slugify,
+  uniqueSlug,
+  buildIndex,
+  insertFlowAfter,
+} from '../server/indexBuilder.js'
 
 // ── slugify ──────────────────────────────────────────────────────────────────
 
@@ -162,4 +167,35 @@ test('buildIndex omits the transition field when the set has none (back-compat)'
     { generatedAt: 't' },
   )
   assert.equal(Object.hasOwn(idx.sets[0], 'transition'), false)
+})
+
+// ── insertFlowAfter (bd ai-engineer-ih7q) ────────────────────────────────────
+
+test('insertFlowAfter places the entry immediately after the named slug', () => {
+  const flows = [{ slug: 'a' }, { slug: 'b' }, { slug: 'c' }]
+  const out = insertFlowAfter(flows, 'b', { slug: 'b-copy', title: 'B copy' })
+  assert.deepEqual(
+    out.map((f) => f.slug),
+    ['a', 'b', 'b-copy', 'c'],
+  )
+})
+
+test('insertFlowAfter appends when the named slug is absent', () => {
+  const flows = [{ slug: 'a' }, { slug: 'b' }]
+  const out = insertFlowAfter(flows, 'ghost', { slug: 'x' })
+  assert.deepEqual(
+    out.map((f) => f.slug),
+    ['a', 'b', 'x'],
+  )
+})
+
+test('insertFlowAfter does not mutate the input array', () => {
+  const flows = [{ slug: 'a' }]
+  const out = insertFlowAfter(flows, 'a', { slug: 'a-copy' })
+  assert.equal(flows.length, 1, 'input untouched')
+  assert.equal(out.length, 2)
+})
+
+test('insertFlowAfter tolerates a missing flows array', () => {
+  assert.deepEqual(insertFlowAfter(undefined, 'a', { slug: 'x' }), [{ slug: 'x' }])
 })

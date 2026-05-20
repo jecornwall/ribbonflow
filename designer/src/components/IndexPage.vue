@@ -58,6 +58,17 @@ async function previewSet(set) {
   }
 }
 
+/** Duplicate a flow within its set — a one-click fork while authoring
+ *  (bd ai-engineer-ih7q). The copy lands right after the source in the set. */
+async function duplicate(flow) {
+  try {
+    await store.duplicateFlow(flow.id)
+    await store.refreshIndex()
+  } catch (err) {
+    window.alert(`Could not duplicate flow: ${err.message || err}`)
+  }
+}
+
 async function removeFlow(flow) {
   if (!window.confirm(`Delete “${flow.title}”? This cannot be undone.`)) return
   try {
@@ -114,6 +125,11 @@ async function removeFlow(flow) {
               · <code>{{ flow.id }}</code>
             </span>
           </button>
+          <button
+            class="ix-flow-act"
+            title="duplicate flow"
+            @click="duplicate(flow)"
+          >⧉</button>
           <button class="ix-flow-del" title="delete flow" @click="removeFlow(flow)">
             ✕
           </button>
@@ -208,14 +224,23 @@ async function removeFlow(flow) {
   font-size: 12px;
   color: #8a8474;
 }
+.ix-flow-act,
 .ix-flow-del {
   border: none;
   border-left: 1px solid #e2ded3;
   background: #fbfaf6;
-  color: #b91c1c;
   cursor: pointer;
   padding: 0 12px;
   font-size: 13px;
+}
+.ix-flow-act {
+  color: #4a4636;
+}
+.ix-flow-act:hover {
+  background: #ece8dc;
+}
+.ix-flow-del {
+  color: #b91c1c;
 }
 .ix-flow-del:hover {
   background: #fdeaea;

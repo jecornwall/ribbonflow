@@ -93,3 +93,24 @@ export function buildIndex(scan, { generatedAt }) {
     })
   return { indexVersion: INDEX_VERSION, generatedAt, sets }
 }
+
+/**
+ * Return a new `set.json` flows array with `entry` inserted immediately after
+ * the entry whose slug is `afterSlug`. When `afterSlug` is absent the entry is
+ * appended. Pure — the input array is not mutated.
+ *
+ * Used by the designer's duplicate-a-flow action (bd ai-engineer-ih7q): a
+ * forked state should land right next to the flow it was copied from rather
+ * than at the end of the (ordered) set.
+ *
+ * @param {Array<{slug:string}>} flows
+ * @param {string} afterSlug
+ * @param {{slug:string,title?:string}} entry
+ * @returns {Array}
+ */
+export function insertFlowAfter(flows, afterSlug, entry) {
+  const list = [...(flows ?? [])]
+  const i = list.findIndex((f) => f.slug === afterSlug)
+  list.splice(i >= 0 ? i + 1 : list.length, 0, entry)
+  return list
+}

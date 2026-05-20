@@ -67,6 +67,16 @@ async function deleteFlow(id) {
   return request('DELETE', `${API}/file/${id}`)
 }
 
+/**
+ * Duplicate a flow within its set (bd ai-engineer-ih7q). The server byte-copies
+ * the envelope to a fresh `<title> copy` slug, inserts it right after the
+ * source in the set's order, and regenerates the index. Returns
+ * `{ ok, id, slug, title, index }`.
+ */
+async function duplicateFlow(id) {
+  return request('POST', `${API}/duplicate`, { id })
+}
+
 /** Create a new flow-set directory; returns `{ id, title }`. */
 async function createSet(title) {
   return request('POST', `${API}/set`, { title })
@@ -86,5 +96,14 @@ async function saveSetMeta(setId, partial) {
 }
 
 export function useFlowStore() {
-  return { state, refreshIndex, loadFlow, saveFlow, deleteFlow, createSet, saveSetMeta }
+  return {
+    state,
+    refreshIndex,
+    loadFlow,
+    saveFlow,
+    deleteFlow,
+    duplicateFlow,
+    createSet,
+    saveSetMeta,
+  }
 }

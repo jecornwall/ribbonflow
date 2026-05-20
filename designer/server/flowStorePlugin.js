@@ -29,7 +29,13 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { slugify, uniqueSlug, buildIndex, SLUG_RE } from './indexBuilder.js'
+import {
+  slugify,
+  uniqueSlug,
+  buildIndex,
+  insertFlowAfter,
+  SLUG_RE,
+} from './indexBuilder.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** Default persistence root: flow/flows/, a workspace-level peer of designer/. */
@@ -220,6 +226,35 @@ function makeStore(root) {
     await writeSetMeta(setSlug, meta)
   }
 
+  /**
+   * Duplicate a flow within its set (bd ai-engineer-ih7q).
+   *
+   * Byte-copies the source flow's envelope to a fresh `<title> copy` slug and
+   * inserts the new flow entry into set.json immediately AFTER the source — a
+   * forked state lands next to the flow it came from rather than at the end of
+   * the ordered set. Returns the new flow's id / slug / title.
+   */
+  async function duplicateFlow(setSlug, srcSlug) {
+    // readFlow throws if the source is missing — the caller maps that to 404.
+    const envelope = await readFlow(setSlug, srcSlug)
+    const meta = await readSetMeta(setSlug)
+    const srcEntry = meta.flows.find((f) => f.slug === srcSlug)
+    const srcTitle = srcEntry?.title ?? srcSlug
+    const newTitle = `${srcTitle} copy`
+    const newSlug = uniqueSlug(
+      slugify(newTitle),
+      meta.flows.map((f) => f.slug),
+    )
+    await fs.writeFile(
+      path.join(root, setSlug, `${newSlug}.flow.json`),
+      JSON.stringify(envelope, null, 2) + '\n',
+      'utf8',
+    )
+    meta.flows = insertFlowAfter(meta.flows, srcSlug, { slug: newSlug, title: newTitle })
+    await writeSetMeta(setSlug, meta)
+    return { id: `${setSlug}/${newSlug}`, slug: newSlug, title: newTitle }
+  }
+
   /** Create a new set directory with a unique slug derived from `title`. */
   async function createSet(title) {
     const existing = await listSetSlugs()
@@ -235,6 +270,7 @@ function makeStore(root) {
     readFlow,
     writeFlow,
     deleteFlow,
+    duplicateFlow,
     createSet,
     updateSet,
     listSetSlugs,
@@ -274,6 +310,22 @@ export function flowStorePlugin(opts = {}) {
             const set = await store.createSet(body.title)
             await store.regenIndex()
             return sendJson(res, 201, set)
+          }
+
+          // POST /__flows/duplicate  body { id: '<set>/<flow>' }
+          if (req.method === 'POST' && parts[0] === 'duplicate' && parts.length === 1) {
+            const body = await readBody(req)
+            const segs = String(body.id || '').split('/').filter(Boolean)
+            if (segs.length !== 2 || !SLUG_RE.test(segs[0]) || !SLUG_RE.test(segs[1])) {
+              return sendJson(res, 400, { error: 'duplicate needs an `id` of <set>/<flow>' })
+            }
+            try {
+              const dup = await store.duplicateFlow(segs[0], segs[1])
+              const index = await store.regenIndex()
+              return sendJson(res, 201, { ok: true, ...dup, index })
+            } catch {
+              return sendJson(res, 404, { error: 'source flow not found' })
+            }
           }
 
           // PUT /__flows/set/<setSlug>
