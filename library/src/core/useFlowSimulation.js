@@ -273,12 +273,22 @@ export function createFlowSimulation(flow, opts = {}) {
     // segBounds[i] is the arc-length where node i's RIBBON SEGMENT starts —
     // the upstream edge of the visible band (orange constraint band + its
     // pink transition wing all sit inside [segBounds[i], segBounds[i+1]]).
-    // bd ai-engineer-c42z: capacity-blocked agents queue at this upstream
-    // edge so the visible backlog forms BEFORE the constraint's segment,
-    // not inside it — the segment itself reads as "the work being processed".
     branch.segBounds = segmentBoundsByLatency(branch, flow)
+    // segHoldBounds[i] is the arc-length of node i's PLATEAU start — the
+    // curve→plateau boundary where the narrowing transition curve ends and
+    // the constant-width plateau begins. bd ai-engineer-blqz: capacity-
+    // blocked agents hold HERE (front-of-queue at the entrance to the narrow
+    // orange plateau), so the queue body FILLS the pinch curve back through
+    // the narrowing transition; only overflow spills into the upstream flat
+    // band. (c42z held at segBounds[i] — the segment's upstream edge — which
+    // overshot: the pile sat in the flat wheat BEFORE the curve.) For an
+    // interior boundary between equal-width segments transHalf=0, so
+    // plateau.sStart === segBounds[i] and the hold point is unchanged.
     if (flow.pinchMode === 'constraint-only') {
       branch.widthFn = buildPinchWidthFn(branch, flow)
+      // Pinch-mode flows have no segmentedRibbonLayout segments[]; fall back
+      // to the segment edge (c42z behaviour). No real flow uses pinchMode.
+      branch.segHoldBounds = branch.segBounds
     } else {
       // bd ai-engineer-0sdz: the non-pinch ribbon profile is the SMOOTH
       // segmented width function — a constant-width plateau per node with
@@ -289,7 +299,11 @@ export function createFlowSimulation(flow, opts = {}) {
       // cannot drift). It replaces a hard per-node STEP function; a smooth
       // profile is strictly gentler than the step (intermediate widths, no
       // jumps), so the clamp only ever tightens monotonically.
-      branch.widthFn = segmentedRibbonLayout(branch, flow, widths).widthFn
+      const layout = segmentedRibbonLayout(branch, flow, widths)
+      branch.widthFn = layout.widthFn
+      // plateau.sStart per node — the same segmentation the renderer draws,
+      // so the engine's hold point IS the visual curve→plateau boundary.
+      branch.segHoldBounds = layout.segments.map(seg => seg.plateau.sStart)
     }
     // Per-node SPEED step function (v1.1 §7, bd ai-engineer-06e7). The
     // segments are latency-proportioned — exactly the segmentation widthFn's
@@ -807,15 +821,16 @@ export function createFlowSimulation(flow, opts = {}) {
           if (shouldGate) {
             const tIdx = branch.nodeIds.indexOf(agent.targetNodeId)
             if (tIdx >= 0) {
-              // bd ai-engineer-c42z: hold the queue at the UPSTREAM EDGE of the
-              // target's ribbon segment (segBounds[tIdx]), not at the node
-              // anchor. Capacity-blocked agents decelerate to a stop just
-              // before the constraint's segment, so the visible backlog piles
-              // into the PRECEDING segment; the constraint's own segment (the
-              // orange band + pink transition wing) stays sparse — only the
+              // bd ai-engineer-blqz: hold the queue at the CURVE→PLATEAU
+              // boundary (segHoldBounds[tIdx] = plateau.sStart), the entrance
+              // to the narrow orange plateau — not at the segment's upstream
+              // edge (c42z) and not at the node anchor. Front-of-queue stops
+              // here; the queue body stacks back THROUGH the narrowing pinch
+              // curve, filling it; only overflow spills into the upstream
+              // flat band. The constraint's plateau stays sparse — only the
               // ~capacity agents actively being processed occupy it.
-              const blockerS = branch.segBounds
-                ? branch.segBounds[tIdx]
+              const blockerS = branch.segHoldBounds
+                ? branch.segHoldBounds[tIdx]
                 : Math.max(0, branch.anchorS[tIdx] - PARTICLE_RADIUS)
               const d = blockerS - bestS
               if (d < frontDist) frontDist = d
@@ -1326,11 +1341,12 @@ export function createFlowSimulation(flow, opts = {}) {
           if (occupancy[targetNode.id] >= targetNode.capacity) {
             const tIdx = branch.nodeIds.indexOf(agent.targetNodeId)
             if (tIdx >= 0) {
-              // bd ai-engineer-c42z: arrest an overshooting agent at the
-              // UPSTREAM EDGE of the target's ribbon segment (segBounds[tIdx]),
-              // the same boundary the queue holds at — not at the node anchor.
-              const limit = branch.segBounds
-                ? branch.segBounds[tIdx]
+              // bd ai-engineer-blqz: arrest an overshooting agent at the
+              // CURVE→PLATEAU boundary (segHoldBounds[tIdx] = plateau.sStart),
+              // the same boundary the queue holds at — not the segment edge
+              // (c42z) and not the node anchor.
+              const limit = branch.segHoldBounds
+                ? branch.segHoldBounds[tIdx]
                 : Math.max(0, branch.anchorS[tIdx] - PARTICLE_RADIUS)
               if (bestS > limit) {
                 // Past advisory boundary. Brake forward-along-tangent
@@ -1353,17 +1369,17 @@ export function createFlowSimulation(flow, opts = {}) {
           const targetNode = flow.nodes.find(n => n.id === agent.targetNodeId)
           const distToTarget = Math.hypot(targetNode.x - agent.x, targetNode.y - agent.y)
           const ENTRY_DIST = 30
-          // bd ai-engineer-c42z: a capacity-gated target admits its front
-          // agent at the UPSTREAM EDGE of its ribbon segment — the same
-          // boundary the queue (anticipatory-decel blocker, above) holds at.
-          // Without this the queue would deadlock: agents stopped at
-          // segBounds[tIdx] never reach the Euclidean node-anchor gate.
+          // bd ai-engineer-blqz: a capacity-gated target admits its front
+          // agent at the CURVE→PLATEAU boundary (segHoldBounds[gateIdx]) —
+          // the same boundary the queue (anticipatory-decel blocker, above)
+          // holds at. Without this the queue would deadlock: agents stopped
+          // at segHoldBounds never reach the Euclidean node-anchor gate.
           // ENTRY_DIST of arc-length slack covers the freeze zone
           // (FREEZE_DIST_NEAR=25) so a frozen front agent still gets admitted
           // when its slot opens. The admitted agent immediately becomes the
-          // occupant and moves downstream into the segment; the queue behind
-          // it stays piled before the segment.
-          const gateIdx = branch.segBounds
+          // occupant and moves downstream into the plateau; the queue behind
+          // it stays piled in the pinch curve.
+          const gateIdx = branch.segHoldBounds
             ? branch.nodeIds.indexOf(agent.targetNodeId)
             : -1
           const segGated = gateIdx >= 0 && (
@@ -1371,7 +1387,7 @@ export function createFlowSimulation(flow, opts = {}) {
             targetNode.capacity === 1
           )
           const atSegmentEdge = segGated
-            && bestS >= branch.segBounds[gateIdx] - ENTRY_DIST
+            && bestS >= branch.segHoldBounds[gateIdx] - ENTRY_DIST
           if (distToTarget < ENTRY_DIST || atSegmentEdge) {
             if (occupancy[targetNode.id] < targetNode.capacity) {
               // Cross the boundary.

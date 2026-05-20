@@ -409,43 +409,49 @@ const HEX_FLOWS = [
 // physics layer to be sound; the *aesthetic* targets are driven from the
 // visual register and will be re-tuned via subsequent dispatches.
 for (const { name, flow } of HEX_FLOWS) {
-  test(`Hex-pack (${name}): backlog forms BEFORE the constraint's segment at t=30s`, () => {
-    // bd ai-engineer-c42z (Jason 2026-05-20 designer parity review): the
-    // capacity-blocked backlog must pile up in the segment PRECEDING the
-    // constraint — upstream of the constraint's ribbon segment — NOT inside
-    // the constraint's own segment. The constraint's segment (the orange
-    // band + its pink transition wing) reads as "the work being processed":
-    // sparse, holding only the ~capacity agents actively in it.
+  test(`Hex-pack (${name}): backlog fills the pinch CURVE, plateau stays sparse at t=30s`, () => {
+    // bd ai-engineer-blqz (Jason 2026-05-20 designer parity review, refining
+    // c42z): the capacity-blocked backlog must FILL the pinch CURVE — the
+    // narrowing wineglass transition between the wide approach and the
+    // narrow constraint plateau — with front-of-queue at the curve→plateau
+    // boundary (segHoldBounds[cIdx] = plateau.sStart). The constraint's
+    // PLATEAU (the constant-width orange band, downstream of that boundary)
+    // reads as "the work being processed": sparse, holding only the
+    // ~capacity agents actively in it. c42z held the queue at the segment's
+    // upstream edge — which overshot: the pile sat in the flat upstream
+    // band BEFORE the curve. blqz moves the hold point downstream into the
+    // curve so the queue body fills the narrowing transition.
     //
     // Two assertions, encoding the queueing GEOMETRY Jason asked for:
-    //   (A) a real pile exists, BEFORE the constraint segment's upstream edge.
-    //   (B) the constraint's own segment stays sparse.
+    //   (A) a real pile exists, at/before the curve→plateau boundary.
+    //   (B) the constraint's own PLATEAU stays sparse.
     const sim = createFlowSimulation(flow, { initialAgents: 40 })
     for (let i = 0; i < 1800; i++) sim.step(1 / 60)
     const c = flow.nodes.find(n => n.kind === 'constraint')
-    let pile = 0      // in-process, at/before the constraint segment's upstream edge
-    let inSegment = 0 // in-process, strictly inside the constraint's segment
+    let pile = 0      // at/before the curve→plateau boundary (curve + approach)
+    let inPlateau = 0 // strictly inside the constraint's constant-width plateau
     for (const a of sim.agents) {
       if (a.lifecycle !== 'in-process') continue
       const b = selectBranch(a, sim.branches)
-      if (!b || !b.segBounds) continue
+      if (!b || !b.segHoldBounds) continue
       const cIdx = b.nodeIds.indexOf(c.id)
       if (cIdx < 0) continue
       const s = projectToCenterline(b.centerline, a.x, a.y).s
-      if (s <= b.segBounds[cIdx]) pile++
-      else if (s < b.segBounds[cIdx + 1]) inSegment++
+      if (s <= b.segHoldBounds[cIdx]) pile++
+      else if (s < b.segBounds[cIdx + 1]) inPlateau++
     }
     // (A) The pile is the bottleneck visual — it must be substantial. With
-    // 40 seeded agents and a cap=1 constraint, ~20 (n4) / ~13 (n9) sit in
-    // the preceding segment at t=30s; floor ≥5 proves the backlog forms.
+    // 40 seeded agents and a cap=1 constraint, ~20 (n4) / ~13 (n9) fill the
+    // pinch curve + approach at t=30s; floor ≥5 proves the backlog forms.
     assert.ok(pile >= 5,
-      `expected ≥5 backlog agents piled BEFORE ${c.id}'s segment on ${name}; got ${pile}`)
-    // (B) The constraint's segment holds only "the work being processed".
-    // Steady state is the cap=1 occupant plus a few front-of-pile agents
-    // pressed a hair past the upstream edge by repulsion / multi-lane
-    // convergence (n9). ≤8 proves the segment did NOT become the pile.
-    assert.ok(inSegment <= 8,
-      `expected ${c.id}'s segment to stay sparse on ${name}; got ${inSegment} inside it`)
+      `expected ≥5 backlog agents filling ${c.id}'s pinch curve on ${name}; got ${pile}`)
+    // (B) The constraint's PLATEAU holds only "the work being processed".
+    // Steady state is the cap=1 occupant plus a few front-of-queue agents
+    // pressed a hair past the curve→plateau boundary by repulsion /
+    // multi-lane convergence (n9). ≤8 proves the plateau did NOT become the
+    // pile — the queue body stacked back through the curve instead.
+    assert.ok(inPlateau <= 8,
+      `expected ${c.id}'s plateau to stay sparse on ${name}; got ${inPlateau} inside it`)
   })
 
   test(`Hex-pack (${name}): the constraint actually constrains — cap=1 upheld`, () => {
@@ -672,10 +678,10 @@ test('Lateral hex-pack (N4): backlog head spreads across pipe width', () => {
   // LATERALLY across the pipe width in the constraint approach — not
   // collapsed into a single-file line along the centerline.
   //
-  // bd ai-engineer-c42z: the backlog now piles BEFORE the constraint's
-  // ribbon segment, so the cluster zone is the 60 arc-units immediately
-  // upstream of the constraint segment's upstream edge (segBounds[cIdx]) —
-  // no longer a window pinned to the node anchor.
+  // bd ai-engineer-blqz: the backlog fills the pinch CURVE, so the cluster
+  // zone is the 60 arc-units immediately upstream of the curve→plateau
+  // boundary (segHoldBounds[cIdx]) — the queue head — no longer a window
+  // pinned to the node anchor or the segment's upstream edge.
   //
   // Acceptance: lateral StdDev > 0.5 × PARTICLE_RADIUS = 1.5 viewBox units
   // (per dispatch brief). Before the ebv fix the queue was single-file
@@ -687,7 +693,7 @@ test('Lateral hex-pack (N4): backlog head spreads across pipe width', () => {
   for (const a of sim.agents) {
     if (a.lifecycle !== 'in-process') continue
     const b = selectBranch(a, sim.branches)
-    if (!b || !b.segBounds) continue
+    if (!b || !b.segHoldBounds) continue
     const cIdx = b.nodeIds.indexOf(constraint.id)
     if (cIdx < 0) continue
     const proj = projectToCenterline(b.centerline, a.x, a.y)
@@ -695,9 +701,9 @@ test('Lateral hex-pack (N4): backlog head spreads across pipe width', () => {
     const tan = b.centerline.tangentAtArcLength(proj.s)
     const norm = { x: -tan.y, y: tan.x }
     const lateral = (a.x - cp.x) * norm.x + (a.y - cp.y) * norm.y
-    // Cluster zone: the 60 arc-units immediately before the constraint
-    // segment's upstream edge — the head of the backlog pile.
-    const beforeEdge = b.segBounds[cIdx] - proj.s
+    // Cluster zone: the 60 arc-units immediately before the curve→plateau
+    // boundary — the head of the backlog pile, in the pinch curve.
+    const beforeEdge = b.segHoldBounds[cIdx] - proj.s
     if (beforeEdge >= 0 && beforeEdge <= 60) cluster.push(lateral)
   }
   assert.ok(cluster.length >= 5,
