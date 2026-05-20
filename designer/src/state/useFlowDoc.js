@@ -106,8 +106,15 @@ function cancelPendingEdge() {
 }
 
 // ── node / edge edits ────────────────────────────────────────────────────────
-function addNode(x, y) {
-  const id = M.addNode(state.flow, x, y)
+/**
+ * Place a node. The x comes from the click; the y is SNAPPED to the flow's
+ * centerline (median node y) so additions stay symmetric with the existing
+ * flow line rather than landing at an arbitrary cursor height — "better
+ * defaults favouring symmetry" (bd ai-engineer-1dr8). Drag the node afterwards
+ * to take it off the line.
+ */
+function addNode(x) {
+  const id = M.addNode(state.flow, x, M.flowCenterlineY(state.flow))
   select('node', id)
   bumpPreview()
   return id

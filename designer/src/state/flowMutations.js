@@ -197,3 +197,28 @@ export function withNodeAnchoredLabels(flow) {
     nodes: (flow.nodes || []).map((n) => ({ ...n, labelX: n.x, labelY: n.y })),
   }
 }
+
+/**
+ * The y-coordinate of a flow's dominant horizontal line — the MEDIAN y of its
+ * existing nodes (bd ai-engineer-1dr8). A node created via the add-node tool
+ * snaps to this line so additions stay symmetric with the existing flow
+ * instead of landing wherever the cursor happened to be — "better defaults
+ * favouring symmetry". The user can still drag the node off the line after.
+ *
+ * Median (not mean) so one off-line node does not drag the default askew.
+ * Falls back to the viewBox vertical centre when the flow has no nodes yet.
+ */
+export function flowCenterlineY(flow) {
+  const ys = (flow.nodes || [])
+    .map((n) => n.y)
+    .filter((y) => Number.isFinite(y))
+    .sort((a, b) => a - b)
+  if (ys.length === 0) {
+    const v = flow.viewBox || {}
+    return Math.round((v.y ?? 0) + (v.h ?? 900) / 2)
+  }
+  const mid = Math.floor(ys.length / 2)
+  return ys.length % 2 === 1
+    ? ys[mid]
+    : Math.round((ys[mid - 1] + ys[mid]) / 2)
+}

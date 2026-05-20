@@ -117,7 +117,8 @@ function onEdgeDown(e, edge) {
 function onBackgroundDown(e) {
   const p = svgPoint(e)
   if (state.tool === 'add-node') {
-    doc.addNode(p.x, p.y)
+    // y is snapped to the flow centerline for symmetry — see useFlowDoc.addNode.
+    doc.addNode(p.x)
   } else if (state.tool === 'add-edge') {
     doc.cancelPendingEdge()
   } else {

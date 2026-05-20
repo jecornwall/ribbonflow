@@ -29,6 +29,7 @@ import {
   uniqueId,
   findNode,
   withNodeAnchoredLabels,
+  flowCenterlineY,
 } from '../src/state/flowMutations.js'
 
 function emptyFlow() {
@@ -153,6 +154,25 @@ test('withNodeAnchoredLabels stamps labelX/labelY = node xy for the preview', ()
 test('withNodeAnchoredLabels tolerates a flow with no nodes', () => {
   const projected = withNodeAnchoredLabels({ viewBox: { w: 1600, h: 900 } })
   assert.deepEqual(projected.nodes, [])
+})
+
+test('flowCenterlineY returns the median node y (symmetry default)', () => {
+  const flow = emptyFlow()
+  addNode(flow, 0, 0) // node-1
+  addNode(flow, 0, 0) // node-2
+  addNode(flow, 0, 0) // node-3
+  moveNode(flow, 'node-1', 0, 400)
+  moveNode(flow, 'node-2', 0, 450)
+  moveNode(flow, 'node-3', 0, 460)
+  assert.equal(flowCenterlineY(flow), 450, 'odd count: middle value')
+  addNode(flow, 0, 0) // node-4
+  moveNode(flow, 'node-4', 0, 470)
+  assert.equal(flowCenterlineY(flow), 455, 'even count: mean of the two middles')
+})
+
+test('flowCenterlineY falls back to the viewBox centre for an empty flow', () => {
+  assert.equal(flowCenterlineY(emptyFlow()), 450)
+  assert.equal(flowCenterlineY({ viewBox: { y: 100, h: 600 } }), 400)
 })
 
 test('setNodeField clears the field when given an empty value', () => {
