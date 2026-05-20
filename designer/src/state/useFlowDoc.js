@@ -20,6 +20,8 @@ import {
   validateFlow,
   serializeFlow,
   deserializeFlow,
+  speedFromWidth,
+  widthFromSpeed,
 } from '@flow-designer/library/internals'
 import { makeSampleFlow } from './sampleFlow.js'
 import { GRID_SIZE } from '../lib/constants.js'
@@ -160,6 +162,56 @@ function setNodeKind(id, kind) {
   M.setNodeKind(state.flow, id, kind)
   bumpPreview()
 }
+
+// ── v1.1 node controls: Length / Speed / Width + colour scheme ───────────────
+// The three sliders are dragged live: their setters mutate the reactive doc
+// (the editor canvas tracks it) but do NOT bump the preview — the inspector
+// commits once on `@change` (pointer release) via commitEdit(), mirroring the
+// canvas drag-then-commit cadence (M3 §3.3). Speed and Width are coupled by
+// default: moving one drives the other through the library's coupling maps.
+
+/** Set a node's LENGTH (purely visual segment proportion). Live — no bump. */
+function setNodeLength(id, value) {
+  M.setNodeField(state.flow, id, 'length', value)
+}
+
+/** Set a node's WIDTH; when coupled, drive SPEED to match. Live — no bump. */
+function setNodeWidth(id, value) {
+  const n = M.findNode(state.flow, id)
+  if (!n) return
+  M.setNodeField(state.flow, id, 'width', value)
+  if (n.coupleSpeedWidth !== false && typeof value === 'number') {
+    M.setNodeField(state.flow, id, 'speed', speedFromWidth(value))
+  }
+}
+
+/** Set a node's SPEED; when coupled, drive WIDTH to match. Live — no bump. */
+function setNodeSpeed(id, value) {
+  const n = M.findNode(state.flow, id)
+  if (!n) return
+  M.setNodeField(state.flow, id, 'speed', value)
+  if (n.coupleSpeedWidth !== false && typeof value === 'number') {
+    M.setNodeField(state.flow, id, 'width', widthFromSpeed(value))
+  }
+}
+
+/** Toggle the Speed⇄Width coupling. Re-coupling snaps speed to width. */
+function setCoupleSpeedWidth(id, on) {
+  M.setNodeField(state.flow, id, 'coupleSpeedWidth', !!on)
+  if (on) {
+    const n = M.findNode(state.flow, id)
+    if (n && typeof n.width === 'number') {
+      M.setNodeField(state.flow, id, 'speed', speedFromWidth(n.width))
+    }
+  }
+  bumpPreview()
+}
+
+/** Set a node's per-segment colour scheme ('red' | 'neutral' | 'green'). */
+function setColorScheme(id, scheme) {
+  M.setNodeField(state.flow, id, 'colorScheme', scheme)
+  bumpPreview()
+}
 function setLabelSide(id, side) {
   M.setLabelSide(state.flow, id, side)
   bumpPreview()
@@ -234,6 +286,11 @@ const api = {
   removeEdge,
   setNodeField,
   setNodeKind,
+  setNodeLength,
+  setNodeWidth,
+  setNodeSpeed,
+  setCoupleSpeedWidth,
+  setColorScheme,
   setLabelSide,
   setFlowField,
   deleteSelection,

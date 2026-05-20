@@ -1,11 +1,12 @@
 /**
- * model.test.js — the v2 flow model: defaults, presets, validation
- * (M2, bd ai-engineer-8aee). Written test-first.
+ * model.test.js — the v3 flow model: defaults, engine-field derivation, the
+ * Speed⇄Width coupling, and validation. Written test-first.
  *
  * normalizeFlow() and validateFlow() are the model layer. They are NOT part of
  * the round-trip invariant (serialize/deserialize stay faithful — see
  * docs/superpowers/specs/2026-05-20-flow-M2-design.md §2.5). normalizeFlow()
- * fills documented defaults; validateFlow() reports structural problems.
+ * fills v3 defaults AND derives the engine-facing fields (latency/capacity/
+ * widthMode) so the simulation engine + renderer consume a v3 flow unchanged.
  */
 
 import { test } from 'node:test'
@@ -14,18 +15,21 @@ import assert from 'node:assert/strict'
 import {
   normalizeFlow,
   validateFlow,
-  PINCH_PRESETS,
+  speedFromWidth,
+  widthFromSpeed,
+  capacityFromWidth,
+  WIDTH_RANGE,
+  SPEED_RANGE,
 } from '../src/format/model.js'
 
-import m2Flow from './fixtures/flows/m2-coverage.v2.js'
+import m3Flow from './fixtures/flows/m3-coverage.v3.js'
 
-// ── normalizeFlow ────────────────────────────────────────────────────────────
+// ── normalizeFlow — flow + node defaults ─────────────────────────────────────
 
 test('normalizeFlow fills flow-level defaults', () => {
   const out = normalizeFlow({ viewBox: { w: 100, h: 100 }, nodes: [] })
   assert.equal(out.baseSpeed, 200)
   assert.equal(out.initialAgents, 0)
-  assert.equal(out.widthMode, 'coupled')
   assert.deepEqual(out.forks, [])
   assert.deepEqual(out.merges, [])
 })
@@ -37,14 +41,17 @@ test('normalizeFlow does not mutate its input', () => {
   assert.equal(JSON.stringify(input), before)
 })
 
-test('normalizeFlow fills per-node defaults', () => {
+test('normalizeFlow fills the v1.1 node controls with defaults', () => {
   const out = normalizeFlow({ nodes: [{ id: 'a', x: 0, y: 0 }] })
   const n = out.nodes[0]
   assert.equal(n.kind, 'normal')
   assert.equal(n.label, '')
   assert.deepEqual(n.successors, [])
-  assert.equal(n.labelDx, 0)
-  assert.equal(n.labelDy, 0)
+  assert.equal(n.length, 0.8)
+  assert.equal(n.speed, 1.0)
+  assert.equal(n.width, 70)
+  assert.equal(n.coupleSpeedWidth, true)
+  assert.equal(n.colorScheme, 'neutral')
 })
 
 test('normalizeFlow defaults a source node rate to 1.0', () => {
@@ -52,19 +59,35 @@ test('normalizeFlow defaults a source node rate to 1.0', () => {
   assert.equal(out.nodes[0].rate, 1.0)
 })
 
-test('normalizeFlow defaults a constraint node constraintKind to pinch', () => {
-  const out = normalizeFlow({ nodes: [{ id: 'c', x: 0, y: 0, kind: 'constraint' }] })
-  assert.equal(out.nodes[0].constraintKind, 'pinch')
-})
-
 test('normalizeFlow preserves explicitly-set values over defaults', () => {
   const out = normalizeFlow({
-    baseSpeed: 999, widthMode: 'manual',
-    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', rate: 0.25 }],
+    baseSpeed: 999,
+    nodes: [{ id: 'a', x: 0, y: 0, length: 1.5, speed: 0.4, width: 30,
+              coupleSpeedWidth: false, colorScheme: 'red' }],
   })
   assert.equal(out.baseSpeed, 999)
+  const n = out.nodes[0]
+  assert.equal(n.length, 1.5)
+  assert.equal(n.speed, 0.4)
+  assert.equal(n.width, 30)
+  assert.equal(n.coupleSpeedWidth, false)
+  assert.equal(n.colorScheme, 'red')
+})
+
+// ── normalizeFlow — engine-field derivation (spec §4.2) ──────────────────────
+
+test('normalizeFlow derives engine fields: latency←length, capacity←width', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, length: 1.2, width: 30 }],
+  })
+  const n = out.nodes[0]
+  assert.equal(n.latency, 1.2, 'latency is the node length')
+  assert.equal(n.capacity, capacityFromWidth(30), 'capacity derives from width')
+})
+
+test('normalizeFlow sets widthMode:manual so explicit widths are honoured', () => {
+  const out = normalizeFlow({ nodes: [] })
   assert.equal(out.widthMode, 'manual')
-  assert.equal(out.nodes[0].rate, 0.25)
 })
 
 test('normalizeFlow fills even rateShare for fork branches that omit it', () => {
@@ -77,35 +100,50 @@ test('normalizeFlow fills even rateShare for fork branches that omit it', () => 
   }
 })
 
-test('normalizeFlow expands a pinchPreset into flat register fields', () => {
-  const out = normalizeFlow({ pinchPreset: 'constraint-pinch', nodes: [] })
-  assert.equal(out.pinchMode, PINCH_PRESETS['constraint-pinch'].pinchMode)
-  assert.equal(out.bandWidth, PINCH_PRESETS['constraint-pinch'].bandWidth)
+test('normalizeFlow leaves an already-complete v3 flow structurally intact', () => {
+  const out = normalizeFlow(m3Flow)
+  assert.equal(out.nodes.length, m3Flow.nodes.length)
+  assert.equal(out.forks[0].branches[0].rateShare, 0.6)
+  const review = out.nodes.find(n => n.id === 'review')
+  assert.equal(review.colorScheme, 'red')
+  assert.equal(review.latency, review.length)
 })
 
-test('an explicit flat register field beats the pinchPreset', () => {
-  const out = normalizeFlow({ pinchPreset: 'constraint-pinch', bandWidth: 123, nodes: [] })
-  assert.equal(out.bandWidth, 123)
+// ── Speed⇄Width coupling maps (spec §2.1) ────────────────────────────────────
+
+test('the coupling maps round-trip at the aligned default midpoint', () => {
+  assert.equal(speedFromWidth(70), 1.0)
+  assert.equal(widthFromSpeed(1.0), 70)
 })
 
-test('normalizeFlow leaves an already-complete v2 flow structurally intact', () => {
-  const out = normalizeFlow(m2Flow)
-  assert.equal(out.nodes.length, m2Flow.nodes.length)
-  assert.equal(out.widthMode, 'coupled')
-  assert.equal(out.forks[0].branches[0].rateShare, 0.7)
+test('the coupling maps hit the range endpoints', () => {
+  assert.equal(speedFromWidth(WIDTH_RANGE.min), SPEED_RANGE.min)
+  assert.equal(speedFromWidth(WIDTH_RANGE.max), SPEED_RANGE.max)
+  assert.equal(widthFromSpeed(SPEED_RANGE.min), WIDTH_RANGE.min)
+  assert.equal(widthFromSpeed(SPEED_RANGE.max), WIDTH_RANGE.max)
 })
 
-// ── PINCH_PRESETS ────────────────────────────────────────────────────────────
+test('the coupling maps clamp out-of-range inputs', () => {
+  assert.equal(speedFromWidth(10_000), SPEED_RANGE.max)
+  assert.equal(speedFromWidth(-10), SPEED_RANGE.min)
+  assert.equal(widthFromSpeed(10), WIDTH_RANGE.max)
+  assert.equal(widthFromSpeed(-1), WIDTH_RANGE.min)
+})
 
-test('PINCH_PRESETS ships the two named M2 presets', () => {
-  assert.ok(PINCH_PRESETS['constraint-pinch'])
-  assert.ok(PINCH_PRESETS['throughput-encoded'])
+test('a narrow node couples to a low speed (the constraint reads)', () => {
+  assert.ok(speedFromWidth(30) < speedFromWidth(70))
+  assert.ok(widthFromSpeed(0.4) < widthFromSpeed(1.0))
+})
+
+test('capacityFromWidth is monotone and never below 1', () => {
+  assert.ok(capacityFromWidth(20) >= 1)
+  assert.ok(capacityFromWidth(120) > capacityFromWidth(20))
 })
 
 // ── validateFlow ─────────────────────────────────────────────────────────────
 
-test('validateFlow accepts the m2 coverage fixture', () => {
-  const r = validateFlow(m2Flow)
+test('validateFlow accepts the m3 coverage fixture', () => {
+  const r = validateFlow(m3Flow)
   assert.equal(r.ok, true)
   assert.deepEqual(r.errors, [])
 })
@@ -140,21 +178,24 @@ test('validateFlow warns when a flow has no source node', () => {
   assert.ok(r.warnings.some(w => /source/i.test(w)))
 })
 
-test('validateFlow warns when fork rateShares do not sum to 1', () => {
-  const r = validateFlow({
-    forks: [{ from: 'a', branches: [{ to: 'b', rateShare: 0.2 }, { to: 'c', rateShare: 0.2 }] }],
-    nodes: [
-      { id: 'a', x: 0, y: 0, kind: 'source', successors: ['b', 'c'] },
-      { id: 'b', x: 1, y: 0, successors: [] },
-      { id: 'c', x: 1, y: 1, successors: [] },
-    ],
-  })
-  assert.ok(r.warnings.some(w => /rateshare/i.test(w)))
-})
-
 test('validateFlow warns on a non-positive source rate', () => {
   const r = validateFlow({
     nodes: [{ id: 's', x: 0, y: 0, kind: 'source', rate: 0, successors: [] }],
   })
   assert.ok(r.warnings.some(w => /rate/i.test(w)))
+})
+
+test('validateFlow warns on an unknown colorScheme', () => {
+  const r = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', colorScheme: 'purple', successors: [] }],
+  })
+  assert.ok(r.warnings.some(w => /colorscheme/i.test(w)))
+})
+
+test('validateFlow warns on the removed kind:constraint', () => {
+  const r = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', successors: ['c'] },
+            { id: 'c', x: 1, y: 0, kind: 'constraint', successors: [] }],
+  })
+  assert.ok(r.warnings.some(w => /constraint/i.test(w)))
 })

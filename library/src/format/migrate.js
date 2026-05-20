@@ -3,24 +3,54 @@
  *
  * The format envelope carries a `formatVersion` integer. When an older export
  * is loaded, deserializeFlow() (format/index.js) runs it through this module's
- * ordered migration chain up to the library's current version, so a v1 export
- * always loads forward losslessly.
+ * ordered migration chain up to the library's current version, so any older
+ * export always loads forward.
  *
  * Each migration is a pure step: it takes a flow object at version N and
  * returns a flow object at version N+1. Steps never mutate their input.
  *
- * v1 → v2 (M2, bd ai-engineer-8aee — see spec §4):
- *   1. the v1 entry node (flow.entryId) becomes a real source node:
- *      kind:'source', rate = flow.spawnRate ?? DEFAULT_SOURCE_RATE
- *   2. top-level entryId / spawnRate are removed (sources are nodes now)
+ * v1 → v2 (M2, bd ai-engineer-8aee — see flow-M2-design.md §4):
+ *   1. the v1 entry node (flow.entryId) becomes a real source node
+ *   2. top-level entryId / spawnRate are removed
  *   3. forks[].branches: string[]            → { to, rateShare }[]  (even split)
  *   4. merges[].branches                     → merges[].from
- *   5. widthMode: 'manual'  (v1 width came from the pinch register, not rate —
- *      a conservative default that preserves v1 rendering; new v2 flows default
- *      to 'coupled')
+ *   5. widthMode: 'manual'
+ *
+ * v2 → v3 (v1.1, beads ai-engineer-t0c8 / wec5 — see
+ *           flow-v1.1-node-controls-design.md §4.3):
+ *   - per node: length ← latency ; width ← width ?? (constraint?30:70) ;
+ *     speed ← speedFromWidth(width) ; coupleSpeedWidth ← true ;
+ *     colorScheme ← kind==='constraint' ? 'red' : 'neutral' ;
+ *     kind:'constraint' → 'normal' ; drop capacity/latency/constraintKind.
+ *   - flow: drop widthMode / pinchPreset / pinchMode / ribbonColor / bandWidth /
+ *     constraintWidth / constraintPlateauWidth / pinchFillColor /
+ *     constraintFillColor.
+ *   Migration is lossy w.r.t. the removed fields — a documented, deterministic
+ *   forward-port (the round-trip invariant governs v3↔v3, not migration).
  */
 
-import { DEFAULT_SOURCE_RATE } from './model.js'
+import {
+  DEFAULT_SOURCE_RATE,
+  DEFAULT_NODE_LENGTH,
+  DEFAULT_NODE_WIDTH,
+  speedFromWidth,
+} from './model.js'
+
+/** Width given to a migrated v2 `constraint` node that set no explicit width. */
+const MIGRATED_CONSTRAINT_WIDTH = 30
+
+/** v3-removed flow-level register / width-mode fields. */
+const V3_REMOVED_FLOW_FIELDS = [
+  'widthMode',
+  'pinchPreset',
+  'pinchMode',
+  'ribbonColor',
+  'bandWidth',
+  'constraintWidth',
+  'constraintPlateauWidth',
+  'pinchFillColor',
+  'constraintFillColor',
+]
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -79,14 +109,59 @@ function migrateV1toV2(v1) {
 }
 
 /**
+ * Migrate a v2 flow object to the v3 data model (v1.1 node-controls rework).
+ *
+ * @param {object} v2 — a version-2 flow object
+ * @returns {object} a version-3 flow object
+ */
+function migrateV2toV3(v2) {
+  const flow = deepClone(v2)
+
+  if (Array.isArray(flow.nodes)) {
+    flow.nodes = flow.nodes.map((node) => {
+      const n = { ...node }
+      const wasConstraint = n.kind === 'constraint'
+
+      // LENGTH ← the v2 latency (the renderer's segment-proportion quantity).
+      if (n.length === undefined) {
+        n.length = typeof n.latency === 'number' ? n.latency : DEFAULT_NODE_LENGTH
+      }
+      // WIDTH — keep an explicit v2 width; else derive from constraint-ness.
+      if (n.width === undefined) {
+        n.width = wasConstraint ? MIGRATED_CONSTRAINT_WIDTH : DEFAULT_NODE_WIDTH
+      }
+      // SPEED — coupled to WIDTH via the linear map.
+      if (n.speed === undefined) n.speed = speedFromWidth(n.width)
+      if (n.coupleSpeedWidth === undefined) n.coupleSpeedWidth = true
+      // COLOUR — the dropped constraint type becomes the 'red' colour scheme.
+      if (n.colorScheme === undefined) {
+        n.colorScheme = wasConstraint ? 'red' : 'neutral'
+      }
+      // The constraint type is removed.
+      if (wasConstraint) n.kind = 'normal'
+
+      delete n.capacity
+      delete n.latency
+      delete n.constraintKind
+      return n
+    })
+  }
+
+  for (const field of V3_REMOVED_FLOW_FIELDS) delete flow[field]
+
+  return flow
+}
+
+/**
  * Ordered migration registry: version N → a step producing version N+1.
  */
 const MIGRATIONS = {
   1: migrateV1toV2,
+  2: migrateV2toV3,
 }
 
 /** The highest format version this module can migrate *to*. */
-export const LATEST_MIGRATED_VERSION = 2
+export const LATEST_MIGRATED_VERSION = 3
 
 /**
  * Migrate a flow object from `fromVersion` up to the latest version this

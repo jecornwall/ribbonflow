@@ -2,18 +2,27 @@
   InspectorPanel.vue — context property editor.
 
   Edits whatever is selected, through the useFlowDoc actions:
-   - a node: label, label side (above/below), kind, slide-along-flow
-     position, source rate, per-node width override, capacity / latency;
-   - the flow: width mode, overall band width, base speed, initial agents,
-     pinch preset;
+   - a node: label, kind, label side, slide-along-flow position, source rate,
+     the three v1.1 node controls (LENGTH / SPEED / WIDTH) as sliders, the
+     Speed⇄Width coupling toggle, and the per-segment colour scheme;
+   - the flow: base speed, initial agents;
    - an edge: shows from → to, with delete.
 
-  Per-node `width` is an override: when blank, the placeholder reads "derived"
-  because coupled mode computes it from the node's flow rate (M2 §2.3).
+  v1.1 (beads ai-engineer-t0c8 / wec5 / zesj): LENGTH / SPEED / WIDTH replace
+  the old width/capacity/latency fields and are driven by SLIDERS, not numeric
+  entry. Speed and Width are coupled by default — moving one drives the other.
+  The `constraint` node type is gone; a node reads as a constraint from a low
+  speed/width, and the colour scheme (RED / NEUTRAL / GREEN) is authored per
+  node. Sliders drag live and commit the preview on release (`@change`).
 -->
 <script setup>
 import { computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
+import {
+  LENGTH_RANGE,
+  SPEED_RANGE,
+  WIDTH_RANGE,
+} from '@flow-designer/library/internals'
 
 const doc = useFlowDoc()
 const state = doc.state
@@ -33,9 +42,7 @@ const vb = computed(() => {
 
 /**
  * Slide the selected node along the flow (bd ai-engineer-1dr8). `@input` moves
- * it live — the editor canvas tracks reactively, the library preview does not
- * remount mid-slide; `@change` (pointer release) commits, remounting the
- * preview once. Mirrors the canvas drag-then-commit cadence.
+ * it live; `@change` (pointer release) commits, remounting the preview once.
  */
 function slideNode(axis, value) {
   if (!node.value) return
@@ -64,6 +71,11 @@ function setFlow(key, value) {
 function setFlowNum(key, value) {
   setFlow(key, num(value))
 }
+
+/** Read-out for a slider value — short, fixed-precision. */
+function fmt(v, decimals = 2) {
+  return typeof v === 'number' ? v.toFixed(decimals) : '—'
+}
 </script>
 
 <template>
@@ -91,7 +103,6 @@ function setFlowNum(key, value) {
         >
           <option value="normal">normal</option>
           <option value="source">source</option>
-          <option value="constraint">constraint</option>
         </select>
       </label>
 
@@ -112,11 +123,8 @@ function setFlowNum(key, value) {
       <div class="row">
         <span>slide ⇄</span>
         <input
-          type="range"
-          class="slider"
-          :min="vb.x"
-          :max="vb.x + vb.w"
-          step="1"
+          type="range" class="slider"
+          :min="vb.x" :max="vb.x + vb.w" step="1"
           :value="node.x"
           title="slide this segment left / right along the flow"
           @input="slideNode('x', $event.target.value)"
@@ -126,11 +134,8 @@ function setFlowNum(key, value) {
       <div class="row">
         <span>slide ↕</span>
         <input
-          type="range"
-          class="slider"
-          :min="vb.y"
-          :max="vb.y + vb.h"
-          step="1"
+          type="range" class="slider"
+          :min="vb.y" :max="vb.y + vb.h" step="1"
           :value="node.y"
           title="slide this segment up / down"
           @input="slideNode('y', $event.target.value)"
@@ -141,11 +146,34 @@ function setFlowNum(key, value) {
       <label v-if="node.kind === 'source'" class="row">
         <span>rate /s</span>
         <input
-          type="number"
-          step="0.1"
-          min="0"
+          type="number" step="0.1" min="0"
           :value="node.rate"
           @change="setNodeNum('rate', $event.target.value)"
+        />
+      </label>
+
+      <!-- ── the three v1.1 node controls ────────────────────────────────── -->
+      <h4>controls</h4>
+
+      <label class="row">
+        <span>length</span>
+        <input
+          type="number"
+          :min="LENGTH_RANGE.min" :max="LENGTH_RANGE.max" step="0.05"
+          :value="node.length ?? 0.8"
+          title="visual segment length"
+          @change="doc.setNodeLength(node.id, +$event.target.value); doc.commitEdit()"
+        />
+      </label>
+
+      <label class="row">
+        <span>speed</span>
+        <input
+          type="number"
+          :min="SPEED_RANGE.min" :max="SPEED_RANGE.max" step="0.05"
+          :value="node.speed ?? 1.0"
+          title="speed particles travel through this node"
+          @change="doc.setNodeSpeed(node.id, +$event.target.value); doc.commitEdit()"
         />
       </label>
 
@@ -153,33 +181,43 @@ function setFlowNum(key, value) {
         <span>width</span>
         <input
           type="number"
-          step="1"
-          min="0"
-          placeholder="derived"
-          :value="node.width ?? ''"
-          @change="setNodeNum('width', $event.target.value)"
+          :min="WIDTH_RANGE.min" :max="WIDTH_RANGE.max" step="1"
+          :value="node.width ?? 70"
+          title="visual pipe width"
+          @change="doc.setNodeWidth(node.id, +$event.target.value); doc.commitEdit()"
         />
       </label>
-      <label class="row">
-        <span>capacity</span>
+
+      <label class="row couple">
         <input
-          type="number"
-          step="1"
-          min="0"
-          :value="node.capacity ?? ''"
-          @change="setNodeNum('capacity', $event.target.value)"
+          type="checkbox"
+          :checked="node.coupleSpeedWidth !== false"
+          @change="doc.setCoupleSpeedWidth(node.id, $event.target.checked)"
         />
+        <span>couple speed ⇄ width</span>
       </label>
-      <label class="row">
-        <span>latency</span>
-        <input
-          type="number"
-          step="0.1"
-          min="0"
-          :value="node.latency ?? ''"
-          @change="setNodeNum('latency', $event.target.value)"
-        />
-      </label>
+
+      <!-- ── per-segment colour scheme ───────────────────────────────────── -->
+      <div class="row">
+        <span>colour</span>
+        <div class="seg colours">
+          <button
+            class="c-red"
+            :class="{ active: node.colorScheme === 'red' }"
+            @click="doc.setColorScheme(node.id, 'red')"
+          >red</button>
+          <button
+            class="c-neutral"
+            :class="{ active: (node.colorScheme || 'neutral') === 'neutral' }"
+            @click="doc.setColorScheme(node.id, 'neutral')"
+          >neutral</button>
+          <button
+            class="c-green"
+            :class="{ active: node.colorScheme === 'green' }"
+            @click="doc.setColorScheme(node.id, 'green')"
+          >green</button>
+        </div>
+      </div>
 
       <button class="danger" @click="doc.deleteSelection()">Delete node</button>
     </template>
@@ -196,31 +234,9 @@ function setFlowNum(key, value) {
     <template v-else>
       <h3>Flow</h3>
       <label class="row">
-        <span>width mode</span>
-        <select
-          :value="state.flow.widthMode || 'coupled'"
-          @change="setFlow('widthMode', $event.target.value)"
-        >
-          <option value="coupled">coupled</option>
-          <option value="manual">manual</option>
-        </select>
-      </label>
-      <label class="row">
-        <span>band width</span>
-        <input
-          type="number"
-          step="1"
-          min="1"
-          :value="state.flow.bandWidth ?? ''"
-          @change="setFlowNum('bandWidth', $event.target.value)"
-        />
-      </label>
-      <label class="row">
         <span>base speed</span>
         <input
-          type="number"
-          step="10"
-          min="1"
+          type="number" step="10" min="1"
           :value="state.flow.baseSpeed ?? ''"
           @change="setFlowNum('baseSpeed', $event.target.value)"
         />
@@ -228,27 +244,15 @@ function setFlowNum(key, value) {
       <label class="row">
         <span>initial agents</span>
         <input
-          type="number"
-          step="1"
-          min="0"
+          type="number" step="1" min="0"
           :value="state.flow.initialAgents ?? ''"
           @change="setFlowNum('initialAgents', $event.target.value)"
         />
       </label>
-      <label class="row">
-        <span>pinch preset</span>
-        <select
-          :value="state.flow.pinchPreset || ''"
-          @change="setFlow('pinchPreset', $event.target.value || undefined)"
-        >
-          <option value="">(none)</option>
-          <option value="constraint-pinch">constraint-pinch</option>
-          <option value="throughput-encoded">throughput-encoded</option>
-        </select>
-      </label>
       <p class="hint">
         Select a node or edge on the canvas to edit it.
         {{ state.flow.nodes.length }} nodes.
+        A constraint is just a node with a low speed/width.
       </p>
     </template>
   </div>
@@ -273,6 +277,13 @@ h3 {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #6b7280;
+}
+h4 {
+  margin: 6px 0 0;
+  font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
 }
 .row {
   display: flex;
@@ -305,6 +316,22 @@ h3 {
   cursor: ew-resize;
   accent-color: #2563eb;
 }
+.row.ctl .readout {
+  flex: 0 0 36px;
+  text-align: right;
+}
+.row.couple {
+  justify-content: flex-start;
+  gap: 6px;
+}
+.row.couple input {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+.row.couple span {
+  flex: 1;
+}
 .seg {
   display: flex;
   flex: 1;
@@ -327,6 +354,22 @@ h3 {
 .seg button.active {
   background: #2563eb;
   border-color: #2563eb;
+  color: #fff;
+}
+/* colour-scheme segmented control — each button tints to its own scheme. */
+.seg.colours button.c-red.active {
+  background: #e2522b;
+  border-color: #e2522b;
+  color: #fff;
+}
+.seg.colours button.c-neutral.active {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  color: #fff;
+}
+.seg.colours button.c-green.active {
+  background: #3fae6b;
+  border-color: #3fae6b;
   color: #fff;
 }
 code {

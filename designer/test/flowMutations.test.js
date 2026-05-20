@@ -50,6 +50,18 @@ test('addNode creates a node with designer defaults and a unique id', () => {
   assert.deepEqual(n.successors, [])
 })
 
+test('addNode stamps the v1.1 node controls and a colour scheme', () => {
+  const flow = emptyFlow()
+  const n = findNode(flow, addNode(flow, 0, 0))
+  assert.equal(typeof n.length, 'number', 'has a LENGTH')
+  assert.equal(typeof n.speed, 'number', 'has a SPEED')
+  assert.equal(typeof n.width, 'number', 'has a WIDTH')
+  assert.equal(n.coupleSpeedWidth, true, 'speed⇄width coupled by default')
+  assert.equal(n.colorScheme, 'neutral', 'neutral colour scheme by default')
+  assert.equal(n.capacity, undefined, 'no v2 capacity field')
+  assert.equal(n.latency, undefined, 'no v2 latency field')
+})
+
 test('uniqueId skips ids already in use', () => {
   const flow = emptyFlow()
   addNode(flow, 0, 0) // node-1
@@ -115,8 +127,8 @@ test('setNodeKind keeps kind-specific fields coherent', () => {
   const id = addNode(flow, 0, 0)
   setNodeKind(flow, id, 'source')
   assert.ok(findNode(flow, id).rate > 0, 'source gains a default rate')
-  setNodeKind(flow, id, 'constraint')
-  assert.equal(findNode(flow, id).constraintKind, 'pinch')
+  setNodeKind(flow, id, 'normal')
+  assert.equal(findNode(flow, id).kind, 'normal')
 })
 
 test('setLabelSide is sugar over labelDy sign', () => {

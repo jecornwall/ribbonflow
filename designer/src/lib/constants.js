@@ -13,9 +13,16 @@ export const NODE_RADIUS = 16
  */
 export const LABEL_GAP = 70
 
-/** Defaults stamped onto a node created on the canvas. */
-export const NEW_NODE_CAPACITY = 4
-export const NEW_NODE_LATENCY = 0.6
+/**
+ * Defaults stamped onto a node created on the canvas — the v1.1 node controls
+ * (LENGTH / SPEED / WIDTH) plus the per-node colour scheme. These match the
+ * library's NODE_DEFAULTS (format/model.js); kept here so the pure mutation
+ * layer stays library-import-free for headless tests.
+ */
+export const NEW_NODE_LENGTH = 0.8
+export const NEW_NODE_SPEED = 1.0
+export const NEW_NODE_WIDTH = 70
+export const NEW_NODE_COLOR_SCHEME = 'neutral'
 
 /** Default emit rate for a node switched to kind:'source'. */
 export const DEFAULT_SOURCE_RATE = 1.0

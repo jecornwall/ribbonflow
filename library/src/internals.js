@@ -74,17 +74,29 @@ export {
   normalizeFlowInput,
 } from './format/index.js'
 
-// ── Data model (M2 — designer-only) ─────────────────────────────────────────
-// The v2 model layer: default-filling, validation, named pinch presets, and
-// the version-migration entry point. Designer-face only — slides receive a
-// flow already normalized by <FlowEmbed> and never touch these.
+// ── Data model (M2 + v1.1 — designer-only) ──────────────────────────────────
+// The v3 model layer: default-filling + engine-field derivation, validation,
+// the Speed⇄Width coupling maps, and the version-migration entry point.
+// Designer-face only — slides receive a flow already normalized by <FlowEmbed>
+// and never touch these.
 export {
   normalizeFlow,
   validateFlow,
-  PINCH_PRESETS,
   FLOW_DEFAULTS,
   NODE_DEFAULTS,
   DEFAULT_SOURCE_RATE,
+  // v1.1 node controls — ranges, defaults, the Speed⇄Width coupling maps.
+  LENGTH_RANGE,
+  SPEED_RANGE,
+  WIDTH_RANGE,
+  DEFAULT_NODE_LENGTH,
+  DEFAULT_NODE_SPEED,
+  DEFAULT_NODE_WIDTH,
+  COLOR_SCHEMES,
+  DEFAULT_COLOR_SCHEME,
+  speedFromWidth,
+  widthFromSpeed,
+  capacityFromWidth,
 } from './format/model.js'
 
 export { migrateFlow } from './format/migrate.js'

@@ -23,6 +23,7 @@ import {
 import n4Flow from './fixtures/flows/n4-toc-baseline.js'
 import n9Flow from './fixtures/flows/n9-multilane.js'
 import m2Flow from './fixtures/flows/m2-coverage.v2.js'
+import m3Flow from './fixtures/flows/m3-coverage.v3.js'
 
 test('FLOW_FORMAT_VERSION is a positive integer', () => {
   assert.equal(typeof FLOW_FORMAT_VERSION, 'number')
@@ -127,6 +128,48 @@ test('round-trip preserves the pinchPreset and constraintKind register knobs', (
 
 test('round-trip of the M2 flow is idempotent (byte-stable)', () => {
   const once = serializeFlow(m2Flow)
+  const twice = serializeFlow(deserializeFlow(once))
+  assert.equal(once, twice)
+})
+
+// ── v1.1 (beads ai-engineer-t0c8 / wec5): the v3 node-controls model ─────────
+// Every v3 field — the three node controls, coupleSpeedWidth, colorScheme —
+// must survive serialize → deserialize byte-faithfully. m3-coverage.v3.js sets
+// every field explicitly (no default reliance). Round-trip governs v3↔v3;
+// migration (v2→v3) is the separately-tested transform.
+
+test('round-trip is lossless for the full v3 coverage flow', () => {
+  const restored = deserializeFlow(serializeFlow(m3Flow))
+  assert.deepEqual(restored, m3Flow)
+})
+
+test('round-trip preserves the three node controls (length / speed / width)', () => {
+  const restored = deserializeFlow(serializeFlow(m3Flow))
+  for (let i = 0; i < m3Flow.nodes.length; i++) {
+    const a = restored.nodes[i], b = m3Flow.nodes[i]
+    assert.equal(a.length, b.length, `${b.id} length`)
+    assert.equal(a.speed, b.speed, `${b.id} speed`)
+    assert.equal(a.width, b.width, `${b.id} width`)
+  }
+})
+
+test('round-trip preserves coupleSpeedWidth (both true and false)', () => {
+  const restored = deserializeFlow(serializeFlow(m3Flow))
+  const fast = restored.nodes.find(n => n.id === 'lane-fast')
+  const slow = restored.nodes.find(n => n.id === 'lane-slow')
+  assert.equal(fast.coupleSpeedWidth, true)
+  assert.equal(slow.coupleSpeedWidth, false)
+})
+
+test('round-trip preserves the per-node colorScheme (red / neutral / green)', () => {
+  const restored = deserializeFlow(serializeFlow(m3Flow))
+  assert.equal(restored.nodes.find(n => n.id === 'review').colorScheme, 'red')
+  assert.equal(restored.nodes.find(n => n.id === 'intake').colorScheme, 'neutral')
+  assert.equal(restored.nodes.find(n => n.id === 'ship').colorScheme, 'green')
+})
+
+test('round-trip of the v3 flow is idempotent (byte-stable)', () => {
+  const once = serializeFlow(m3Flow)
   const twice = serializeFlow(deserializeFlow(once))
   assert.equal(once, twice)
 })

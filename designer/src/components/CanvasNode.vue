@@ -5,6 +5,11 @@
   node to label (so the label side reads at a glance). All pointer handling is
   delegated up to EditorCanvas, which owns the drag/selection model — this
   component only emits `nodedown` / `labeldown` with the originating event.
+
+  v1.1 (bead ai-engineer-wec5): the handle is filled by the node's per-segment
+  `colorScheme` (RED / NEUTRAL / GREEN) — the constraint node *type* is gone, so
+  colour is the per-node visual register. A source node keeps a distinct inner
+  emitter ring so emission still reads at a glance, independent of its colour.
 -->
 <script setup>
 import { computed } from 'vue'
@@ -17,16 +22,14 @@ const props = defineProps({
 })
 const emit = defineEmits(['nodedown', 'labeldown'])
 
-const fill = computed(() => {
-  switch (props.node.kind) {
-    case 'source':
-      return '#34d399'
-    case 'constraint':
-      return '#E2522B'
-    default:
-      return '#cbd5e1'
-  }
-})
+/** Editor-canvas colour for each per-segment colour scheme. */
+const SCHEME_FILL = {
+  red: '#e2522b',
+  neutral: '#cbd5e1',
+  green: '#3fae6b',
+}
+const fill = computed(() => SCHEME_FILL[props.node.colorScheme] || SCHEME_FILL.neutral)
+const isSource = computed(() => props.node.kind === 'source')
 const stroke = computed(() => {
   if (props.selected) return '#2563eb'
   if (props.pending) return '#16a34a'
@@ -49,7 +52,7 @@ const labelY = computed(() => props.node.y + (props.node.labelDy || 0))
       stroke-width="1"
       stroke-dasharray="4 4"
     />
-    <!-- the node handle -->
+    <!-- the node handle — filled by colour scheme -->
     <circle
       :cx="node.x"
       :cy="node.y"
@@ -59,6 +62,18 @@ const labelY = computed(() => props.node.y + (props.node.labelDy || 0))
       :stroke-width="selected || pending ? 4 : 2"
       class="cn-handle"
       @pointerdown="emit('nodedown', $event, node.id)"
+    />
+    <!-- source emitter ring: a distinct inner mark so emission reads at a
+         glance, independent of the node's colour scheme -->
+    <circle
+      v-if="isSource"
+      :cx="node.x"
+      :cy="node.y"
+      :r="NODE_RADIUS * 0.45"
+      fill="none"
+      stroke="#15171a"
+      stroke-width="2.5"
+      pointer-events="none"
     />
     <!-- the draggable label -->
     <text

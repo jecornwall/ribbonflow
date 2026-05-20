@@ -15,8 +15,10 @@
 
 import {
   LABEL_GAP,
-  NEW_NODE_CAPACITY,
-  NEW_NODE_LATENCY,
+  NEW_NODE_LENGTH,
+  NEW_NODE_SPEED,
+  NEW_NODE_WIDTH,
+  NEW_NODE_COLOR_SCHEME,
   DEFAULT_SOURCE_RATE,
 } from '../lib/constants.js'
 
@@ -34,7 +36,9 @@ export function uniqueId(flow, base = 'node') {
 }
 
 /**
- * Create a node at (x, y) with documented designer defaults. Returns its id.
+ * Create a node at (x, y) with documented designer defaults — the v1.1 node
+ * controls (LENGTH / SPEED / WIDTH, Speed⇄Width coupled) and the neutral
+ * colour scheme. Returns its id.
  */
 export function addNode(flow, x, y) {
   const id = uniqueId(flow)
@@ -45,8 +49,11 @@ export function addNode(flow, x, y) {
     y: Math.round(y),
     label: 'new node',
     kind: 'normal',
-    capacity: NEW_NODE_CAPACITY,
-    latency: NEW_NODE_LATENCY,
+    length: NEW_NODE_LENGTH,
+    speed: NEW_NODE_SPEED,
+    width: NEW_NODE_WIDTH,
+    coupleSpeedWidth: true,
+    colorScheme: NEW_NODE_COLOR_SCHEME,
     labelSide: 'above',
     labelDx: 0,
     labelDy: -LABEL_GAP,
@@ -123,17 +130,15 @@ export function setNodeField(flow, id, key, value) {
 }
 
 /**
- * Change a node's kind, keeping kind-specific fields coherent:
- * source → ensure a `rate`; constraint → ensure a `constraintKind`.
+ * Change a node's kind, keeping kind-specific fields coherent. v1.1 dropped
+ * the `constraint` type — `kind` is now `'normal' | 'source'`. A source node
+ * gains a default emit `rate`.
  */
 export function setNodeKind(flow, id, kind) {
   const n = findNode(flow, id)
   if (!n) return
   n.kind = kind
   if (kind === 'source' && n.rate === undefined) n.rate = DEFAULT_SOURCE_RATE
-  if (kind === 'constraint' && n.constraintKind === undefined) {
-    n.constraintKind = 'pinch'
-  }
 }
 
 /**

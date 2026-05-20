@@ -33,9 +33,11 @@ import { migrateFlow } from './migrate.js'
 
 /**
  * Current flow-format version. M1 = 1; M2 = 2 (multi-source nodes, first-class
- * forks). deserializeFlow() migrates any lower version forward via migrate.js.
+ * forks); v1.1 = 3 (Length/Speed/Width node controls, per-node colour scheme,
+ * the `constraint` type dropped). deserializeFlow() migrates any lower version
+ * forward via migrate.js.
  */
-export const FLOW_FORMAT_VERSION = 2
+export const FLOW_FORMAT_VERSION = 3
 
 /**
  * Deep structural clone of a flow object.
