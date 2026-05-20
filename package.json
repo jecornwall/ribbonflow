@@ -1,0 +1,8 @@
+{
+  "name": "flow-designer-workspace",
+  "private": true,
+  "description": "pnpm workspace root for the flow-designer project (library + designer + parity). Holds DX convenience scripts only — see pnpm-workspace.yaml for the package list.",
+  "scripts": {
+    "design": "pnpm --filter @flow-designer/designer dev"
+  }
+}
