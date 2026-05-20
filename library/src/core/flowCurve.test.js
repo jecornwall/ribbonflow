@@ -15,6 +15,7 @@ import {
   quadBezierPoint,
   rejectionBowCurve,
   buildRejectionCenterline,
+  rejectionEdgeAnchors,
   REJECTION_BAND_WIDTH,
 } from './flowCurve.js'
 
@@ -1086,4 +1087,81 @@ test('buildBranches skips a rejection edge with a dangling node reference', () =
 test('REJECTION_BAND_WIDTH is wide enough for a particle plus wall margin', () => {
   assert.ok(REJECTION_BAND_WIDTH >= 2 * (PARTICLE_RADIUS + WALL_MARGIN),
     `REJECTION_BAND_WIDTH=${REJECTION_BAND_WIDTH} must hold one clamped particle`)
+})
+
+// ──────────────────────────────────────────────────────────────────────────
+// bd ai-engineer-91ds — rejection edges attach to the band EDGE, not the
+// centerline. A rejection arc must peel off the SIDE of the flow ribbon (the
+// top/bottom edge at the node's x), so the dot leaves the edge of the flow
+// rather than the middle of it. rejectionEdgeAnchors() derives those
+// band-edge anchor points from the per-node ribbon widths.
+// ──────────────────────────────────────────────────────────────────────────
+
+test('rejectionEdgeAnchors — `below` bow anchors on the BOTTOM band edge (+y)', () => {
+  const from = { id: 'a', x: 900, y: 300 }
+  const to = { id: 'b', x: 300, y: 300 }
+  const widths = { a: 60, b: 40 }
+  const { fromPt, toPt } = rejectionEdgeAnchors(from, to, { side: 'below' }, widths)
+  // bottom edge = node centre + half the local ribbon width
+  assert.equal(fromPt.x, 900)
+  assert.equal(fromPt.y, 300 + 30)
+  assert.equal(toPt.x, 300)
+  assert.equal(toPt.y, 300 + 20)
+})
+
+test('rejectionEdgeAnchors — `above` bow anchors on the TOP band edge (−y)', () => {
+  const from = { id: 'a', x: 900, y: 300 }
+  const to = { id: 'b', x: 300, y: 300 }
+  const widths = { a: 60, b: 40 }
+  const { fromPt, toPt } = rejectionEdgeAnchors(from, to, { side: 'above' }, widths)
+  assert.equal(fromPt.y, 300 - 30)
+  assert.equal(toPt.y, 300 - 20)
+})
+
+test('rejectionEdgeAnchors — anchor is NOT the node centerline', () => {
+  const from = { id: 'a', x: 900, y: 300 }
+  const to = { id: 'b', x: 300, y: 300 }
+  const { fromPt } = rejectionEdgeAnchors(from, to, { side: 'below' }, { a: 60, b: 40 })
+  assert.notEqual(fromPt.y, from.y, 'from-anchor must sit off the centerline')
+})
+
+test('rejectionEdgeAnchors — defaults to `below` when bow.side omitted', () => {
+  const from = { id: 'a', x: 0, y: 100 }
+  const to = { id: 'b', x: 0, y: 100 }
+  const a1 = rejectionEdgeAnchors(from, to, {}, { a: 40, b: 40 })
+  const a2 = rejectionEdgeAnchors(from, to, undefined, { a: 40, b: 40 })
+  assert.equal(a1.fromPt.y, 120)
+  assert.equal(a2.fromPt.y, 120)
+})
+
+test('rejectionEdgeAnchors — falls back to MIN_RIBBON_WIDTH for an unknown node', () => {
+  const from = { id: 'a', x: 0, y: 0 }
+  const to = { id: 'b', x: 0, y: 0 }
+  const { fromPt, toPt } = rejectionEdgeAnchors(from, to, { side: 'below' }, {})
+  assert.equal(fromPt.y, MIN_RIBBON_WIDTH / 2)
+  assert.equal(toPt.y, MIN_RIBBON_WIDTH / 2)
+})
+
+test('buildBranches — rejection centerline starts/ends on the band edge', () => {
+  // A wide `from` node: the rejection branch must NOT start at the node's
+  // centerline y, it must start half a ribbon-width below it (bow `below`).
+  const flow = {
+    widthMode: 'manual',
+    nodes: [
+      { id: 'a', x: 200, y: 500, width: 80, successors: ['b'] },
+      { id: 'b', x: 1000, y: 500, width: 80, successors: [] },
+    ],
+    rejections: [
+      { from: 'b', to: 'a', rate: 0.2, bow: { side: 'below', depth: 80 } },
+    ],
+  }
+  const { branches } = buildBranches(flow)
+  const rej = branches.find(b => b.kind === 'rejection')
+  assert.ok(rej, 'rejection branch built')
+  const start = rej.centerline.pointAtArcLength(0)
+  const end = rej.centerline.pointAtArcLength(rej.centerline.totalLength)
+  // band edge = node.y + width/2 = 500 + 40
+  assert.ok(Math.abs(start.y - 540) < 0.5, `start on band edge, got ${start.y}`)
+  assert.ok(Math.abs(end.y - 540) < 0.5, `end on band edge, got ${end.y}`)
+  assert.ok(start.y > 500, 'start is below the centerline, not on it')
 })

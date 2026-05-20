@@ -12,7 +12,11 @@
 -->
 <script setup>
 import { ref, computed } from 'vue'
-import { REJECTION_COLOR } from '@flow-designer/library/internals'
+import {
+  REJECTION_COLOR,
+  computeNodeWidths,
+  rejectionEdgeAnchors,
+} from '@flow-designer/library/internals'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { clientToSvg } from '../lib/svgCoords.js'
 import { GRID_SIZE } from '../lib/constants.js'
@@ -83,6 +87,11 @@ const rejectionEdges = computed(() => {
   }
   return out
 })
+
+// Per-node ribbon widths (bd ai-engineer-91ds) — feeds CanvasRejectionEdge so
+// a rejection arc anchors on the band EDGE, not the node centerline. Re-derives
+// whenever the flow's nodes / widths change.
+const nodeWidths = computed(() => computeNodeWidths(state.flow))
 
 const pendingFromNode = computed(() =>
   state.pendingEdgeFrom ? doc.findNode(state.pendingEdgeFrom) : null,
@@ -210,9 +219,16 @@ function applyApexDrag(d, p) {
   const from = doc.findNode(d.from)
   const to = doc.findNode(d.to)
   if (!from || !to) return
-  const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }
-  const dx = to.x - from.x
-  const dy = to.y - from.y
+  // bd ai-engineer-91ds: the arc is bowed off the band EDGE anchors, not the
+  // node centerlines — so the apex drag must measure against the SAME chord
+  // the rendered curve uses, or the handle would jump under the pointer.
+  const rejNow = doc.findRejection(d.from, d.to)
+  const { fromPt, toPt } = rejectionEdgeAnchors(
+    from, to, rejNow && rejNow.bow, nodeWidths.value,
+  )
+  const mid = { x: (fromPt.x + toPt.x) / 2, y: (fromPt.y + toPt.y) / 2 }
+  const dx = toPt.x - fromPt.x
+  const dy = toPt.y - fromPt.y
   const len = Math.hypot(dx, dy) || 1
   // Canonical chord normal oriented to 'below' (+y) — matches rejectionBowCurve.
   let nx = -dy / len
@@ -224,8 +240,7 @@ function applyApexDrag(d, p) {
   const offset = (p.x - mid.x) * nx + (p.y - mid.y) * ny
   const side = offset >= 0 ? 'below' : 'above'
   const depth = 2 * Math.abs(offset)
-  const rej = doc.findRejection(d.from, d.to)
-  if (rej && rej.bow && rej.bow.side !== side) {
+  if (rejNow && rejNow.bow && rejNow.bow.side !== side) {
     doc.setRejectionBowSide(d.from, d.to, side)
   }
   doc.setRejectionBowDepth(d.from, d.to, depth)
@@ -377,6 +392,7 @@ function onUp(e) {
         :from="rej.from"
         :to="rej.to"
         :bow="rej.bow"
+        :widths="nodeWidths"
         :selected="isSelectedRejection(rej)"
         @edgedown="onRejectionDown($event, rej)"
         @apexdown="onApexDown($event, rej)"

@@ -36,6 +36,9 @@ export {
   quadBezierPoint,
   rejectionBowCurve,
   buildRejectionCenterline,
+  // bd ai-engineer-91ds — band-edge anchors so a rejection arc peels off the
+  // SIDE of the flow ribbon, not its centerline.
+  rejectionEdgeAnchors,
   REJECTION_BAND_WIDTH,
   // width model
   computeNodeWidths,
