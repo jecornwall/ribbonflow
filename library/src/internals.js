@@ -59,7 +59,27 @@ export {
   CONSTRAINT_ROSE,
   INK,
   CONSTRAINT_INK,
+  // v1.2 rejection-edge render palette (R3) — the dotted-arc colour and the
+  // tinted particle colour for 'revising' agents.
+  REJECTION_COLOR,
+  REJECTION_PARTICLE_COLOR,
 } from './core/flowCurve.js'
+
+// ── Rejection-edge render geometry (v1.2 R3 — spec §4) ───────────────────────
+// The pure render half of a rejection edge: SVG arc path + arrowhead polygon,
+// derived from the SAME rejectionBowCurve the engine centerline uses. The
+// designer's R5 canvas edge (CanvasRejectionEdge) draws its dotted arc from
+// these.
+export {
+  rejectionArcCurve,
+  rejectionArcPath,
+  rejectionArrowPoints,
+  rejectionArrowPointsAttr,
+  REJECTION_ARC_STROKE_WIDTH,
+  REJECTION_ARC_DASHARRAY,
+  REJECTION_ARROW_LENGTH,
+  REJECTION_ARROW_HALF_WIDTH,
+} from './core/flowRejectionArc.js'
 
 // ── Render components ───────────────────────────────────────────────────────
 // The raw renderer and its parts. The designer drives FlowGraph directly for
@@ -69,6 +89,7 @@ export { default as FlowGraph } from './core/FlowGraph.vue'
 export { default as FlowRibbon } from './core/FlowRibbon.vue'
 export { default as FlowAgent } from './core/FlowAgent.vue'
 export { default as FlowSegmentMarker } from './core/FlowSegmentMarker.vue'
+export { default as FlowRejectionArc } from './core/FlowRejectionArc.vue'
 
 // The flow-set player (M4). The designer drives this directly for its
 // set-preview view; <FlowEmbed> wraps it for the slide face.

@@ -645,6 +645,19 @@ export const CONSTRAINT_ROSE = '#d8a8a8'  // deeper rose — tonal background in
 export const INK             = '#15171A'  // historical ribbon ink (legacy fallback)
 export const CONSTRAINT_INK  = '#E2522B'  // firebrick — the one accent
 
+// ---- Rejection-edge palette (v1.2 R3 — spec §4) ---------------------------
+//
+// A rejection edge (failed-review back-path) renders as a thin dotted arc in
+// REJECTION_COLOR — a DESATURATED alert red, deliberately quieter than the
+// firebrick CONSTRAINT_INK accent so a rejection branch reads as a secondary
+// back-channel, not a second focal accent competing with the constraint.
+export const REJECTION_COLOR = '#b5524b'
+// Particles riding a rejection branch ('revising' agents) render as the normal
+// cream particle dot mixed toward REJECTION_COLOR, so they read as the same
+// dot, just travelling the back-path (spec §4, Jason decision B). mixHex is a
+// hoisted function declaration, so this module-load-time call is well-defined.
+export const REJECTION_PARTICLE_COLOR = mixHex('#F4F2ED', REJECTION_COLOR, 0.55)
+
 // ---- Per-segment colour-scheme palette (v1.1 §3, bd ai-engineer-3ihf) -----
 //
 // The v1.1 node model carries a per-node `colorScheme` ('red'|'neutral'|

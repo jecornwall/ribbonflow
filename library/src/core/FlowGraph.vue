@@ -123,6 +123,24 @@
       </g>
     </g>
 
+    <!-- Rejection-edge arcs (v1.2 R3 — spec §4). Drawn ABOVE the ribbon layer
+         so the dotted back-path reads clearly over the wheat ribbon, but
+         BEFORE the agents (rendered last) so the 'revising' particles travel
+         visibly ON TOP of their arc. Each rejection edge is a thin dotted
+         desaturated-red quadratic-Bézier arc with an arrowhead at the `to`
+         end; FlowRejectionArc derives its curve from the same rejectionBowCurve
+         the engine centerline uses, so arc and physics agree by construction.
+         Inert for flows without `rejections` (rejectionEdges is empty). -->
+    <g v-if="rejectionEdges.length" class="flow-rejection-arcs">
+      <FlowRejectionArc
+        v-for="rej in rejectionEdges"
+        :key="rej.key"
+        :from="rej.from"
+        :to="rej.to"
+        :bow="rej.bow"
+      />
+    </g>
+
     <!-- station boxes (bd ai-engineer-nnm): isometric rotated-rectangle
          (parallelogram) station-box chrome matching the original
          IsometricFactory Station.vue register. Hairline outline only —
@@ -295,13 +313,19 @@
       </g>
     </g>
 
-    <!-- agents (rendered last so they sit ON TOP of the ribbon) -->
+    <!-- agents (rendered last so they sit ON TOP of the ribbon AND the
+         rejection arcs). A 'revising' agent — one riding a rejection branch
+         (v1.2 R2 lifecycle) — renders as the normal particle dot tinted
+         toward REJECTION_COLOR (spec §4, Jason decision B): same dot, visibly
+         travelling the back-path. Every other agent uses FlowAgent's default
+         cream. -->
     <FlowAgent
       v-for="agent in agentsView"
       :key="agent.id"
       :agent-id="agent.id"
       :x="agent.x"
       :y="agent.y"
+      :color="agent.lifecycle === 'revising' ? REJECTION_PARTICLE_COLOR : undefined"
     />
 
     <!-- Minard-style inset legend strip — visuals.md §10.5.
@@ -360,10 +384,12 @@ import {
   junctionNodeIds,
   RIBBON_SCHEME_COLORS,
   RIBBON_SCHEME_COLORS_LIGHT,
+  REJECTION_PARTICLE_COLOR,
 } from './flowCurve.js'
 import FlowRibbon from './FlowRibbon.vue'
 import FlowSegmentMarker from './FlowSegmentMarker.vue'
 import FlowAgent from './FlowAgent.vue'
+import FlowRejectionArc from './FlowRejectionArc.vue'
 
 // Stable per-instance ids so multiple FlowGraph instances on one page don't
 // collide on the same filter / clipPath URL references.
@@ -455,7 +481,7 @@ const legendRatioLabel = (legendConstraintNode && legendWidestNode)
 const agentsView = ref(
   sim.agents
     .filter(a => a.lifecycle !== 'pending')
-    .map(a => ({ id: a.id, x: a.x, y: a.y })),
+    .map(a => ({ id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle })),
 )
 
 /**
@@ -701,6 +727,31 @@ const junctionDiscs = computed(() => {
   return discs
 })
 
+// Rejection-edge arc data (v1.2 R3 — spec §4). Resolve each rejection edge's
+// `from`/`to` node ids to their geometric anchors so FlowRejectionArc can draw
+// the bow. A dangling reference (missing node) is skipped — validateFlow flags
+// it; the renderer must not crash on a transient mid-edit designer state.
+//
+// REACTIVE: a computed() so the arcs re-derive when the `flow` prop changes
+// (the before/after click-toggle idiom — see junctionDiscs / pinchZones).
+const rejectionEdges = computed(() => {
+  const byId = new Map(props.flow.nodes.map(n => [n.id, n]))
+  const out = []
+  ;(props.flow.rejections || []).forEach((rej, i) => {
+    if (rej == null) return
+    const f = byId.get(rej.from)
+    const t = byId.get(rej.to)
+    if (!f || !t) return
+    out.push({
+      key: `rej-${i}`,
+      from: { x: f.x, y: f.y },
+      to: { x: t.x, y: t.y },
+      bow: rej.bow,
+    })
+  })
+  return out
+})
+
 // ── Fork / Merge first-class primitives (bd ai-engineer-gv8u) ───────────────
 // A flow may declare optional `forks: [{from, branches}]` and
 // `merges: [{to, branches}]` arrays. These do NOT change ribbon geometry —
@@ -941,7 +992,7 @@ function syncAgentsView() {
   // Filter pending agents out of the render list — see agentsView above.
   agentsView.value = sim.agents
     .filter(a => a.lifecycle !== 'pending')
-    .map(a => ({ id: a.id, x: a.x, y: a.y }))
+    .map(a => ({ id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle }))
 }
 
 function frame(t) {
