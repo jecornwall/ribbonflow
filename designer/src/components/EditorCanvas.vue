@@ -15,6 +15,7 @@ import { ref, computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { clientToSvg } from '../lib/svgCoords.js'
 import { GRID_SIZE } from '../lib/constants.js'
+import { slideFrame, inflateRect, viewBoxStr, GUTTER_FRAC } from '../lib/slideFrame.js'
 import CanvasNode from './CanvasNode.vue'
 import CanvasEdge from './CanvasEdge.vue'
 
@@ -27,10 +28,14 @@ let drag = null
 // live pointer position in viewBox units (for the add-edge rubber-band)
 const ptr = ref({ x: 0, y: 0 })
 
-const viewBox = computed(() => {
-  const v = state.flow.viewBox || { w: 1600, h: 900 }
-  return `${v.x ?? 0} ${v.y ?? 0} ${v.w} ${v.h}`
-})
+// ── slide frame (bd ai-engineer-qe6d) ────────────────────────────────────────
+// The slide-scope frame guide: the flow's viewBox, drawn as a 16:9 bounding box
+// so authored flows are designed to fit within a deck slide. The canvas viewBox
+// expands the frame by a gutter margin so content placed *outside* the slide
+// stays visible against the dimmed gutter rather than being clipped away.
+const frame = computed(() => slideFrame(state.flow))
+const inflated = computed(() => inflateRect(frame.value, GUTTER_FRAC))
+const canvasBox = computed(() => viewBoxStr(inflated.value))
 
 // Derive the edge list from per-node successors (the library's topology
 // storage). Each edge carries live references to its endpoint nodes.
@@ -127,6 +132,13 @@ function onBackgroundDown(e) {
   }
 }
 
+// The dimmed gutter is OUTSIDE the slide frame — clicking it clears the
+// selection or cancels a pending edge, but never places a node off-slide.
+function onGutterDown() {
+  if (state.tool === 'add-edge') doc.cancelPendingEdge()
+  else doc.select(null)
+}
+
 function onMove(e) {
   const p = svgPoint(e)
   ptr.value = p
@@ -156,7 +168,7 @@ function onUp(e) {
   <div class="editor-canvas">
     <svg
       ref="svgRef"
-      :viewBox="viewBox"
+      :viewBox="canvasBox"
       preserveAspectRatio="xMidYMid meet"
       class="ec-svg"
       @pointermove="onMove"
@@ -188,25 +200,48 @@ function onUp(e) {
         </marker>
       </defs>
 
-      <!-- background: click target for add-node / clear-selection -->
+      <!-- dimmed gutter: the area OUTSIDE the slide frame. Clicking it clears
+           the selection / cancels a pending edge — it never places a node
+           off-slide (bd ai-engineer-qe6d). -->
       <rect
-        class="ec-bg"
-        :x="0"
-        :y="0"
-        :width="(state.flow.viewBox && state.flow.viewBox.w) || 1600"
-        :height="(state.flow.viewBox && state.flow.viewBox.h) || 900"
+        class="ec-gutter"
+        :x="inflated.x"
+        :y="inflated.y"
+        :width="inflated.w"
+        :height="inflated.h"
+        fill="#e7e3d8"
+        @pointerdown="onGutterDown"
+      />
+
+      <!-- the slide frame: a 16:9 bounding box at the deck's slide scope
+           (1920×1080). The click target for add-node / clear-selection. -->
+      <rect
+        class="ec-frame"
+        :x="frame.x"
+        :y="frame.y"
+        :width="frame.w"
+        :height="frame.h"
         fill="#fbfaf7"
+        stroke="#8a8474"
+        stroke-width="2"
         @pointerdown="onBackgroundDown"
       />
+      <!-- frame caption: a quiet reminder of the slide scope -->
+      <text
+        class="ec-frame-label"
+        :x="frame.x + 14"
+        :y="frame.y + 30"
+        pointer-events="none"
+      >16:9 slide · {{ frame.w }}×{{ frame.h }}</text>
 
       <!-- snap grid overlay (only while snap mode is on; pointer-transparent
            so it does not steal the add-node / clear-selection click) -->
       <rect
         v-if="state.snapToGrid"
-        :x="0"
-        :y="0"
-        :width="(state.flow.viewBox && state.flow.viewBox.w) || 1600"
-        :height="(state.flow.viewBox && state.flow.viewBox.h) || 900"
+        :x="frame.x"
+        :y="frame.y"
+        :width="frame.w"
+        :height="frame.h"
         fill="url(#ec-grid)"
         pointer-events="none"
       />
@@ -259,7 +294,15 @@ function onUp(e) {
   display: block;
   touch-action: none;
 }
-.ec-bg {
+.ec-gutter {
+  cursor: default;
+}
+.ec-frame {
   cursor: crosshair;
+}
+.ec-frame-label {
+  font: 22px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  fill: #8a8474;
+  user-select: none;
 }
 </style>
