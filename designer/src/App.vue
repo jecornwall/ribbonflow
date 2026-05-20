@@ -33,7 +33,17 @@ function onKeydown(e) {
   // Ignore when typing into a form control.
   const tag = e.target?.tagName
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
-  if (e.key === 'Delete' || e.key === 'Backspace') {
+  const mod = e.metaKey || e.ctrlKey
+  if (mod && (e.key === 'z' || e.key === 'Z')) {
+    // Cmd/Ctrl+Z undo; Cmd/Ctrl+Shift+Z redo (bd ai-engineer-fu5s).
+    e.preventDefault()
+    if (e.shiftKey) doc.redo()
+    else doc.undo()
+  } else if (mod && (e.key === 'y' || e.key === 'Y')) {
+    // Ctrl+Y — the Windows-convention redo.
+    e.preventDefault()
+    doc.redo()
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault()
     doc.deleteSelection()
   } else if (e.key === 'Escape') {

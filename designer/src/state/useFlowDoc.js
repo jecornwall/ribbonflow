@@ -20,12 +20,15 @@ import {
   validateFlow,
   serializeFlow,
   deserializeFlow,
+  cloneFlow,
   speedFromWidth,
   widthFromSpeed,
 } from '@flow-designer/library/internals'
 import { makeSampleFlow } from './sampleFlow.js'
 import { GRID_SIZE, NODE_RADIUS } from '../lib/constants.js'
 import { slideFrame, outOfBoundsNodeIds, clampToFrame } from '../lib/slideFrame.js'
+import { resolveLabelCollisions } from '../lib/labelLayout.js'
+import { createHistory } from './flowHistory.js'
 import * as M from './flowMutations.js'
 import { useFlowStore } from './flowStore.js'
 import { slugify, uniqueSlug } from '../../server/indexBuilder.js'
@@ -62,7 +65,39 @@ const state = reactive({
   // internal guard: true right after a load so the auto-save watcher does not
   // immediately re-save a flow the designer just opened
   justLoaded: false,
+  // ── undo / redo (bd ai-engineer-fu5s) ──────────────────────────────────────
+  // reactive mirrors of the history stack, read by the toolbar's Undo/Redo
+  // buttons. The history itself lives in flowHistory.js (a pure module).
+  canUndo: false,
+  canRedo: false,
 })
+
+// ── undo / redo history (bd ai-engineer-fu5s) ─────────────────────────────────
+// A snapshot-based timeline over the AUTHORED flow. The named-action store is
+// "the natural seam for undo" (M3 §3.1): every committed edit funnels through
+// bumpPreview(), so recording a deep cloneFlow snapshot there captures exactly
+// the post-edit states — a live drag (which mutates without bumping) records
+// once, on release, via commitEdit(). A load / import / new RESETS the timeline
+// (the opened doc is a new origin, not itself undoable); `suppressHistory`
+// guards the bumpPreview those lifecycle actions also fire, and resetHistory()
+// re-seeds.
+const history = createHistory({ limit: 100 })
+let suppressHistory = false
+
+function syncHistoryFlags() {
+  state.canUndo = history.canUndo
+  state.canRedo = history.canRedo
+}
+function recordHistory() {
+  history.record(cloneFlow(state.flow))
+  syncHistoryFlags()
+}
+function resetHistory() {
+  history.reset(cloneFlow(state.flow))
+  syncHistoryFlags()
+}
+// Seed the timeline with the initial sample document.
+resetHistory()
 
 /** The authored flow with library defaults applied (normalized v5 shape). */
 const normalized = computed(() => {
@@ -115,6 +150,9 @@ const validation = computed(() => {
  */
 function bumpPreview() {
   state.previewKey++
+  // Every committed edit funnels through here — record an undo snapshot
+  // unless a lifecycle action (load / import / new) has suppressed it.
+  if (!suppressHistory) recordHistory()
 }
 
 /** Called by the editor canvas when a drag (node/label move) is released. */
@@ -375,7 +413,10 @@ function importFlow(input) {
   state.flow = flow
   state.selection = { kind: 'flow' }
   state.pendingEdgeFrom = null
+  suppressHistory = true
   bumpPreview()
+  suppressHistory = false
+  resetHistory()
 }
 
 /** Reset to the sample flow. */
@@ -383,7 +424,67 @@ function newFlow() {
   state.flow = makeSampleFlow()
   state.selection = { kind: 'flow' }
   state.pendingEdgeFrom = null
+  suppressHistory = true
   bumpPreview()
+  suppressHistory = false
+  resetHistory()
+}
+
+// ── undo / redo actions (bd ai-engineer-fu5s) ─────────────────────────────────
+/**
+ * Restore a history snapshot into the live document. The snapshot is cloned
+ * on the way in so a subsequent edit cannot mutate the stored timeline.
+ * A selection whose target no longer exists in the restored flow is dropped.
+ */
+function applyHistorySnapshot(snap) {
+  suppressHistory = true
+  state.flow = cloneFlow(snap)
+  const sel = state.selection
+  if (sel.kind === 'node' && sel.id && !M.findNode(state.flow, sel.id)) {
+    state.selection = { kind: 'flow' }
+  } else if ((sel.kind === 'edge' || sel.kind === 'rejection') && sel.edge) {
+    const { from, to } = sel.edge
+    if (!M.findNode(state.flow, from) || !M.findNode(state.flow, to)) {
+      state.selection = { kind: 'flow' }
+    }
+  }
+  state.pendingEdgeFrom = null
+  state.previewKey++
+  suppressHistory = false
+}
+
+/** Undo the last committed edit. Returns true when the timeline moved. */
+function undo() {
+  const snap = history.undo()
+  if (snap == null) return false
+  applyHistorySnapshot(snap)
+  syncHistoryFlags()
+  return true
+}
+
+/** Redo the last undone edit. Returns true when the timeline moved. */
+function redo() {
+  const snap = history.redo()
+  if (snap == null) return false
+  applyHistorySnapshot(snap)
+  syncHistoryFlags()
+  return true
+}
+
+/**
+ * Nudge every label that overlaps another so the canvas reads cleanly
+ * (bd ai-engineer-fu5s). Pure geometry in lib/labelLayout.js picks the new
+ * offsets; each nudge goes through moveLabel, and the single trailing
+ * bumpPreview() makes the whole tidy ONE undoable edit. Returns the count moved.
+ */
+function tidyLabels() {
+  const moves = resolveLabelCollisions(state.flow.nodes || [])
+  const ids = Object.keys(moves)
+  for (const id of ids) {
+    M.moveLabel(state.flow, id, moves[id].labelDx, moves[id].labelDy)
+  }
+  if (ids.length) bumpPreview()
+  return ids.length
 }
 
 // ── directory-of-files persistence + auto-save (bd ai-engineer-2fcm) ──────────
@@ -461,7 +562,10 @@ async function openFlow(id, title) {
   state.pendingEdgeFrom = null
   state.saveState = 'saved'
   state.view = 'editor'
+  suppressHistory = true
   bumpPreview()
+  suppressHistory = false
+  resetHistory()
 }
 
 /**
@@ -484,7 +588,10 @@ async function createFlow(setId, title, existingSlugs = []) {
   state.pendingEdgeFrom = null
   state.saveState = 'saved'
   state.view = 'editor'
+  suppressHistory = true
   bumpPreview()
+  suppressHistory = false
+  resetHistory()
   return id
 }
 
@@ -528,6 +635,9 @@ const api = {
   setLabelSide,
   setFlowField,
   deleteSelection,
+  tidyLabels,
+  undo,
+  redo,
   findNode,
   exportFlow,
   importFlow,

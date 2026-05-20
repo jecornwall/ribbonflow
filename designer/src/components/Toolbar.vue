@@ -100,6 +100,26 @@ async function onFileChosen(e) {
         title="snap node placement to a grid (optional, off by default)"
         @click="doc.toggleSnap()"
       >Snap{{ doc.state.snapToGrid ? ' ✓' : '' }}</button>
+      <button
+        class="tb-btn"
+        title="nudge apart any labels that overlap"
+        @click="doc.tidyLabels()"
+      >Tidy labels</button>
+    </div>
+
+    <div class="tb-group">
+      <button
+        class="tb-btn"
+        :disabled="!doc.state.canUndo"
+        title="undo the last edit (Cmd/Ctrl+Z)"
+        @click="doc.undo()"
+      >↶ Undo</button>
+      <button
+        class="tb-btn"
+        :disabled="!doc.state.canRedo"
+        title="redo the last undone edit (Cmd/Ctrl+Shift+Z)"
+        @click="doc.redo()"
+      >↷ Redo</button>
     </div>
 
     <div class="tb-spacer" />
@@ -171,8 +191,12 @@ async function onFileChosen(e) {
   border-radius: 5px;
   cursor: pointer;
 }
-.tb-btn:hover {
+.tb-btn:hover:not(:disabled) {
   background: #34373c;
+}
+.tb-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .tb-btn.active {
   background: #2563eb;
