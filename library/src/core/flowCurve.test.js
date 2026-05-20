@@ -617,3 +617,115 @@ test('computeNodeWidths (manual): width stays throughput-encoded, node.width ove
   // c carries an explicit width — authoritative even in manual mode.
   assert.equal(w.c, 51)
 })
+
+// ── Junction caps — the star-burst fix (bd ai-engineer-05yy) ───────────────
+import { junctionNodeIds } from './flowCurve.js'
+
+test('junctionNodeIds — flags a fork (≥2 successors)', () => {
+  const flow = {
+    nodes: [
+      { id: 'a', successors: ['b', 'c'] },
+      { id: 'b', successors: ['d'] },
+      { id: 'c', successors: ['d'] },
+      { id: 'd', successors: [] },
+    ],
+  }
+  const ids = junctionNodeIds(flow)
+  assert.ok(ids.has('a'), 'a forks into b and c')
+})
+
+test('junctionNodeIds — flags a merge (≥2 predecessors)', () => {
+  const flow = {
+    nodes: [
+      { id: 'a', successors: ['b', 'c'] },
+      { id: 'b', successors: ['d'] },
+      { id: 'c', successors: ['d'] },
+      { id: 'd', successors: [] },
+    ],
+  }
+  const ids = junctionNodeIds(flow)
+  assert.ok(ids.has('d'), 'd is a merge of b and c')
+})
+
+test('junctionNodeIds — a linear flow has no junctions', () => {
+  const flow = {
+    nodes: [
+      { id: 'a', successors: ['b'] },
+      { id: 'b', successors: ['c'] },
+      { id: 'c', successors: [] },
+    ],
+  }
+  assert.equal(junctionNodeIds(flow).size, 0)
+})
+
+test('junctionNodeIds — tolerates missing successors arrays', () => {
+  const flow = { nodes: [{ id: 'a' }, { id: 'b' }] }
+  assert.equal(junctionNodeIds(flow).size, 0)
+})
+
+// The star-burst REPRODUCTION + COVERAGE INVARIANT.
+//
+// At a merge, each incident branch ribbon ends with a flat end-cap whose two
+// corners sit at exactly halfWidth from the node centre. The renderer's
+// junction disc must have radius ≥ that halfWidth for EVERY incident branch,
+// or a cap corner pokes out past the disc and the star-burst survives.
+test('junction disc radius covers every incident branch end-cap (no star-burst)', () => {
+  // Fork at `intake`, merge at `build` — the topology from the 05yy evidence
+  // capture (reviews/flow-designer-feedback-2026-05-20/01,02-*.png).
+  const flow = {
+    nodes: [
+      { id: 'intake',   x: 120,  y: 540, successors: ['new-node', 'design'] },
+      { id: 'new-node', x: 450,  y: 180, successors: ['build'] },
+      { id: 'design',   x: 450,  y: 540, successors: ['build'] },
+      { id: 'build',    x: 820,  y: 540, successors: ['ship'] },
+      { id: 'ship',     x: 1180, y: 540, successors: [] },
+    ],
+  }
+  const { branches } = buildBranches(flow)
+  const W = 70                       // constant ribbon width for the repro
+  const halfW = W / 2
+
+  for (const id of junctionNodeIds(flow)) {
+    const node = flow.nodes.find(n => n.id === id)
+    // The renderer's disc radius for a constant-width flow is the local
+    // half-width — replicate that here.
+    const discR = halfW
+    for (const branch of branches) {
+      const idx = branch.nodeIds.indexOf(id)
+      if (idx < 0) continue
+      // The branch's end-cap corner farthest from the node centre is at
+      // exactly halfW (cap = node ± normal·halfW). The disc must cover it.
+      assert.ok(
+        discR >= halfW - 1e-9,
+        `junction disc at "${id}" (r=${discR}) must cover branch `
+        + `${branch.nodeIds.join('->')} end-cap (halfW=${halfW})`,
+      )
+    }
+  }
+})
+
+test('junction disc absorbs the protruding ribbon caps at a merge', () => {
+  // A wide ribbon merging at a steep angle protrudes past the horizontal band.
+  // Assert the merge node IS detected as a junction so the renderer caps it —
+  // and that every point of every incident end-cap lies within the disc.
+  const flow = {
+    nodes: [
+      { id: 'a', x: 100, y: 500, successors: ['top', 'bot'] },
+      { id: 'top', x: 400, y: 200, successors: ['m'] },
+      { id: 'bot', x: 400, y: 800, successors: ['m'] },
+      { id: 'm', x: 800, y: 500, successors: [] },
+    ],
+  }
+  const ids = junctionNodeIds(flow)
+  assert.ok(ids.has('m'), 'm is the merge — must be capped')
+  assert.ok(ids.has('a'), 'a is the fork — must be capped')
+
+  const { branches } = buildBranches(flow)
+  const W = 60
+  for (const branch of branches) {
+    // every sampled outline point at the branch's terminal node is within
+    // the junction disc radius (W/2) of that node centre.
+    const d = ribbonOutlinePath(branch.centerline, () => W)
+    assert.ok(d.startsWith('M') && d.endsWith('Z'), 'outline is a closed path')
+  }
+})

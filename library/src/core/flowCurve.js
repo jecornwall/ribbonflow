@@ -265,6 +265,46 @@ export function buildBranches(flow) {
   return { branches }
 }
 
+// ---- Junction nodes (fork / merge) ----------------------------------------
+
+/**
+ * Identify "junction" nodes — fork nodes (≥2 successors) and merge nodes
+ * (≥2 predecessors).
+ *
+ * Why this matters (bd ai-engineer-05yy — the star-burst artifact):
+ * each branch ribbon is an independent variable-width band drawn by
+ * ribbonOutlinePath(), and it terminates with a FLAT end-cap perpendicular
+ * to that branch's local tangent. At a fork or merge, several branch ribbons
+ * share one node as an endpoint but approach/leave it at DIFFERENT tangent
+ * angles. Their flat end-caps are rotated relative to one another, so each
+ * cap's corners protrude past the neighbouring ribbons — the union renders as
+ * a radiating "star-burst" spike pattern. There is no geometry tying the
+ * branches together at the shared node.
+ *
+ * The renderer's fix is a "junction cap": a filled disc centred on the node.
+ * Every incident branch's end-cap corner sits at exactly halfWidth from the
+ * node centre, so a disc whose radius is the local ribbon half-width is a
+ * corner-free convex cover that absorbs every protruding cap. See FlowGraph's
+ * `junctionDiscs` computed.
+ *
+ * @param {object} flow — a flow config with `nodes` (each `{ id, successors }`)
+ * @returns {Set<string>} the ids of every fork-or-merge node
+ */
+export function junctionNodeIds(flow) {
+  const predCount = new Map()
+  for (const n of flow.nodes || []) {
+    for (const s of n.successors || []) {
+      predCount.set(s, (predCount.get(s) || 0) + 1)
+    }
+  }
+  const ids = new Set()
+  for (const n of flow.nodes || []) {
+    if ((n.successors || []).length > 1) ids.add(n.id)   // fork
+    if ((predCount.get(n.id) || 0) > 1)  ids.add(n.id)    // merge
+  }
+  return ids
+}
+
 // ---- Per-node ribbon widths -----------------------------------------------
 
 /**

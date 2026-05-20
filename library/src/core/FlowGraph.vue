@@ -42,6 +42,28 @@
         :color="flow.ribbonColor || '#15171A'"
       />
 
+      <!-- Junction caps (bd ai-engineer-05yy — the star-burst fix).
+           Each branch ribbon is an independent variable-width band that
+           terminates with a FLAT end-cap perpendicular to its own tangent.
+           At a fork or merge, several branch ribbons share one node but
+           approach it at DIFFERENT tangent angles; their rotated flat caps'
+           corners protrude past one another and the union renders as a
+           radiating "star-burst" spike. A filled disc of the local ribbon
+           half-width is a corner-free convex cover — every incident branch's
+           end-cap corner sits at exactly halfWidth from the node centre, so
+           the disc absorbs every protruding cap. Drawn AFTER the ribbons
+           (covers the spikes) and in the ribbon colour so the junction reads
+           as a smooth rounded confluence rather than a star. Inert for
+           linear flows (no fork/merge → junctionDiscs is empty). -->
+      <circle
+        v-for="disc in junctionDiscs"
+        :key="`junction-${disc.id}`"
+        :cx="disc.x"
+        :cy="disc.y"
+        :r="disc.r"
+        :fill="flow.ribbonColor || '#15171A'"
+      />
+
       <!-- Pinch-zone rose overlays (locked-v2). One pair per branch that
            contains a constraint: dusty-rose fill on the upstream and downstream
            transition triangles; deeper rose plateau on the constraint segment.
@@ -296,6 +318,7 @@ import {
   buildPinchWidthFn,
   pinchZoneArcRanges,
   pinchZoneOutlinePath,
+  junctionNodeIds,
 } from './flowCurve.js'
 import FlowRibbon from './FlowRibbon.vue'
 import FlowSegmentMarker from './FlowSegmentMarker.vue'
@@ -501,6 +524,56 @@ const pinchZones = computed(() => {
       constraintPath: pinchZoneOutlinePath(branch.centerline, wfn, ranges.constraintPlateau),
     }
   })
+})
+
+// Junction caps (bd ai-engineer-05yy — the star-burst fix). One disc per
+// fork/merge node. Branch ribbons that meet at a shared node terminate with
+// flat end-caps perpendicular to their differing tangents; the caps' corners
+// protrude past one another and render as a radiating star-burst. A disc of
+// the local ribbon half-width is a corner-free convex cover that absorbs
+// every protruding cap (each cap corner sits at exactly halfWidth from the
+// node centre).
+//
+// Radius = the LARGEST band half-width among the branches incident to the
+// node. A junction node is always at an endpoint of each incident branch —
+// the FIRST node of every outgoing branch (fork) and the LAST node of every
+// incoming branch (merge) — so the width function is sampled at s=0 or
+// s=totalLength accordingly; an interior position falls back to the
+// latency-distributed segment start. Taking the max keeps the disc covering
+// the widest incident cap even when widths differ across the junction.
+//
+// REACTIVE: a computed() so the discs re-derive when the `flow` prop changes
+// (the N16/N17 before/after click-toggle idiom — see pinchZones above).
+const junctionDiscs = computed(() => {
+  const ids = junctionNodeIds(props.flow)
+  if (ids.size === 0) return []
+  const discs = []
+  for (const id of ids) {
+    const node = props.flow.nodes.find(n => n.id === id)
+    if (!node) continue
+    let maxW = 0
+    for (const branch of branches) {
+      const idx = branch.nodeIds.indexOf(id)
+      if (idx < 0) continue
+      const wfn = branchWidthFn(branch)
+      const total = branch.centerline.totalLength
+      let s
+      if (idx === 0) {
+        s = 0
+      } else if (idx === branch.nodeIds.length - 1) {
+        s = total
+      } else {
+        const segLens = branchLatencyArc(branch)
+        let acc = 0
+        for (let i = 0; i < idx; i++) acc += segLens[i]
+        s = Math.min(acc, total)
+      }
+      const w = wfn(s)
+      if (typeof w === 'number' && w > maxW) maxW = w
+    }
+    if (maxW > 0) discs.push({ id, x: node.x, y: node.y, r: maxW / 2 })
+  }
+  return discs
 })
 
 // ── Fork / Merge first-class primitives (bd ai-engineer-gv8u) ───────────────
