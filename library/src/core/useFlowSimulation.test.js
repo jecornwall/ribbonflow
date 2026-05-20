@@ -1156,3 +1156,95 @@ test('Multi-source (M2): the real v2 m2-coverage fixture runs through the engine
   assert.equal(sim.traces.escapes.length, 0,
     `m2-coverage: teleport backstop fired ${sim.traces.escapes.length}×`)
 })
+
+// ──────────────────────────────────────────────────────────────────────────
+// Per-node SPEED — physical velocity hook (bd ai-engineer-06e7, v1.1 §7).
+//
+// The v1.1 node model carries an authored SPEED knob. The engine multiplies
+// an agent's targetSpeed by the SPEED of the node whose ribbon segment the
+// agent currently occupies, so a high-SPEED node physically moves particles
+// faster. branch.speedFn(s) is the per-node step function (latency-
+// proportioned, exactly like branch.widthFn).
+// ──────────────────────────────────────────────────────────────────────────
+
+// A long single-segment run so the agent stays inside node 'a' for the whole
+// measurement window. Uniform width 70 → the width-ramp speedFraction is 1.0
+// everywhere, so SPEED is the only thing changing the agent's velocity. 'b'
+// has capacity 2 (only 1 agent) and sits far downstream, so neither the
+// capacity gate nor the leaf-end blocker engages during the window.
+function speedRunFlow(nodeSpeed) {
+  return {
+    viewBox: { w: 3200, h: 900 },
+    baseSpeed: 200,
+    widthMode: 'manual',
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200, y: 450, capacity: 1, latency: 12, width: 70,
+        speed: nodeSpeed, successors: ['b'] },
+      { id: 'b', x: 3000, y: 450, capacity: 2, latency: 1, width: 70,
+        speed: 1.0, successors: [] },
+    ],
+  }
+}
+
+function speedRunDisplacement(nodeSpeed, frames) {
+  const sim = createFlowSimulation(speedRunFlow(nodeSpeed), { initialAgents: 1 })
+  const a = sim.agents[0]
+  const x0 = a.x
+  for (let i = 0; i < frames; i++) sim.step(1 / 60)
+  return a.x - x0
+}
+
+test('branch.speedFn returns the per-node SPEED multiplier', () => {
+  const sim = createFlowSimulation(speedRunFlow(1.5), { initialAgents: 1 })
+  const branch = sim.branches[0]
+  assert.equal(typeof branch.speedFn, 'function')
+  // Arc-length 0 is inside node 'a' (speed 1.5); near totalLength is 'b' (1.0).
+  assert.equal(branch.speedFn(0), 1.5)
+  assert.equal(branch.speedFn(branch.centerline.totalLength), 1.0)
+})
+
+test('per-node SPEED physically scales how fast an agent crosses the node', () => {
+  const slow = speedRunDisplacement(0.5, 90)
+  const base = speedRunDisplacement(1.0, 90)
+  const fast = speedRunDisplacement(1.5, 90)
+  // Strict ordering: a higher SPEED moves the agent farther in the same time.
+  assert.ok(fast > base, `SPEED 1.5 should outrun 1.0: ${fast.toFixed(1)} vs ${base.toFixed(1)}`)
+  assert.ok(base > slow, `SPEED 1.0 should outrun 0.5: ${base.toFixed(1)} vs ${slow.toFixed(1)}`)
+  // Roughly proportional — fast/slow displacement ratio near 3 (1.5 / 0.5).
+  // Wide band: the shared P-control ramp-up from v=0 compresses the ratio.
+  const ratio = fast / slow
+  assert.ok(ratio > 2 && ratio < 4, `fast/slow displacement ratio ~3 expected, got ${ratio.toFixed(2)}`)
+})
+
+test('default SPEED (1.0) leaves an agent cruising at baseSpeed', () => {
+  const sim = createFlowSimulation(speedRunFlow(1.0), { initialAgents: 1 })
+  const a = sim.agents[0]
+  // Let velocity settle past the P-control ramp (tau = 0.25s).
+  for (let i = 0; i < 120; i++) sim.step(1 / 60)
+  const v = Math.hypot(a.vx, a.vy)
+  assert.ok(Math.abs(v - 200) < 25,
+    `agent at default SPEED should cruise near baseSpeed=200; got ${v.toFixed(1)}`)
+})
+
+test('a high-SPEED node moves agents faster than a low-SPEED node downstream', () => {
+  // speedFn must read the CURRENT segment, not a flow-global value: an agent
+  // crossing a fast node then a slow node should decelerate at the boundary.
+  const flow = {
+    viewBox: { w: 3200, h: 900 },
+    baseSpeed: 200,
+    widthMode: 'manual',
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200, y: 450, capacity: 1, latency: 1, width: 70, speed: 1.6, successors: ['b'] },
+      { id: 'b', x: 1600, y: 450, capacity: 2, latency: 1, width: 70, speed: 1.6, successors: ['c'] },
+      { id: 'c', x: 3000, y: 450, capacity: 2, latency: 1, width: 70, speed: 0.4, successors: [] },
+    ],
+  }
+  const sim = createFlowSimulation(flow, { initialAgents: 1 })
+  const branch = sim.branches[0]
+  const L = branch.centerline.totalLength
+  // Fast segment near the start, slow segment near the end.
+  assert.equal(branch.speedFn(L * 0.1), 1.6)
+  assert.equal(branch.speedFn(L * 0.9), 0.4)
+})

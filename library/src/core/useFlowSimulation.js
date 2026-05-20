@@ -226,6 +226,15 @@ export function createFlowSimulation(flow, opts = {}) {
   const { branches } = buildBranches(flow)
   const widths = computeNodeWidths(flow)
 
+  // Per-node SPEED multipliers (v1.1 §7, bd ai-engineer-06e7). The v1.1 node
+  // model carries an authored SPEED knob; this is the engine's physical hook
+  // for it. Default 1.0 so legacy fixtures with no `speed` field run
+  // unchanged. branch.speedFn(s) (built in the branch loop below) is the
+  // per-node step function the main loop multiplies into targetSpeed.
+  const nodeSpeeds = Object.fromEntries(
+    flow.nodes.map(n => [n.id, typeof n.speed === 'number' ? n.speed : 1.0]),
+  )
+
   // DEPRECATED iter-1/2 hex-pack support — superseded by anticipatory
   // deceleration + speed-from-width (commits aa307e0 "gravity removed",
   // 50c6d82, e47e1fc "2ip", 90538c5 "98q final"). The original iter-2 model
@@ -276,6 +285,32 @@ export function createFlowSimulation(flow, opts = {}) {
         return widths[branch.nodeIds[branch.nodeIds.length - 1]]
       }
     }
+    // Per-node SPEED step function (v1.1 §7, bd ai-engineer-06e7). The
+    // segments are latency-proportioned — exactly the segmentation widthFn's
+    // legacy branch uses and FlowGraph's branchLatencyArc renders — so
+    // speedFn(s) returns the authored SPEED of whichever node owns the ribbon
+    // segment at arc-length s. The main per-agent loop multiplies targetSpeed
+    // by speedFn(bestS) so a node's SPEED physically changes how fast
+    // particles cross it (was inert pre-06e7 — see v1.1 spec §2.2).
+    {
+      const speedLatencies = branch.nodeIds.map(
+        id => flow.nodes.find(n => n.id === id).latency,
+      )
+      const speedSumL = speedLatencies.reduce((a, b) => a + b, 0) || 1
+      const speedTotalLen = branch.centerline.totalLength
+      const speedSegLens = speedLatencies.map(
+        l => (l / speedSumL) * speedTotalLen,
+      )
+      branch.speedFn = (s) => {
+        let acc = 0
+        for (let i = 0; i < branch.nodeIds.length; i++) {
+          if (s <= acc + speedSegLens[i]) return nodeSpeeds[branch.nodeIds[i]]
+          acc += speedSegLens[i]
+        }
+        return nodeSpeeds[branch.nodeIds[branch.nodeIds.length - 1]]
+      }
+    }
+
     // Sample widthFn for max/min-width normalization.
     const SAMPLES = 32  // bumped from 16 to better sample the constraint plateau
     const L = branch.centerline.totalLength
@@ -640,6 +675,10 @@ export function createFlowSimulation(flow, opts = {}) {
         const bestS = agentS.get(agent) ?? projectToCenterline(cl, agent.x, agent.y).s
         const tangent = cl.tangentAtArcLength(bestS)
         const localBandWidth = branch.widthFn(bestS)
+        // Per-node SPEED multiplier (v1.1 §7, bd ai-engineer-06e7) — the
+        // authored velocity scaling for the node whose ribbon segment the
+        // agent currently occupies. Folded into targetSpeed below.
+        const localNodeSpeed = branch.speedFn ? branch.speedFn(bestS) : 1.0
 
         // ── Width-based speed fraction (bead ai-engineer-r7r → ai-engineer-98q) ─
         // Above SLOW_THRESHOLD_W: baseSpeed (free flow in the wide plateau).
@@ -880,11 +919,22 @@ export function createFlowSimulation(flow, opts = {}) {
           agent.vy = 0
         }
 
-        // Final target speed: width-floor × lookahead. When unobstructed in
-        // wide band, targetSpeed = baseSpeed. When approaching a stopped
-        // queue, lookFactor smoothly ramps to 0 — the agent decelerates to
-        // a stop without ever hitting a hard gate.
-        const targetSpeed = flow.baseSpeed * speedFraction * lookFactor
+        // Final target speed: per-node SPEED × width-floor × lookahead. When
+        // unobstructed in a wide band, targetSpeed = baseSpeed × the node's
+        // authored SPEED. When approaching a stopped queue, lookFactor
+        // smoothly ramps to 0 — the agent decelerates to a stop without ever
+        // hitting a hard gate.
+        //
+        // localNodeSpeed (v1.1 §7) and speedFraction are independent factors:
+        // localNodeSpeed is the AUTHORED per-node velocity knob; speedFraction
+        // is the legacy width-ramp queue-formation slowdown. With the default
+        // Speed⇄Width coupling on, a node made narrow is both narrow (→ width
+        // ramp) and slow (→ low SPEED), so the two compound — intended: a
+        // narrow-and-slow constraint should read as decisively slow. With the
+        // coupling broken, SPEED moves independently of width as the author
+        // expects.
+        const targetSpeed =
+          flow.baseSpeed * localNodeSpeed * speedFraction * lookFactor
 
         // ── Symmetric tangential P-control (bead ai-engineer-2ip) ───────
         // Project velocity onto the tangent → tangential speed (signed).
