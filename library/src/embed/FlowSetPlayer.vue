@@ -20,8 +20,9 @@
   drives it directly off the /internals face for the set-preview.
 -->
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import FlowGraph from '../core/FlowGraph.vue'
+import { useVisibilityGate } from '../core/useVisibilityGate.js'
 import { normalizeFlowSet, EASINGS } from '../format/flowSet.js'
 
 const props = defineProps({
@@ -116,6 +117,7 @@ function jumpTo(index) {
 defineExpose({ play, pause, toggle, next, prev, jumpTo, playing, currentIndex })
 
 // ── RAF timeline driver ──────────────────────────────────────────────────────
+const rootEl = ref(null)
 let rafId = null
 let lastTs = 0
 
@@ -140,32 +142,46 @@ function tick(ts) {
   }
 }
 
-onMounted(() => {
+// Reset the crossfade timeline to the first state.
+function resetTimeline() {
+  slots.value = [
+    { key: `slot-${slotSeq++}`, index: 0 },
+    { key: `slot-${slotSeq++}`, index: 0 },
+  ]
+  active.value = 0
+  phase.value = 'hold'
+  elapsed.value = 0
+}
+
+// ── visibility gate (bd ai-engineer-f6pc) ────────────────────────────────────
+// Same pile-up fix as FlowGraph: the crossfade timeline must not advance while
+// the player is off-slide, or a flow-set would auto-cycle through its states
+// in the background and a presenter arriving at the slide would find it
+// mid-sequence. Opening the slide resets the set to its first state and
+// (re)starts the timeline; leaving stops it. The child FlowGraphs gate their
+// own particle simulations independently through their own visibility gate.
+function stopLoop() {
+  if (rafId != null) { cancelAnimationFrame(rafId); rafId = null }
+  playing.value = false
+}
+
+function startFresh() {
+  stopLoop()
+  resetTimeline()
   playing.value = props.autoplay ?? set.value.autoplay ?? true
   lastTs = 0
   rafId = requestAnimationFrame(tick)
-})
-onBeforeUnmount(() => {
-  if (rafId != null) cancelAnimationFrame(rafId)
-})
+}
+
+useVisibilityGate(rootEl, { onShow: startFresh, onHide: stopLoop })
+onBeforeUnmount(stopLoop)
 
 // A fresh flow-set resets the timeline to the first state.
-watch(
-  () => props.flowSet,
-  () => {
-    slots.value = [
-      { key: `slot-${slotSeq++}`, index: 0 },
-      { key: `slot-${slotSeq++}`, index: 0 },
-    ]
-    active.value = 0
-    phase.value = 'hold'
-    elapsed.value = 0
-  },
-)
+watch(() => props.flowSet, resetTimeline)
 </script>
 
 <template>
-  <div class="flow-set-player">
+  <div ref="rootEl" class="flow-set-player">
     <div
       v-for="(slot, i) in slots"
       :key="slot.key"

@@ -15,6 +15,7 @@
 -->
 <template>
   <svg
+    ref="rootEl"
     :viewBox="`${flow.viewBox.x ?? 0} ${flow.viewBox.y ?? 0} ${flow.viewBox.w} ${flow.viewBox.h}`"
     preserveAspectRatio="xMidYMid meet"
     class="flow-graph"
@@ -345,8 +346,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
 import { createFlowSimulation } from './useFlowSimulation.js'
+import { useVisibilityGate } from './useVisibilityGate.js'
 import {
   computeNodeWidths,
   MIN_RIBBON_WIDTH,
@@ -407,9 +409,18 @@ const props = defineProps({
 // Build the simulation up front; expose reactive snapshot for the template.
 // initialAgents is sourced from the flow definition (fallback 8) so each flow
 // owns its own seeding density — N4 uses 24 to keep the river visibly full.
-const sim = createFlowSimulation(props.flow, {
-  initialAgents: props.flow.initialAgents ?? 8,
-})
+//
+// `let`, not `const` (bd ai-engineer-f6pc): the visibility gate rebuilds the
+// simulation from a clean initial state each time the slide is opened, so
+// `sim` is a swappable binding. `branches` / `widths` below are NOT rebuilt —
+// they are deterministic geometry derived from `props.flow`, identical across
+// rebuilds, and the render-side computeds close over the `branches` const.
+function buildSim() {
+  return createFlowSimulation(props.flow, {
+    initialAgents: props.flow.initialAgents ?? 8,
+  })
+}
+let sim = buildSim()
 const branches = sim.branches
 const widths   = computeNodeWidths(props.flow)
 
@@ -907,22 +918,56 @@ function labelOffsetFor(node) {
   return offsetMap[node.id] ?? { dx: 0, dy: -60 }
 }
 
-// RAF loop. The simulation core itself is RAF-free; this is just the
-// live-render driver. Headless tests should call sim.step(dt) directly.
+// ── visibility-gated RAF loop (bd ai-engineer-f6pc) ─────────────────────────
+// THE PILE-UP FIX. The RAF loop used to start at onMounted and run forever —
+// every flow simulation kept stepping in the background on every slide, so by
+// slide 18 of a 20-minute talk its constraint showed minutes of piled-up
+// backlog instead of a fresh animation.
+//
+// Now the loop runs ONLY while this embed is visible (on-screen AND the
+// browser tab foregrounded — see useVisibilityGate). Each time the slide is
+// opened, `startFresh()` rebuilds the simulation from a clean initial state
+// (dropping any backlog from a prior visit) and restarts the loop; leaving
+// the slide stops it. Every visit therefore replays fresh and the audience
+// watches the bottleneck form live (Jason 2026-05-20).
+//
+// The simulation core itself is RAF-free; this is just the live-render
+// driver. Headless tests should call sim.step(dt) directly.
+const rootEl = ref(null)
 let rafId = null
 let lastT = null
+
+function syncAgentsView() {
+  // Filter pending agents out of the render list — see agentsView above.
+  agentsView.value = sim.agents
+    .filter(a => a.lifecycle !== 'pending')
+    .map(a => ({ id: a.id, x: a.x, y: a.y }))
+}
+
 function frame(t) {
   if (lastT === null) lastT = t
   const dt = Math.min((t - lastT) / 1000, 1 / 30)
   lastT = t
   sim.step(dt)
-  agentsView.value = sim.agents
-    .filter(a => a.lifecycle !== 'pending')
-    .map(a => ({ id: a.id, x: a.x, y: a.y }))
+  syncAgentsView()
   rafId = requestAnimationFrame(frame)
 }
-onMounted(() => { rafId = requestAnimationFrame(frame) })
-onBeforeUnmount(() => { if (rafId) cancelAnimationFrame(rafId) })
+
+function stopLoop() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+  lastT = null
+}
+
+function startFresh() {
+  // Rebuild from a clean initial state, then (re)start the RAF loop.
+  stopLoop()
+  sim = buildSim()
+  syncAgentsView()
+  rafId = requestAnimationFrame(frame)
+}
+
+useVisibilityGate(rootEl, { onShow: startFresh, onHide: stopLoop })
+onBeforeUnmount(stopLoop)
 </script>
 
 <style scoped>
