@@ -3,9 +3,9 @@
   "flow": {
     "viewBox": {
       "x": 0,
-      "y": 0,
+      "y": 181,
       "w": 1600,
-      "h": 700
+      "h": 300
     },
     "baseSpeed": 200,
     "initialAgents": 14,
