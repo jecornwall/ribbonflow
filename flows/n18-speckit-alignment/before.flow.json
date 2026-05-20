@@ -11,6 +11,7 @@
     "initialAgents": 12,
     "inkWobble": true,
     "fenceMarkers": true,
+    "segmentDividers": true,
     "showBoxes": false,
     "showLegend": false,
     "forks": [],
