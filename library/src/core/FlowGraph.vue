@@ -554,6 +554,26 @@ function markerPropsFor(node) {
   // we pick the FIRST branch — the one whose centerline best owns the node's
   // segment for labeling purposes.
   const branch = branches.find(b => b.nodeIds.includes(node.id))
+  // Orphan-node guard (flow-designer M3): a node may legitimately be on NO
+  // branch — e.g. a node the interactive designer has placed but not yet
+  // connected with an edge. validateFlow() does not treat that as an error,
+  // so the renderer must not crash on it. Anchor the marker at the node's own
+  // xy with a horizontal tangent and zero band; there is no segment geometry.
+  // The deck's authored flows never produce orphans, so this path is inert
+  // there; it exists for the designer's transient mid-edit states.
+  if (!branch) {
+    return {
+      startPoint:   { x: node.x, y: node.y },
+      endPoint:     { x: node.x, y: node.y },
+      startTangent: { x: 1, y: 0 },
+      endTangent:   { x: 1, y: 0 },
+      bandWidthAtStart: 0,
+      bandWidthAtEnd:   0,
+      bandWidthAtLabel: 0,
+      labelCenterlineY: node.y,
+      labelAnchorX:     node.x,
+    }
+  }
   const cl = branch.centerline
   const segLens = branchLatencyArc(branch)
   // Use the actual ribbon width function for this branch — pinch-aware in
