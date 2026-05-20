@@ -21,12 +21,41 @@ import {
   REJECTION_BAND_WIDTH,
 } from './flowCurve.js'
 
-// Maximum lateral displacement for an agent's *centre* so its circle stays
-// fully inside the ribbon wall.  PARTICLE_RADIUS ensures the circle edge
-// doesn't cross the wall; WALL_MARGIN adds a visible gap between edge and
-// wall (matching the gap already baked into MIN_RIBBON_WIDTH).
-// = 3 + 2 = 5 viewBox units.
-const PHYS_WALL_MARGIN = PARTICLE_RADIUS + WALL_MARGIN
+// ── Per-agent radius (v1.3 L1 — spec §3.1) ────────────────────────────────
+// The engine historically hard-coded a single global PARTICLE_RADIUS (3).
+// v1.3 introduces a second particle size, so every radius-dependent site
+// must read a PER-AGENT radius instead. L1 is a behaviour-preserving
+// refactor: every agent is created with `radius: PARTICLE_RADIUS`, so all
+// the per-agent / per-pair expressions below reduce EXACTLY to their former
+// global values. Large particles (L3) will create agents with
+// radius = PARTICLE_RADIUS * LARGE_PARTICLE_SCALE.
+//
+// `agentRadius()` falls back to PARTICLE_RADIUS for any agent object that
+// lacks the field — e.g. agents a test pushes straight onto `sim.agents`.
+// That keeps the refactor invisible to the existing engine suite.
+const DEFAULT_AGENT_RADIUS = PARTICLE_RADIUS
+export function agentRadius(agent) {
+  return agent.radius ?? PARTICLE_RADIUS
+}
+
+// Per-agent wall margin: an agent's *centre* must stay this far from the
+// ribbon wall so its circle (radius `agentRadius`) sits fully inside, with
+// WALL_MARGIN of visible gap. Replaces the former global PHYS_WALL_MARGIN
+// constant; for a small agent this is PARTICLE_RADIUS + WALL_MARGIN =
+// 3 + 2 = 5 viewBox units — byte-identical to the old constant.
+export function physWallMargin(agent) {
+  return agentRadius(agent) + WALL_MARGIN
+}
+
+// Per-pair comfortable centre-to-centre gap when one agent is stopped
+// behind another. The former global DESIRED_SEP was 2.5 × PARTICLE_RADIUS
+// = 7.5 — i.e. 1.25 × the contact distance (2 × PARTICLE_RADIUS). Restated
+// per-pair as DESIRED_SEP_FACTOR × (rᵢ + rⱼ); with both radii ==
+// PARTICLE_RADIUS this is 1.25 × 6 = 7.5, byte-identical to the old value.
+export const DESIRED_SEP_FACTOR = 1.25
+export function desiredSep(a, b) {
+  return DESIRED_SEP_FACTOR * (agentRadius(a) + agentRadius(b))
+}
 
 // Projection numerical-noise floor — adds a sub-unit tolerance to the
 // ribbon-polygon clamp's Euclidean check (bd ai-engineer-0ld, 2026-05-18).
@@ -414,8 +443,10 @@ export function createFlowSimulation(flow, opts = {}) {
   //   deceleration starts too late to maintain DESIRED_SEP). Values > 90
   //   thin the cluster at the constraint and revert toward the iter-2
   //   smearing pattern. 70 is the empirical sweet spot.
-  // DESIRED_SEP: comfortable centre-to-centre gap when stopped behind another
-  //   agent. 2.5 × PARTICLE_RADIUS = 7.5 viewBox units.
+  // DESIRED_SEP: comfortable centre-to-centre gap when one agent is stopped
+  //   behind another. Now PER-PAIR — see desiredSep() at module scope: for
+  //   two small agents it is 2.5 × PARTICLE_RADIUS = 7.5 viewBox units,
+  //   unchanged from the former global constant.
   // K_SPEED: proportional gain on tangential speed error (1/s). With
   //   K_SPEED=4, exponential convergence τ=0.25s. Combined with
   //   LOOKAHEAD_DIST=70 and constraint-floor MIN_SPEED_FACTOR=0.70, agents
@@ -427,7 +458,6 @@ export function createFlowSimulation(flow, opts = {}) {
   //   needs ~170 px/s² over 0.35s — comfortably inside the cap, so braking
   //   remains smooth and the bounded-acceleration invariant holds.
   const LOOKAHEAD_DIST = 70
-  const DESIRED_SEP    = 2.5 * PARTICLE_RADIUS
   const K_SPEED        = 4.0
   const ACCEL_CAP      = 800
 
@@ -437,6 +467,11 @@ export function createFlowSimulation(flow, opts = {}) {
   // legitimately place geometry (a label leader, a source spawn jitter
   // envelope) marginally outside the authored viewBox, and a strict viewBox
   // check would teleport otherwise-valid spawns.
+  // Max agent radius "in play" — the teleport backstop's BB is expanded by
+  // this so a legitimately-near-the-wall agent's circle is never read as an
+  // escape (spec §3.1). v1.3 L1: only small particles exist, so this is
+  // PARTICLE_RADIUS; L3 will derive it from the sources' particle sizes.
+  const maxAgentRadius = PARTICLE_RADIUS
   const ribbonBB = (() => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const b of branches) {
@@ -445,14 +480,17 @@ export function createFlowSimulation(flow, opts = {}) {
         const w = widths[id] ?? MIN_RIBBON_WIDTH
         if (w / 2 > branchMaxHalfW) branchMaxHalfW = w / 2
       }
+      // Expand by the max agent radius so a large particle riding near the
+      // wall stays inside the BB (the backstop checks the agent CENTRE).
+      const branchHalfW = branchMaxHalfW + maxAgentRadius
       const STEPS = 32
       const L = b.centerline.totalLength
       for (let i = 0; i <= STEPS; i++) {
         const p = b.centerline.pointAtArcLength((i / STEPS) * L)
-        if (p.x - branchMaxHalfW < minX) minX = p.x - branchMaxHalfW
-        if (p.x + branchMaxHalfW > maxX) maxX = p.x + branchMaxHalfW
-        if (p.y - branchMaxHalfW < minY) minY = p.y - branchMaxHalfW
-        if (p.y + branchMaxHalfW > maxY) maxY = p.y + branchMaxHalfW
+        if (p.x - branchHalfW < minX) minX = p.x - branchHalfW
+        if (p.x + branchHalfW > maxX) maxX = p.x + branchHalfW
+        if (p.y - branchHalfW < minY) minY = p.y - branchHalfW
+        if (p.y + branchHalfW > maxY) maxY = p.y + branchHalfW
       }
     }
     return { minX, maxX, minY, maxY }
@@ -637,9 +675,12 @@ export function createFlowSimulation(flow, opts = {}) {
   // the local normal (perpendicular to tangent) bounded by maxLateral.
   // Cartesian jitter for horizontal entries reduces to the same envelope
   // (normal = vertical) so existing tests stay valid.
-  function spawnPosition(node, targetId) {
+  function spawnPosition(node, targetId, radius = PARTICLE_RADIUS) {
     const halfW = (widths[node.id] ?? MIN_RIBBON_WIDTH) / 2
-    const maxLateral = Math.max(0, halfW - PHYS_WALL_MARGIN)
+    // Per-agent wall margin (spec §3.1): jitter envelope shrinks for a
+    // larger particle. `radius` defaults to PARTICLE_RADIUS, so small
+    // particles get the former `halfW - PHYS_WALL_MARGIN` envelope exactly.
+    const maxLateral = Math.max(0, halfW - (radius + WALL_MARGIN))
     if (maxLateral === 0) return { x: node.x, y: node.y }
     let branch = null
     if (targetId) {
@@ -726,6 +767,7 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: nextTarget,
           lifecycle: 'in-process',
           age: 0,
+          radius: DEFAULT_AGENT_RADIUS,
         })
       } else {
         // Pending — assigned to a source in proportion to that source's rate.
@@ -738,6 +780,7 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: src.id,
           lifecycle: 'pending',
           age: 0,
+          radius: DEFAULT_AGENT_RADIUS,
         }
         markPending(a)
         agents.push(a)
@@ -766,6 +809,7 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: nextTarget,
           lifecycle: 'in-process',
           age: 0,
+          radius: DEFAULT_AGENT_RADIUS,
         })
       } else {
         agents.push({
@@ -776,6 +820,7 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: entryNode.id,
           lifecycle: 'pending',
           age: 0,
+          radius: DEFAULT_AGENT_RADIUS,
         })
       }
     }
@@ -946,7 +991,10 @@ export function createFlowSimulation(flow, opts = {}) {
     // when corridor-aware lookahead was added without the wall
     // exception.
     const myLat = agentLat.get(agent) ?? 0
-    const CORRIDOR_HALF = PARTICLE_RADIUS  // ±3 viewBox units — touching circles
+    // Corridor half-width — lateral band within which a peer counts as a
+    // tangential blocker. Per-agent (spec §3.1): scales with this agent's
+    // radius; for a small agent this is PARTICLE_RADIUS = ±3 viewBox units.
+    const CORRIDOR_HALF = agentRadius(agent)
     for (const other of agents) {
       if (other === agent) continue
       if (agentBranch.get(other) !== branch) continue
@@ -969,7 +1017,7 @@ export function createFlowSimulation(flow, opts = {}) {
         const oLat = agentLat.get(other) ?? 0
         if (Math.abs(oLat - myLat) > CORRIDOR_HALF) continue  // different lane peer
       }
-      const d = oS - bestS - DESIRED_SEP
+      const d = oS - bestS - desiredSep(agent, other)
       if (d >= 0 && d < frontDist) frontDist = d
     }
     let lookFactor = 1.0
@@ -1287,14 +1335,14 @@ export function createFlowSimulation(flow, opts = {}) {
     // adjacent-node width while the per-node width is smaller — the
     // tighter bound keeps the agent inside both envelopes.
     const myHalfWClamp = Math.min(visHalfWClamp, nodeHalfWClamp)
-    // Phase 1 lateral limit: agent centre must be at least PHYS_WALL_MARGIN
-    // from the wall so the circle (radius=PARTICLE_RADIUS) stays fully inside.
+    // Phase 1 lateral limit: agent centre must be at least physWallMargin
+    // from the wall so the circle (radius=agentRadius) stays fully inside.
     // This is the primary fix for the visual edge-clipping bug (bd ai-engineer-on9).
-    const maxLateral = Math.max(0, myHalfWClamp - PHYS_WALL_MARGIN)
+    const maxLateral = Math.max(0, myHalfWClamp - physWallMargin(agent))
     // Phase 2 Euclidean limit: also use the visible-band tightening.
-    // Tolerance is PHYS_WALL_MARGIN so circle stays WALL_MARGIN inside the
+    // Tolerance is physWallMargin so circle stays WALL_MARGIN inside the
     // visible wall — matching what Phase 1 enforces.
-    const maxEuclid = Math.max(0, myHalfWClamp - PHYS_WALL_MARGIN)
+    const maxEuclid = Math.max(0, myHalfWClamp - physWallMargin(agent))
     // Phase 1 — lateral backstop (handles mid-ribbon drift, visual clipping fix).
     const cpClamp = cl.pointAtArcLength(clampS)
     const tangentClamp = cl.tangentAtArcLength(clampS)
@@ -1718,7 +1766,9 @@ export function createFlowSimulation(flow, opts = {}) {
   // re-clamp.
   // ──────────────────────────────────────────────────────────────────────
   function resolveRigidContacts() {
-    const MIN_SEP = 2 * PARTICLE_RADIUS  // 6 viewBox units
+    // Minimum centre-to-centre separation is PER-PAIR (spec §3.1): the sum
+    // of the two agents' radii (their contact distance). For two small
+    // agents this is 2 × PARTICLE_RADIUS = 6 viewBox units, unchanged.
     const RIGID_ITERATIONS = 1
     for (let iter = 0; iter < RIGID_ITERATIONS; iter++) {
       // Pair-push to resolve overlaps.
@@ -1735,16 +1785,17 @@ export function createFlowSimulation(flow, opts = {}) {
           // (bead ai-engineer-a1m)
           if (a.currentNodeId && b.targetNodeId === a.currentNodeId) continue
           if (b.currentNodeId && a.targetNodeId === b.currentNodeId) continue
+          const minSep = agentRadius(a) + agentRadius(b)  // per-pair contact distance
           const dx = b.x - a.x, dy = b.y - a.y
           const r2 = dx * dx + dy * dy
-          if (r2 >= MIN_SEP * MIN_SEP) continue
+          if (r2 >= minSep * minSep) continue
           if (r2 < 1e-9) {
             // Numerically co-located — push apart along a fallback axis.
-            a.x -= 0.5 * MIN_SEP; b.x += 0.5 * MIN_SEP
+            a.x -= 0.5 * minSep; b.x += 0.5 * minSep
             continue
           }
           const r = Math.sqrt(r2)
-          const overlap = MIN_SEP - r
+          const overlap = minSep - r
           const ux = dx / r, uy = dy / r
           a.x -= 0.5 * overlap * ux
           a.y -= 0.5 * overlap * uy
@@ -1767,8 +1818,8 @@ export function createFlowSimulation(flow, opts = {}) {
         const visHalfW = branch.widthFn(proj.s) / 2
         const nodeHalfW = (widths[agent.currentNodeId] ?? MIN_RIBBON_WIDTH) / 2
         const halfW = Math.min(visHalfW, nodeHalfW)
-        const maxLateral = Math.max(0, halfW - PHYS_WALL_MARGIN)
-        const maxEuclid = Math.max(0, halfW - PHYS_WALL_MARGIN)
+        const maxLateral = Math.max(0, halfW - physWallMargin(agent))
+        const maxEuclid = Math.max(0, halfW - physWallMargin(agent))
         const lateral = (agent.x - cp.x) * normal.x + (agent.y - cp.y) * normal.y
         if (Math.abs(lateral) > maxLateral) {
           const correction = (Math.abs(lateral) - maxLateral) * Math.sign(lateral)
@@ -1823,7 +1874,7 @@ export function createFlowSimulation(flow, opts = {}) {
       const visHalfW = branch.widthFn(proj.s) / 2
       const nodeHalfW = (widths[agent.currentNodeId] ?? MIN_RIBBON_WIDTH) / 2
       const halfW = Math.min(visHalfW, nodeHalfW)
-      const maxAllowed = Math.max(0, halfW - PHYS_WALL_MARGIN)
+      const maxAllowed = Math.max(0, halfW - physWallMargin(agent))
       const lateral = (agent.x - cp.x) * normal.x + (agent.y - cp.y) * normal.y
       // Lateral projection: snap position back inside the wall, then bound-
       // brake the outward lateral velocity component (was instant-zero;
@@ -1977,7 +2028,7 @@ export function createFlowSimulation(flow, opts = {}) {
       occupancy[targetId]++
       // Centerline-aligned spawn jitter (see spawnPosition() above).
       const nextTarget = nextSuccessor(targetNode)
-      const pos = spawnPosition(targetNode, nextTarget)
+      const pos = spawnPosition(targetNode, nextTarget, agentRadius(agent))
       agent.x = pos.x
       agent.y = pos.y
       agent.vx = 0
@@ -2032,6 +2083,7 @@ export function createFlowSimulation(flow, opts = {}) {
           lifecycle: 'in-process',
           age: 0,
           _enteredAt: 0,
+          radius: DEFAULT_AGENT_RADIUS,
         }
         agents.push(a)
         traces.entries.push({ id: a.id, nodeId: s.id, t: a.age })
