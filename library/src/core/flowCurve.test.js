@@ -729,3 +729,20 @@ test('junction disc absorbs the protruding ribbon caps at a merge', () => {
     assert.ok(d.startsWith('M') && d.endsWith('Z'), 'outline is a closed path')
   }
 })
+
+// ──────────────────────────────────────────────────────────────────────────
+// Per-segment colour-scheme palette (bd ai-engineer-3ihf, v1.1 §3).
+// ──────────────────────────────────────────────────────────────────────────
+
+test('RIBBON_SCHEME_COLORS maps every v1.1 colorScheme to a hex colour', async () => {
+  const { RIBBON_SCHEME_COLORS, FLOW_BAND, CONSTRAINT_INK } =
+    await import('./flowCurve.js')
+  for (const scheme of ['red', 'neutral', 'green']) {
+    assert.match(RIBBON_SCHEME_COLORS[scheme], /^#[0-9A-Fa-f]{6}$/,
+      `${scheme} should map to a 6-digit hex colour`)
+  }
+  // neutral is the warm-wheat ribbon body — not black ink.
+  assert.equal(RIBBON_SCHEME_COLORS.neutral, FLOW_BAND)
+  // red matches the designer's accent exactly.
+  assert.equal(RIBBON_SCHEME_COLORS.red, CONSTRAINT_INK)
+})

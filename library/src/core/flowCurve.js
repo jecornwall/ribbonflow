@@ -531,6 +531,24 @@ export const CONSTRAINT_ROSE = '#d8a8a8'  // deeper rose — tonal background in
 export const INK             = '#15171A'  // historical ribbon ink (legacy fallback)
 export const CONSTRAINT_INK  = '#E2522B'  // firebrick — the one accent
 
+// ---- Per-segment colour-scheme palette (v1.1 §3, bd ai-engineer-3ihf) -----
+//
+// The v1.1 node model carries a per-node `colorScheme` ('red'|'neutral'|
+// 'green') in place of the removed `constraint` node type. These are the
+// ribbon-segment fills the live preview (FlowGraph) paints:
+//   - neutral → FLOW_BAND (#e8d8b0): the warm-wheat ribbon body — the
+//     established locked-v2 ribbon colour every deck flow already sets via
+//     `ribbonColor`. v1.1 flows drop `ribbonColor`, so neutral IS that wheat
+//     (Jason 2026-05-20: "yellow / beige tone for neutral, not black"). The
+//     cream agents read against wheat exactly as they do in the deck.
+//   - red → CONSTRAINT_INK (#E2522B): exactly the designer's red.
+//   - green → #3FAE6B: exactly the designer's green.
+export const RIBBON_SCHEME_COLORS = {
+  neutral: FLOW_BAND,
+  red:     CONSTRAINT_INK,
+  green:   '#3FAE6B',
+}
+
 // ---- Pinch-around-constraint width function (locked-v2) -------------------
 
 export const DEFAULT_BAND_WIDTH       = 70  // full-width plateau (viewBox units)

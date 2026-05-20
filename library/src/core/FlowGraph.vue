@@ -39,7 +39,20 @@
         :key="`branch-${i}`"
         :centerline="branch.centerline"
         :width-fn="branchWidthFn(branch)"
-        :color="flow.ribbonColor || '#15171A'"
+        :color="flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral"
+      />
+
+      <!-- Per-segment colour-scheme overlays (bd ai-engineer-3ihf, v1.1 §3).
+           RED / GREEN node segments painted over the ink base ribbon so the
+           live preview matches the designer's editor canvas; NEUTRAL needs
+           no overlay (it IS the ink base). Drawn over the base ribbon but
+           BEFORE the junction discs, so a fork-root segment overlay cannot
+           re-expose the star-burst the discs are there to cover. -->
+      <path
+        v-for="seg in coloredSegments"
+        :key="seg.key"
+        :d="seg.d"
+        :fill="seg.color"
       />
 
       <!-- Junction caps (bd ai-engineer-05yy — the star-burst fix).
@@ -61,7 +74,7 @@
         :cx="disc.x"
         :cy="disc.y"
         :r="disc.r"
-        :fill="flow.ribbonColor || '#15171A'"
+        :fill="disc.color"
       />
 
       <!-- Pinch-zone rose overlays (locked-v2). One pair per branch that
@@ -319,6 +332,7 @@ import {
   pinchZoneArcRanges,
   pinchZoneOutlinePath,
   junctionNodeIds,
+  RIBBON_SCHEME_COLORS,
 } from './flowCurve.js'
 import FlowRibbon from './FlowRibbon.vue'
 import FlowSegmentMarker from './FlowSegmentMarker.vue'
@@ -454,6 +468,42 @@ function branchWidthFn(branch) {
   }
 }
 
+// Per-segment colour-scheme overlays (bd ai-engineer-3ihf, v1.1 §3 + §7).
+//
+// Each v1.1 node carries a `colorScheme` ('red'|'neutral'|'green'); the live
+// preview ribbon paints that node's ribbon segment in the scheme colour so
+// the preview matches the designer's editor canvas (which colours node
+// handles by the same scheme). NEUTRAL needs no overlay — it is the ink base
+// the FlowRibbon already draws — so a default-scheme (or pre-v1.1) flow
+// renders identically to before; only RED / GREEN segments contribute an
+// overlay path. The overlay uses pinchZoneOutlinePath over the node's
+// latency-proportioned arc-range: the exact ribbon shape over that stretch.
+//
+// REACTIVE: a computed() so the overlays re-derive when the `flow` prop
+// changes (the before/after click-toggle idiom — see junctionDiscs / pinch).
+const coloredSegments = computed(() => {
+  const out = []
+  branches.forEach((branch, bi) => {
+    const segLens = branchLatencyArc(branch)
+    const wfn = branchWidthFn(branch)
+    const total = branch.centerline.totalLength
+    let acc = 0
+    for (let i = 0; i < branch.nodeIds.length; i++) {
+      const sStart = acc
+      const sEnd = Math.min(acc + segLens[i], total)
+      acc += segLens[i]
+      const node = props.flow.nodes.find(n => n.id === branch.nodeIds[i])
+      const scheme = (node && node.colorScheme) || 'neutral'
+      if (scheme === 'neutral') continue
+      const color = RIBBON_SCHEME_COLORS[scheme]
+      if (!color) continue
+      const d = pinchZoneOutlinePath(branch.centerline, wfn, { sStart, sEnd })
+      if (d) out.push({ key: `seg-${bi}-${i}`, d, color })
+    }
+  })
+  return out
+})
+
 // Segment-divider tick positions for each branch (bd ai-engineer-b57i).
 // For each INTERIOR boundary between consecutive nodes on a branch, sample
 // the centerline at that arc position and the band's width function so the
@@ -571,7 +621,16 @@ const junctionDiscs = computed(() => {
       const w = wfn(s)
       if (typeof w === 'number' && w > maxW) maxW = w
     }
-    if (maxW > 0) discs.push({ id, x: node.x, y: node.y, r: maxW / 2 })
+    // Junction-disc colour follows the junction node's own colorScheme
+    // (bd ai-engineer-3ihf) so the star-burst cover blends with its coloured
+    // segment overlays rather than punching a contrasting hole through them.
+    // A neutral junction defers to the flow's `ribbonColor` (legacy) or the
+    // wheat neutral default — matching the base ribbon exactly.
+    const scheme = node.colorScheme || 'neutral'
+    const color = scheme === 'neutral'
+      ? (props.flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral)
+      : (RIBBON_SCHEME_COLORS[scheme] || RIBBON_SCHEME_COLORS.neutral)
+    if (maxW > 0) discs.push({ id, x: node.x, y: node.y, r: maxW / 2, color })
   }
   return discs
 })
