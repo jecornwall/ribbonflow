@@ -30,9 +30,10 @@ import n4FlowV1 from './fixtures/flows/n4-toc-baseline.js'
 import n9FlowV1 from './fixtures/flows/n9-multilane.v1.js'
 import m2FlowV2 from './fixtures/flows/m2-coverage.v2.js'
 import m3FlowV3 from './fixtures/flows/m3-coverage.v3.js'
+import v12FlowV4 from './fixtures/flows/v12-rejections.v4.js'
 
-test('FLOW_FORMAT_VERSION is 4 after v1.2', () => {
-  assert.equal(FLOW_FORMAT_VERSION, 4)
+test('FLOW_FORMAT_VERSION is 5 after v1.3 L2', () => {
+  assert.equal(FLOW_FORMAT_VERSION, 5)
 })
 
 // ── v1 → … → v3 (the whole chain) ────────────────────────────────────────────
@@ -191,11 +192,18 @@ test('v3→v4 adds an empty rejections[] array to a v3 flow', () => {
   assert.deepEqual(v4.rejections, [], 'rejections starts empty')
 })
 
-test('v3→v4 changes no other field of a v3 flow', () => {
-  const v4 = migrateFlow(m3FlowV3, 3)
-  // Strip the one added field; the rest must be byte-identical to the v3 input.
-  const { rejections, ...rest } = v4
-  assert.deepEqual(rest, m3FlowV3)
+test('v3→…→v5 changes only rejections / particleSize / transform on a v3 flow', () => {
+  // migrateFlow always runs the whole chain to LATEST_MIGRATED_VERSION, so a v3
+  // input now lands at v5. Strip the fields the v3→v4 and v4→v5 steps add
+  // (rejections[]; per-node transform; per-source particleSize); the rest must
+  // be byte-identical to the v3 input.
+  const v5 = migrateFlow(m3FlowV3, 3)
+  const { rejections, ...rest } = v5
+  const stripped = {
+    ...rest,
+    nodes: rest.nodes.map(({ particleSize, transform, ...n }) => n),
+  }
+  assert.deepEqual(stripped, m3FlowV3)
 })
 
 test('v3→v4 preserves an already-present rejections[] array untouched', () => {
@@ -218,6 +226,71 @@ test('deserializeFlow migrates a v3 envelope to v4', () => {
   assert.ok(Array.isArray(flow.rejections), 'v3 envelope gains rejections[] on load')
 })
 
+// ── v4 → v5 (the v1.3 L2 large-particles step, bd ai-engineer-otci) ──────────
+// v4→v5 gives every source `particleSize: 'small'` and every node
+// `transform: 'none'`. No other field changes — every v4 flow migrates
+// cleanly. See flow-v1.3-large-particles-design.md §6.
+
+test('v4→v5 gives every source particleSize:small', () => {
+  const v5 = migrateFlow(v12FlowV4, 4)
+  for (const n of v5.nodes.filter(n => n.kind === 'source')) {
+    assert.equal(n.particleSize, 'small', `${n.id} source defaults to small`)
+  }
+})
+
+test('v4→v5 gives every node transform:none', () => {
+  const v5 = migrateFlow(v12FlowV4, 4)
+  for (const n of v5.nodes) {
+    assert.equal(n.transform, 'none', `${n.id} defaults to transform none`)
+  }
+})
+
+test('v4→v5 changes no field other than particleSize / transform', () => {
+  const v5 = migrateFlow(v12FlowV4, 4)
+  // Strip the two added node fields; the rest must be byte-identical to v4.
+  const stripped = {
+    ...v5,
+    nodes: v5.nodes.map(({ particleSize, transform, ...rest }) => rest),
+  }
+  assert.deepEqual(stripped, v12FlowV4)
+})
+
+test('v4→v5 adds no splitCount / combineCount (a v4 flow has no transform nodes)', () => {
+  const v5 = migrateFlow(v12FlowV4, 4)
+  for (const n of v5.nodes) {
+    assert.equal(n.splitCount, undefined, `${n.id} gains no splitCount`)
+    assert.equal(n.combineCount, undefined, `${n.id} gains no combineCount`)
+  }
+})
+
+test('v4→v5 preserves an already-present particleSize / transform untouched', () => {
+  const authored = {
+    nodes: [
+      { id: 'a', x: 0, y: 0, kind: 'source', particleSize: 'large' },
+      { id: 'b', x: 1, y: 0, transform: 'split', splitCount: 6 },
+    ],
+  }
+  const v5 = migrateFlow(authored, 4)
+  assert.equal(v5.nodes[0].particleSize, 'large')
+  assert.equal(v5.nodes[1].transform, 'split')
+  assert.equal(v5.nodes[1].splitCount, 6)
+})
+
+test('migrateFlow lifts a v1 flow all the way forward to v5', () => {
+  const v5 = migrateFlow(n4FlowV1, 1)
+  assert.ok(Array.isArray(v5.rejections), 'v1→…→v5 chain still adds rejections[]')
+  for (const n of v5.nodes) {
+    assert.equal(n.transform, 'none', `${n.id} has transform after the full chain`)
+  }
+})
+
+test('deserializeFlow migrates a v4 envelope to v5', () => {
+  const v4Envelope = JSON.stringify({ formatVersion: 4, flow: v12FlowV4 })
+  const flow = deserializeFlow(v4Envelope)
+  assert.equal(flow.nodes.find(n => n.id === 'intake').particleSize, 'small')
+  for (const n of flow.nodes) assert.equal(n.transform, 'none')
+})
+
 // ── invariants ───────────────────────────────────────────────────────────────
 
 test('migrateFlow does not mutate the input flow', () => {
@@ -227,6 +300,9 @@ test('migrateFlow does not mutate the input flow', () => {
   const beforeV2 = JSON.stringify(m2FlowV2)
   migrateFlow(m2FlowV2, 2)
   assert.equal(JSON.stringify(m2FlowV2), beforeV2)
+  const beforeV4 = JSON.stringify(v12FlowV4)
+  migrateFlow(v12FlowV4, 4)
+  assert.equal(JSON.stringify(v12FlowV4), beforeV4)
 })
 
 test('deserializeFlow migrates a v1 envelope all the way to v3', () => {

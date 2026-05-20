@@ -44,6 +44,13 @@
  *           flow-v1.2-rejection-edges-design.md §6):
  *   - add `flow.rejections = []` if absent. No other field changes; every v3
  *     flow migrates cleanly and losslessly.
+ *
+ * v4 → v5 (v1.3 L2, bd ai-engineer-otci — see
+ *           flow-v1.3-large-particles-design.md §6):
+ *   - every source gets `particleSize: 'small'`; every node gets
+ *     `transform: 'none'`. No other field changes — a v4 flow has no
+ *     transform nodes, so no splitCount/combineCount is added (normalizeFlow()
+ *     fills those). Every v4 flow migrates cleanly and losslessly.
  */
 
 import {
@@ -196,16 +203,45 @@ function migrateV3toV4(v3) {
 }
 
 /**
+ * Migrate a v4 flow object to the v5 data model (v1.3 L2 large particles — see
+ * docs/superpowers/specs/2026-05-20-flow-v1.3-large-particles-design.md §6).
+ *
+ * v5 adds `source.particleSize` and `node.transform`. The migration gives every
+ * source `particleSize: 'small'` and every node `transform: 'none'` — the
+ * documented defaults — and changes no other field. A v4 flow has no transform
+ * nodes, so no `splitCount` / `combineCount` is added; normalizeFlow() fills
+ * those for any node later authored as split/combine.
+ *
+ * @param {object} v4 — a version-4 flow object
+ * @returns {object} a version-5 flow object
+ */
+function migrateV4toV5(v4) {
+  const flow = deepClone(v4)
+  if (Array.isArray(flow.nodes)) {
+    flow.nodes = flow.nodes.map((node) => {
+      const n = { ...node }
+      if (n.transform === undefined) n.transform = 'none'
+      if (n.kind === 'source' && n.particleSize === undefined) {
+        n.particleSize = 'small'
+      }
+      return n
+    })
+  }
+  return flow
+}
+
+/**
  * Ordered migration registry: version N → a step producing version N+1.
  */
 const MIGRATIONS = {
   1: migrateV1toV2,
   2: migrateV2toV3,
   3: migrateV3toV4,
+  4: migrateV4toV5,
 }
 
 /** The highest format version this module can migrate *to*. */
-export const LATEST_MIGRATED_VERSION = 4
+export const LATEST_MIGRATED_VERSION = 5
 
 /**
  * Migrate a flow object from `fromVersion` up to the latest version this

@@ -25,6 +25,7 @@ import n9Flow from './fixtures/flows/n9-multilane.js'
 import m2Flow from './fixtures/flows/m2-coverage.v2.js'
 import m3Flow from './fixtures/flows/m3-coverage.v3.js'
 import v12Flow from './fixtures/flows/v12-rejections.v4.js'
+import n5Flow from './fixtures/flows/n5-large-particles.v5.js'
 
 test('FLOW_FORMAT_VERSION is a positive integer', () => {
   assert.equal(typeof FLOW_FORMAT_VERSION, 'number')
@@ -206,6 +207,43 @@ test('round-trip preserves the nested bow object (side + depth)', () => {
 
 test('round-trip of the v4 rejection flow is idempotent (byte-stable)', () => {
   const once = serializeFlow(v12Flow)
+  const twice = serializeFlow(deserializeFlow(once))
+  assert.equal(once, twice)
+})
+
+// ── v1.3 L2 (bd ai-engineer-otci): large particles + split / combine ─────────
+// The v5 model adds `source.particleSize`, `node.transform`, and the
+// `splitCount` / `combineCount` transform counts. Every new field must survive
+// serialize → deserialize byte-faithfully. n5-large-particles.v5.js sets every
+// field explicitly. Spec §6: "Write the round-trip test before the serializer
+// change."
+
+test('round-trip is lossless for the full v5 large-particle coverage flow', () => {
+  const restored = deserializeFlow(serializeFlow(n5Flow))
+  assert.deepEqual(restored, n5Flow)
+})
+
+test('round-trip preserves source.particleSize (both large and small)', () => {
+  const restored = deserializeFlow(serializeFlow(n5Flow))
+  assert.equal(restored.nodes.find(n => n.id === 'epic').particleSize, 'large')
+  assert.equal(restored.nodes.find(n => n.id === 'tickets').particleSize, 'small')
+})
+
+test('round-trip preserves node.transform (none / split / combine)', () => {
+  const restored = deserializeFlow(serializeFlow(n5Flow))
+  assert.equal(restored.nodes.find(n => n.id === 'triage').transform, 'none')
+  assert.equal(restored.nodes.find(n => n.id === 'decompose').transform, 'split')
+  assert.equal(restored.nodes.find(n => n.id === 'integrate').transform, 'combine')
+})
+
+test('round-trip preserves splitCount and combineCount (non-default values)', () => {
+  const restored = deserializeFlow(serializeFlow(n5Flow))
+  assert.equal(restored.nodes.find(n => n.id === 'decompose').splitCount, 3)
+  assert.equal(restored.nodes.find(n => n.id === 'integrate').combineCount, 5)
+})
+
+test('round-trip of the v5 large-particle flow is idempotent (byte-stable)', () => {
+  const once = serializeFlow(n5Flow)
   const twice = serializeFlow(deserializeFlow(once))
   assert.equal(once, twice)
 })

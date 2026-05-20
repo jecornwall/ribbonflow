@@ -36,10 +36,11 @@ import { normalizeFlow } from './model.js'
  * Current flow-format version. M1 = 1; M2 = 2 (multi-source nodes, first-class
  * forks); v1.1 = 3 (Length/Speed/Width node controls, per-node colour scheme,
  * the `constraint` type dropped); v1.2 = 4 (first-class `rejections[]` —
- * failed-review back-paths). deserializeFlow() migrates any lower version
- * forward via migrate.js.
+ * failed-review back-paths); v1.3 L2 = 5 (large particles — `source.particleSize`,
+ * `node.transform` split/combine, the transform counts). deserializeFlow()
+ * migrates any lower version forward via migrate.js.
  */
-export const FLOW_FORMAT_VERSION = 4
+export const FLOW_FORMAT_VERSION = 5
 
 /**
  * Deep structural clone of a flow object.
@@ -142,22 +143,32 @@ export function deserializeFlow(input) {
  *         so the `length` check is what keeps such a flow from being misread
  *         as v2. An already-normalized v3 flow has `capacity` (re-derived)
  *         plus `length`/`colorScheme`, so it reads v3.
+ *   v5 — any node carries `transform`, or any source carries `particleSize`
+ *         (the v1.3 L2 large-particle markers — added by the v4→v5 migration
+ *         and never present on a v4 flow). Checked before v4 because a v5 flow
+ *         also carries the v4 `rejections[]` array.
  *   v4 — a top-level `rejections[]` array is present (the v1.2 rejection-edge
  *         marker — added by the v3→v4 migration and never present on a v3
  *         flow). Detecting it as v4 skips a harmless no-op v3→v4 migration.
  *   v3 — everything else (including an empty-nodes flow).
  *
  * @param {object} flow — a bare flow object (no formatVersion)
- * @returns {1|2|3|4}
+ * @returns {1|2|3|4|5}
  */
 function detectBareFlowVersion(flow) {
   // v1: top-level entryId is present (v1→v2 migration deletes it)
   if (flow.entryId !== undefined) return 1
+  const nodes = Array.isArray(flow.nodes) ? flow.nodes : []
+  // v5: a node carrying `transform` or a source carrying `particleSize` is the
+  // definitive v1.3 L2 marker. A v4 flow never carries either; the v4→v5
+  // migration adds them. Checked before v4 — a v5 flow also has rejections[].
+  if (nodes.some(n => n && (n.transform !== undefined || n.particleSize !== undefined))) {
+    return 5
+  }
   // v4: a top-level rejections[] array is the definitive v1.2 marker. A v3
   // flow never carries one; the v3→v4 migration adds it. (A v1 flow is caught
   // above first — entryId is the stronger, earlier marker.)
   if (Array.isArray(flow.rejections)) return 4
-  const nodes = Array.isArray(flow.nodes) ? flow.nodes : []
   // pre-v3: a surviving `kind:'constraint'` node is a definitive pre-v3 marker
   // (bd ai-engineer-bw3s). v3 retired the constraint type; a flow can otherwise
   // look fully v3-shaped (nodes carrying `length` / `colorScheme`, no

@@ -132,6 +132,15 @@ export {
   // v1.2 rejection-edge defaults (the designer's add-rejection tool seeds these).
   DEFAULT_REJECTION_RATE,
   DEFAULT_REJECTION_BOW_DEPTH,
+  // v1.3 L2 large-particle model — enums, defaults, the width-admission lint
+  // threshold (the designer's source-size + node-transform controls seed these).
+  PARTICLE_SIZES,
+  DEFAULT_PARTICLE_SIZE,
+  NODE_TRANSFORMS,
+  DEFAULT_NODE_TRANSFORM,
+  DEFAULT_SPLIT_COUNT,
+  DEFAULT_COMBINE_COUNT,
+  MIN_LARGE_ADMITTING_WIDTH,
 } from './format/model.js'
 
 export { migrateFlow } from './format/migrate.js'

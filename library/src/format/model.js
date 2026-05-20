@@ -20,6 +20,13 @@
  * limited crisp queue — a `capacity: 1` constraint forms a tight one-at-a-time
  * pile at its entrance, and a high-capacity immediate-upstream node acts as the
  * reservoir that pile sits in. See M2 spec §4.2.
+ *
+ * v1.3 L2 (bd ai-engineer-otci — see flow-v1.3-large-particles-design.md §2)
+ * adds the large-particle model: `source.particleSize` ('small'|'large'),
+ * `node.transform` ('none'|'split'|'combine'), and the `splitCount` /
+ * `combineCount` transform counts. normalizeFlow() fills their defaults;
+ * validateFlow() lints the §2.4 rules (split/combine counts, large-particle
+ * band-width admission). The format bumps to version 5.
  */
 
 /** Default emit rate (particles/sec) for a source node that sets none. */
@@ -52,6 +59,37 @@ export const DEFAULT_REJECTION_BOW_DEPTH = 80
 // preserved as a selectable option per Jason's direction (2026-05-20, bd ai-engineer-0h05).
 export const COLOR_SCHEMES = ['red', 'neutral', 'green', 'rose']
 export const DEFAULT_COLOR_SCHEME = 'neutral'
+
+// ── v1.3 L2 large-particle defaults (spec §2) ────────────────────────────────
+
+/** Particle sizes a source may emit (spec §2.1). */
+export const PARTICLE_SIZES = ['small', 'large']
+
+/** Default particle size for a source that authors none. */
+export const DEFAULT_PARTICLE_SIZE = 'small'
+
+/** Node transform behaviours (spec §2.2). */
+export const NODE_TRANSFORMS = ['none', 'split', 'combine']
+
+/** Default transform for a node that authors none. */
+export const DEFAULT_NODE_TRANSFORM = 'none'
+
+/** Default split count for a `transform:'split'` node that authors none. */
+export const DEFAULT_SPLIT_COUNT = 4
+
+/** Default combine count for a `transform:'combine'` node that authors none. */
+export const DEFAULT_COMBINE_COUNT = 4
+
+/**
+ * Minimum node width (viewBox units) that comfortably admits a large particle.
+ *
+ * A large particle has radius 9 (PARTICLE_RADIUS 3 × LARGE_PARTICLE_SCALE 3);
+ * with WALL_MARGIN it needs a band half-width ≥ ~11 (width ≥ ~22), and ~28 for
+ * comfortable travel. validateFlow() lints any large-particle-carrying node
+ * narrower than this — the "split before the constraint" guidance (spec §2.4 /
+ * §3.1).
+ */
+export const MIN_LARGE_ADMITTING_WIDTH = 28
 
 function clamp01(t) {
   return t < 0 ? 0 : t > 1 ? 1 : t
@@ -105,6 +143,7 @@ export const NODE_DEFAULTS = {
   width: DEFAULT_NODE_WIDTH,
   coupleSpeedWidth: true,
   colorScheme: DEFAULT_COLOR_SCHEME,
+  transform: DEFAULT_NODE_TRANSFORM, // v1.3 L2 — none | split | combine
 }
 
 function deepClone(value) {
@@ -169,6 +208,17 @@ export function normalizeFlow(flow) {
     }
     if (!Array.isArray(n.successors)) n.successors = []
     if (n.kind === 'source' && n.rate === undefined) n.rate = DEFAULT_SOURCE_RATE
+    // v1.3 L2 (spec §2.3): a source emits one particle size; a transform node
+    // carries a split/combine count. transform itself is filled by NODE_DEFAULTS.
+    if (n.kind === 'source' && n.particleSize === undefined) {
+      n.particleSize = DEFAULT_PARTICLE_SIZE
+    }
+    if (n.transform === 'split' && n.splitCount === undefined) {
+      n.splitCount = DEFAULT_SPLIT_COUNT
+    }
+    if (n.transform === 'combine' && n.combineCount === undefined) {
+      n.combineCount = DEFAULT_COMBINE_COUNT
+    }
     // Engine inputs derived from the v1.1 controls (spec §4.2).
     n.latency = n.length
     // capacity: an authored integer wins; otherwise derive from width.
@@ -233,6 +283,64 @@ function isUpstream(targetId, startId, nodes) {
     }
   }
   return false
+}
+
+/**
+ * Compute the set of node ids through whose band a *large* particle travels.
+ *
+ * Large particles originate at a `particleSize:'large'` source and at every
+ * `transform:'combine'` node (a combine fires one large from its exit). They
+ * travel forward along `successors` / fork branches / merge edges. A
+ * `transform:'split'` node consumes a large arrival and emits small particles,
+ * so it does NOT pass large to its successors — but the split node's own band
+ * still carries the large up to the split, so it is included.
+ *
+ * Backs the §2.4 width lint: any node in this set narrower than
+ * MIN_LARGE_ADMITTING_WIDTH cannot comfortably admit a large particle.
+ *
+ * @param {object} flow — a flow object
+ * @param {object[]} nodes — the flow's node list
+ * @returns {Set<string>} ids of nodes a large particle is present in
+ */
+function nodesCarryingLarge(flow, nodes) {
+  const byId = new Map(nodes.map(n => [n.id, n]))
+  // Forward adjacency from successors + fork branches + merge edges.
+  const succ = new Map(nodes.map(n => [n.id, new Set(n.successors || [])]))
+  const edge = (from, to) => {
+    if (!succ.has(from)) succ.set(from, new Set())
+    if (to != null) succ.get(from).add(to)
+  }
+  for (const fork of flow.forks || []) {
+    for (const b of fork.branches || []) edge(fork.from, b && b.to)
+  }
+  for (const merge of flow.merges || []) {
+    for (const from of merge.from || []) edge(from, merge.to)
+  }
+
+  const carries = new Set()
+  // `emits` — nodes that send a large particle to their successors.
+  const emits = new Set()
+  const queue = []
+  for (const n of nodes) {
+    const isLargeSource = n.kind === 'source' && n.particleSize === 'large'
+    if (isLargeSource) carries.add(n.id)
+    if (isLargeSource || n.transform === 'combine') {
+      if (!emits.has(n.id)) { emits.add(n.id); queue.push(n.id) }
+    }
+  }
+  while (queue.length > 0) {
+    const id = queue.shift()
+    for (const nextId of succ.get(id) || []) {
+      carries.add(nextId)
+      const next = byId.get(nextId)
+      // A node re-emits large to its own successors unless it splits.
+      if (next && next.transform !== 'split' && !emits.has(nextId)) {
+        emits.add(nextId)
+        queue.push(nextId)
+      }
+    }
+  }
+  return carries
 }
 
 /**
@@ -371,6 +479,69 @@ export function validateFlow(flow) {
       warnings.push(
         `node "${node.id}" uses the removed kind:'constraint' — v3 has no `
         + `constraint type (use a narrow width + the 'red' colorScheme)`,
+      )
+    }
+
+    // v1.3 L2 (spec §2.4) — transform enum + split/combine count rules.
+    if (node.transform !== undefined && !NODE_TRANSFORMS.includes(node.transform)) {
+      warnings.push(
+        `node "${node.id}" has an unknown transform "${node.transform}" — `
+        + `expected one of ${NODE_TRANSFORMS.join(' / ')}`,
+      )
+    }
+    if (node.transform === 'split' && node.splitCount !== undefined
+        && !(Number.isInteger(node.splitCount) && node.splitCount >= 2)) {
+      errors.push(
+        `node "${node.id}" is a split node with splitCount ${node.splitCount} — `
+        + 'expected an integer >= 2',
+      )
+    }
+    if (node.transform === 'combine' && node.combineCount !== undefined
+        && !(Number.isInteger(node.combineCount) && node.combineCount >= 2)) {
+      errors.push(
+        `node "${node.id}" is a combine node with combineCount ${node.combineCount} — `
+        + 'expected an integer >= 2',
+      )
+    }
+  }
+
+  // v1.3 L2 (spec §2.4) — large particles vs band width.
+  // particleSize is a source-only enum; warn on an unknown value.
+  for (const node of nodes) {
+    if (node.kind === 'source' && node.particleSize !== undefined
+        && !PARTICLE_SIZES.includes(node.particleSize)) {
+      warnings.push(
+        `source "${node.id}" has an unknown particleSize "${node.particleSize}" — `
+        + `expected one of ${PARTICLE_SIZES.join(' / ')}`,
+      )
+    }
+  }
+  const emitsLarge = nodes.some(
+    n => n.kind === 'source' && n.particleSize === 'large',
+  )
+  if (emitsLarge) {
+    const carrying = nodesCarryingLarge(flow, nodes)
+    const hasSplit = nodes.some(n => n.transform === 'split')
+    const tooNarrow = []
+    for (const node of nodes) {
+      if (carrying.has(node.id) && typeof node.width === 'number'
+          && node.width < MIN_LARGE_ADMITTING_WIDTH) {
+        tooNarrow.push(node)
+        warnings.push(
+          `node "${node.id}" is on a large-particle path but its width `
+          + `(${node.width}) is too narrow to admit one `
+          + `(min ~${MIN_LARGE_ADMITTING_WIDTH}) — `
+          + 'consider a split node upstream',
+        )
+      }
+    }
+    if (!hasSplit && tooNarrow.length > 0) {
+      warnings.push(
+        `flow emits large particles but has no split node, and `
+        + `${tooNarrow.length === 1 ? 'node' : 'nodes'} `
+        + tooNarrow.map(n => `"${n.id}"`).join(', ')
+        + ` downstream ${tooNarrow.length === 1 ? 'is' : 'are'} too narrow `
+        + 'to admit them — likely an authoring miss',
       )
     }
   }

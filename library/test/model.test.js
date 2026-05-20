@@ -22,10 +22,14 @@ import {
   SPEED_RANGE,
   DEFAULT_REJECTION_RATE,
   DEFAULT_REJECTION_BOW_DEPTH,
+  DEFAULT_SPLIT_COUNT,
+  DEFAULT_COMBINE_COUNT,
+  MIN_LARGE_ADMITTING_WIDTH,
 } from '../src/format/model.js'
 
 import m3Flow from './fixtures/flows/m3-coverage.v3.js'
 import v12Flow from './fixtures/flows/v12-rejections.v4.js'
+import n5Flow from './fixtures/flows/n5-large-particles.v5.js'
 
 // ── normalizeFlow — flow + node defaults ─────────────────────────────────────
 
@@ -381,4 +385,202 @@ test('validateFlow warns on a self-rejection (from === to)', () => {
     rejections: [{ from: 'r', to: 'r', rate: 0.2 }],
   })
   assert.ok(r.warnings.some(w => /self/i.test(w)))
+})
+
+// ── v1.3 L2 (bd ai-engineer-otci): large particles + split / combine ─────────
+// normalizeFlow defaults (spec §2.3) + validateFlow rules (spec §2.4).
+
+test('normalizeFlow fills particleSize:small on every source', () => {
+  const out = normalizeFlow({
+    nodes: [
+      { id: 's1', x: 0, y: 0, kind: 'source' },
+      { id: 's2', x: 1, y: 0, kind: 'source' },
+      { id: 'n', x: 2, y: 0, kind: 'normal' },
+    ],
+  })
+  assert.equal(out.nodes[0].particleSize, 'small')
+  assert.equal(out.nodes[1].particleSize, 'small')
+  // a non-source node never gains particleSize
+  assert.equal(out.nodes[2].particleSize, undefined)
+})
+
+test('normalizeFlow fills transform:none on every node', () => {
+  const out = normalizeFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source' },
+      { id: 'n', x: 1, y: 0, kind: 'normal' },
+    ],
+  })
+  assert.equal(out.nodes[0].transform, 'none')
+  assert.equal(out.nodes[1].transform, 'none')
+})
+
+test('normalizeFlow fills splitCount:4 on a split node', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 'd', x: 0, y: 0, transform: 'split' }],
+  })
+  assert.equal(out.nodes[0].splitCount, DEFAULT_SPLIT_COUNT)
+  assert.equal(out.nodes[0].splitCount, 4)
+})
+
+test('normalizeFlow fills combineCount:4 on a combine node', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 'c', x: 0, y: 0, transform: 'combine' }],
+  })
+  assert.equal(out.nodes[0].combineCount, DEFAULT_COMBINE_COUNT)
+  assert.equal(out.nodes[0].combineCount, 4)
+})
+
+test('normalizeFlow does not add split/combine counts to a transform:none node', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 'n', x: 0, y: 0, transform: 'none' }],
+  })
+  assert.equal(out.nodes[0].splitCount, undefined)
+  assert.equal(out.nodes[0].combineCount, undefined)
+})
+
+test('normalizeFlow preserves explicit particleSize / transform / counts', () => {
+  const out = normalizeFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', particleSize: 'large' },
+      { id: 'd', x: 1, y: 0, transform: 'split', splitCount: 7 },
+      { id: 'c', x: 2, y: 0, transform: 'combine', combineCount: 9 },
+    ],
+  })
+  assert.equal(out.nodes[0].particleSize, 'large')
+  assert.equal(out.nodes[1].splitCount, 7)
+  assert.equal(out.nodes[2].combineCount, 9)
+})
+
+test('normalizeFlow leaves the v5 large-particle coverage fixture intact', () => {
+  const out = normalizeFlow(n5Flow)
+  assert.equal(out.nodes.find(n => n.id === 'epic').particleSize, 'large')
+  assert.equal(out.nodes.find(n => n.id === 'decompose').transform, 'split')
+  assert.equal(out.nodes.find(n => n.id === 'decompose').splitCount, 3)
+  assert.equal(out.nodes.find(n => n.id === 'integrate').combineCount, 5)
+})
+
+test('validateFlow accepts the v5 large-particle coverage fixture', () => {
+  const r = validateFlow(n5Flow)
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.errors, [])
+})
+
+test('validateFlow errors on a split node with splitCount < 2', () => {
+  const r = validateFlow({
+    nodes: [{ id: 'd', x: 0, y: 0, kind: 'source', transform: 'split',
+              splitCount: 1, successors: [] }],
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.errors.some(e => /splitCount/.test(e)))
+})
+
+test('validateFlow errors on a combine node with combineCount < 2', () => {
+  const r = validateFlow({
+    nodes: [{ id: 'c', x: 0, y: 0, kind: 'source', transform: 'combine',
+              combineCount: 1, successors: [] }],
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.errors.some(e => /combineCount/.test(e)))
+})
+
+test('validateFlow does not error on a split node that authors no splitCount', () => {
+  // normalizeFlow defaults splitCount to 4 — a node omitting it is not an error.
+  const r = validateFlow({
+    nodes: [{ id: 'd', x: 0, y: 0, kind: 'source', transform: 'split',
+              successors: [] }],
+  })
+  assert.ok(!r.errors.some(e => /splitCount/.test(e)))
+})
+
+test('validateFlow warns on a large-particle path node too narrow to admit one', () => {
+  // large source → a narrow node sitting before any split → carries large.
+  const r = validateFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', particleSize: 'large',
+        successors: ['narrow'] },
+      { id: 'narrow', x: 1, y: 0, width: 20, transform: 'split', splitCount: 4,
+        successors: [] },
+    ],
+  })
+  assert.ok(r.warnings.some(w => /too narrow/i.test(w)))
+})
+
+test('validateFlow does not warn for a wide node on a large-particle path', () => {
+  const r = validateFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', particleSize: 'large',
+        successors: ['wide'] },
+      { id: 'wide', x: 1, y: 0, width: 70, successors: [] },
+    ],
+  })
+  assert.ok(!r.warnings.some(w => /too narrow/i.test(w)))
+})
+
+test('validateFlow does not warn for a narrow node downstream of a split', () => {
+  // a split converts large→small; a narrow node AFTER it carries only small.
+  const r = validateFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', particleSize: 'large',
+        successors: ['d'] },
+      { id: 'd', x: 1, y: 0, width: 80, transform: 'split', splitCount: 4,
+        successors: ['narrow'] },
+      { id: 'narrow', x: 2, y: 0, width: 20, successors: [] },
+    ],
+  })
+  assert.ok(!r.warnings.some(w => /too narrow/i.test(w)))
+})
+
+test('validateFlow warns when a flow emits large but has no split node and a node is too narrow', () => {
+  const r = validateFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', particleSize: 'large',
+        successors: ['narrow'] },
+      { id: 'narrow', x: 1, y: 0, width: 22, successors: [] },
+    ],
+  })
+  assert.ok(r.warnings.some(w => /no split node/i.test(w)))
+})
+
+test('validateFlow does not raise the no-split warning when a split node exists', () => {
+  const r = validateFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', particleSize: 'large',
+        successors: ['narrow'] },
+      { id: 'narrow', x: 1, y: 0, width: 22, transform: 'split', splitCount: 4,
+        successors: [] },
+    ],
+  })
+  assert.ok(!r.warnings.some(w => /no split node/i.test(w)))
+})
+
+test('validateFlow raises no large-particle warnings for a small-only flow', () => {
+  const r = validateFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', particleSize: 'small',
+        successors: ['narrow'] },
+      { id: 'narrow', x: 1, y: 0, width: 20, successors: [] },
+    ],
+  })
+  assert.ok(!r.warnings.some(w => /too narrow|no split/i.test(w)))
+})
+
+test('validateFlow warns on an unknown transform value', () => {
+  const r = validateFlow({
+    nodes: [{ id: 'n', x: 0, y: 0, kind: 'source', transform: 'wibble',
+              successors: [] }],
+  })
+  assert.ok(r.warnings.some(w => /unknown transform/i.test(w)))
+})
+
+test('validateFlow warns on an unknown particleSize value', () => {
+  const r = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', particleSize: 'huge',
+              successors: [] }],
+  })
+  assert.ok(r.warnings.some(w => /unknown particleSize/i.test(w)))
+})
+
+test('MIN_LARGE_ADMITTING_WIDTH is the documented ~28 threshold', () => {
+  assert.equal(MIN_LARGE_ADMITTING_WIDTH, 28)
 })
