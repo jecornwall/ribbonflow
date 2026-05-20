@@ -72,9 +72,8 @@
 
 export default {
   // viewBox no longer needs the x=-300..-700 off-canvas `_start` coverage.
-  // Leftmost content is now the `discovery` source label (labelX=20); a small
-  // negative origin gives that label clearance. Right edge unchanged at 1750
-  // (change-board at x=1550 + post-constraint plateau).
+  // Source nodes start at x=200/200/240; viewBox.x=-80 gives a small left-edge
+  // buffer. Right edge unchanged at 1750 (change-board at x=1550 + plateau).
   viewBox: { x: -80, y: 0, w: 1830, h: 900 },
   baseSpeed: 200,
 
@@ -113,12 +112,12 @@ export default {
     { id: 'discovery', x: 200, y: 180, label: 'discovery',
       kind: 'source', rate: 0.34,
       capacity: 2, latency: 0.6,
-      labelX: 20, labelDx: 0, labelDy: -60,
+      labelX: 200, labelDx: 0, labelDy: -60,
       successors: ['design'] },
 
     { id: 'design', x: 380, y: 180, label: 'design',
       capacity: 2, latency: 0.8,
-      labelX: 280, labelDx: 0, labelDy: -60,
+      labelX: 380, labelDx: 0, labelDy: -60,
       successors: ['design-review'] },
 
     { id: 'design-review', x: 560, y: 180, label: 'design review',
@@ -135,7 +134,7 @@ export default {
     { id: 'triage', x: 200, y: 450, label: 'triage',
       kind: 'source', rate: 0.33,
       capacity: 2, latency: 0.5,
-      labelX: 80, labelDx: 0, labelDy: -60,
+      labelX: 200, labelDx: 0, labelDy: -60,
       successors: ['build-bug'] },
 
     { id: 'build-bug', x: 540, y: 450, label: 'build · bug',
@@ -147,7 +146,7 @@ export default {
     { id: 'architecture', x: 240, y: 720, label: 'architecture',
       kind: 'source', rate: 0.33,
       capacity: 2, latency: 0.8,
-      labelX: 80, labelDx: 0, labelDy: 60,
+      labelX: 240, labelDx: 0, labelDy: 60,
       successors: ['build-platform'] },
 
     { id: 'build-platform', x: 540, y: 720, label: 'build · platform',

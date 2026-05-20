@@ -38,7 +38,7 @@
         "coupleSpeedWidth": true,
         "colorScheme": "neutral",
         "labelSide": "above",
-        "labelX": 20,
+        "labelX": 200,
         "labelDx": 0,
         "labelDy": -60,
         "successors": [
@@ -57,7 +57,7 @@
         "coupleSpeedWidth": true,
         "colorScheme": "neutral",
         "labelSide": "above",
-        "labelX": 280,
+        "labelX": 380,
         "labelDx": 0,
         "labelDy": -60,
         "successors": [
@@ -116,7 +116,7 @@
         "coupleSpeedWidth": true,
         "colorScheme": "neutral",
         "labelSide": "above",
-        "labelX": 80,
+        "labelX": 200,
         "labelDx": 0,
         "labelDy": -60,
         "successors": [
@@ -156,7 +156,7 @@
         "coupleSpeedWidth": true,
         "colorScheme": "neutral",
         "labelSide": "below",
-        "labelX": 80,
+        "labelX": 240,
         "labelDx": 0,
         "labelDy": 60,
         "successors": [
