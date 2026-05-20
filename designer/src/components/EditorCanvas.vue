@@ -19,12 +19,16 @@ import { GRID_SIZE } from '../lib/constants.js'
 import { slideFrame, inflateRect, viewBoxStr, GUTTER_FRAC } from '../lib/slideFrame.js'
 import CanvasNode from './CanvasNode.vue'
 import CanvasEdge from './CanvasEdge.vue'
+import CanvasRejectionEdge from './CanvasRejectionEdge.vue'
 
 const doc = useFlowDoc()
 const state = doc.state
 
 const svgRef = ref(null)
-// active drag: { kind: 'node'|'label', id, offX, offY } or null
+// active drag, one of:
+//   { kind: 'node'|'label', id, offX, offY }
+//   { kind: 'rejection-apex', from, to }   ← v1.2 R5 bow-depth/side drag
+// or null
 let drag = null
 // live pointer position in viewBox units (for the add-edge rubber-band)
 const ptr = ref({ x: 0, y: 0 })
@@ -55,6 +59,31 @@ const edges = computed(() => {
   return out
 })
 
+// Rejection edges (v1.2 R5) — resolve each `flow.rejections[]` entry's
+// from/to ids to their live node objects so CanvasRejectionEdge can bow the
+// arc between them. A dangling reference (missing endpoint) is skipped — it
+// is a transient mid-edit state validateFlow flags; the canvas must not crash.
+const rejectionEdges = computed(() => {
+  const byId = new Map(state.flow.nodes.map((n) => [n.id, n]))
+  const out = []
+  for (const rej of state.flow.rejections || []) {
+    if (!rej) continue
+    const from = byId.get(rej.from)
+    const to = byId.get(rej.to)
+    if (from && to) {
+      out.push({
+        id: `rej:${rej.from}->${rej.to}`,
+        from,
+        to,
+        bow: rej.bow,
+        fromId: rej.from,
+        toId: rej.to,
+      })
+    }
+  }
+  return out
+})
+
 const pendingFromNode = computed(() =>
   state.pendingEdgeFrom ? doc.findNode(state.pendingEdgeFrom) : null,
 )
@@ -76,6 +105,15 @@ function isSelectedEdge(edge) {
   const s = state.selection
   return (
     s.kind === 'edge' &&
+    s.edge &&
+    s.edge.from === edge.fromId &&
+    s.edge.to === edge.toId
+  )
+}
+function isSelectedRejection(edge) {
+  const s = state.selection
+  return (
+    s.kind === 'rejection' &&
     s.edge &&
     s.edge.from === edge.fromId &&
     s.edge.to === edge.toId
@@ -140,6 +178,59 @@ function onEdgeDown(e, edge) {
   doc.selectEdge(edge.fromId, edge.toId)
 }
 
+// ── rejection edges (v1.2 R5) ────────────────────────────────────────────────
+// Selecting the arc opens the inspector on it; grabbing the apex selects it
+// AND begins a depth/side drag — mirroring CanvasNode's label handle, which
+// likewise selects then drags in one gesture.
+function onRejectionDown(e, edge) {
+  e.stopPropagation()
+  if (isLinkTool.value) return
+  doc.selectRejection(edge.fromId, edge.toId)
+}
+function onApexDown(e, edge) {
+  e.stopPropagation()
+  if (isLinkTool.value) return
+  doc.selectRejection(edge.fromId, edge.toId)
+  drag = { kind: 'rejection-apex', from: edge.fromId, to: edge.toId }
+  svgRef.value.setPointerCapture(e.pointerId)
+}
+
+/**
+ * Apply an apex drag: the pointer position sets the rejection edge's bow.
+ *
+ * The arc's apex sits at the chord midpoint displaced perpendicular by
+ * bow.depth/2 (the Bézier t=0.5 point — control point is mid + n·depth, apex
+ * is mid + n·depth/2). So the signed perpendicular offset of the pointer from
+ * the chord midpoint IS depth/2: depth = 2·|offset|, and the offset's sign
+ * picks the side. Dragging the apex across the chord (offset crosses 0) flips
+ * bow.side. Depth is live (no remount); side flips bump immediately — R4's
+ * documented contract. commitEdit() on pointer release bumps the preview.
+ */
+function applyApexDrag(d, p) {
+  const from = doc.findNode(d.from)
+  const to = doc.findNode(d.to)
+  if (!from || !to) return
+  const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const len = Math.hypot(dx, dy) || 1
+  // Canonical chord normal oriented to 'below' (+y) — matches rejectionBowCurve.
+  let nx = -dy / len
+  let ny = dx / len
+  if (ny < 0) {
+    nx = -nx
+    ny = -ny
+  }
+  const offset = (p.x - mid.x) * nx + (p.y - mid.y) * ny
+  const side = offset >= 0 ? 'below' : 'above'
+  const depth = 2 * Math.abs(offset)
+  const rej = doc.findRejection(d.from, d.to)
+  if (rej && rej.bow && rej.bow.side !== side) {
+    doc.setRejectionBowSide(d.from, d.to, side)
+  }
+  doc.setRejectionBowDepth(d.from, d.to, depth)
+}
+
 function onBackgroundDown(e) {
   const p = svgPoint(e)
   if (state.tool === 'add-node') {
@@ -165,6 +256,8 @@ function onMove(e) {
   if (!drag) return
   if (drag.kind === 'node') {
     doc.moveNode(drag.id, p.x - drag.offX, p.y - drag.offY)
+  } else if (drag.kind === 'rejection-apex') {
+    applyApexDrag(drag, p)
   } else {
     const n = doc.findNode(drag.id)
     doc.moveLabel(drag.id, p.x - drag.offX - n.x, p.y - drag.offY - n.y)
@@ -274,6 +367,19 @@ function onUp(e) {
         :to="edge.to"
         :selected="isSelectedEdge(edge)"
         @edgedown="onEdgeDown($event, edge)"
+      />
+
+      <!-- rejection edges (v1.2 R5): dotted red bow arcs, drawn above the
+           forward edges so their apex handles stay grabbable -->
+      <CanvasRejectionEdge
+        v-for="rej in rejectionEdges"
+        :key="rej.id"
+        :from="rej.from"
+        :to="rej.to"
+        :bow="rej.bow"
+        :selected="isSelectedRejection(rej)"
+        @edgedown="onRejectionDown($event, rej)"
+        @apexdown="onApexDown($event, rej)"
       />
 
       <!-- two-click link rubber-band (add-edge / add-rejection) -->
