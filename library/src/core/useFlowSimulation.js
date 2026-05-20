@@ -12,6 +12,7 @@ import {
   buildBranches,
   buildPinchWidthFn,
   segmentedRibbonLayout,
+  segmentBoundsByLatency,
   computeNodeWidths,
   DEFAULT_BAND_WIDTH,
   MIN_RIBBON_WIDTH,
@@ -268,6 +269,14 @@ export function createFlowSimulation(flow, opts = {}) {
     branch.anchorS = branch.anchors.map(
       a => projectToCenterline(branch.centerline, a.x, a.y).s,
     )
+    // Latency-distributed per-node segment boundaries (length N+1).
+    // segBounds[i] is the arc-length where node i's RIBBON SEGMENT starts —
+    // the upstream edge of the visible band (orange constraint band + its
+    // pink transition wing all sit inside [segBounds[i], segBounds[i+1]]).
+    // bd ai-engineer-c42z: capacity-blocked agents queue at this upstream
+    // edge so the visible backlog forms BEFORE the constraint's segment,
+    // not inside it — the segment itself reads as "the work being processed".
+    branch.segBounds = segmentBoundsByLatency(branch, flow)
     if (flow.pinchMode === 'constraint-only') {
       branch.widthFn = buildPinchWidthFn(branch, flow)
     } else {
@@ -798,8 +807,16 @@ export function createFlowSimulation(flow, opts = {}) {
           if (shouldGate) {
             const tIdx = branch.nodeIds.indexOf(agent.targetNodeId)
             if (tIdx >= 0) {
-              const targetS = branch.anchorS[tIdx]
-              const blockerS = Math.max(0, targetS - PARTICLE_RADIUS)
+              // bd ai-engineer-c42z: hold the queue at the UPSTREAM EDGE of the
+              // target's ribbon segment (segBounds[tIdx]), not at the node
+              // anchor. Capacity-blocked agents decelerate to a stop just
+              // before the constraint's segment, so the visible backlog piles
+              // into the PRECEDING segment; the constraint's own segment (the
+              // orange band + pink transition wing) stays sparse — only the
+              // ~capacity agents actively being processed occupy it.
+              const blockerS = branch.segBounds
+                ? branch.segBounds[tIdx]
+                : Math.max(0, branch.anchorS[tIdx] - PARTICLE_RADIUS)
               const d = blockerS - bestS
               if (d < frontDist) frontDist = d
             }
@@ -1309,8 +1326,12 @@ export function createFlowSimulation(flow, opts = {}) {
           if (occupancy[targetNode.id] >= targetNode.capacity) {
             const tIdx = branch.nodeIds.indexOf(agent.targetNodeId)
             if (tIdx >= 0) {
-              const targetS = branch.anchorS[tIdx]
-              const limit = Math.max(0, targetS - PARTICLE_RADIUS)
+              // bd ai-engineer-c42z: arrest an overshooting agent at the
+              // UPSTREAM EDGE of the target's ribbon segment (segBounds[tIdx]),
+              // the same boundary the queue holds at — not at the node anchor.
+              const limit = branch.segBounds
+                ? branch.segBounds[tIdx]
+                : Math.max(0, branch.anchorS[tIdx] - PARTICLE_RADIUS)
               if (bestS > limit) {
                 // Past advisory boundary. Brake forward-along-tangent
                 // velocity component at ACCEL_CAP per second (ebv fix —
@@ -1332,7 +1353,26 @@ export function createFlowSimulation(flow, opts = {}) {
           const targetNode = flow.nodes.find(n => n.id === agent.targetNodeId)
           const distToTarget = Math.hypot(targetNode.x - agent.x, targetNode.y - agent.y)
           const ENTRY_DIST = 30
-          if (distToTarget < ENTRY_DIST) {
+          // bd ai-engineer-c42z: a capacity-gated target admits its front
+          // agent at the UPSTREAM EDGE of its ribbon segment — the same
+          // boundary the queue (anticipatory-decel blocker, above) holds at.
+          // Without this the queue would deadlock: agents stopped at
+          // segBounds[tIdx] never reach the Euclidean node-anchor gate.
+          // ENTRY_DIST of arc-length slack covers the freeze zone
+          // (FREEZE_DIST_NEAR=25) so a frozen front agent still gets admitted
+          // when its slot opens. The admitted agent immediately becomes the
+          // occupant and moves downstream into the segment; the queue behind
+          // it stays piled before the segment.
+          const gateIdx = branch.segBounds
+            ? branch.nodeIds.indexOf(agent.targetNodeId)
+            : -1
+          const segGated = gateIdx >= 0 && (
+            occupancy[targetNode.id] >= targetNode.capacity ||
+            targetNode.capacity === 1
+          )
+          const atSegmentEdge = segGated
+            && bestS >= branch.segBounds[gateIdx] - ENTRY_DIST
+          if (distToTarget < ENTRY_DIST || atSegmentEdge) {
             if (occupancy[targetNode.id] < targetNode.capacity) {
               // Cross the boundary.
               if (agent.currentNodeId) {
