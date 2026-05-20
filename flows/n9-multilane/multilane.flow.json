@@ -2,36 +2,18 @@
   "formatVersion": 3,
   "flow": {
     "viewBox": {
-      "x": -300,
+      "x": -80,
       "y": 0,
-      "w": 2050,
+      "w": 1830,
       "h": 900
     },
     "baseSpeed": 200,
-    "initialAgents": 35,
+    "initialAgents": 12,
     "inkWobble": true,
     "fenceMarkers": true,
     "stageAnchors": true,
     "showLegend": false,
-    "forks": [
-      {
-        "from": "_start",
-        "branches": [
-          {
-            "to": "discovery",
-            "rateShare": 0.3333333333333333
-          },
-          {
-            "to": "triage",
-            "rateShare": 0.3333333333333333
-          },
-          {
-            "to": "architecture",
-            "rateShare": 0.3333333333333333
-          }
-        ]
-      }
-    ],
+    "forks": [],
     "merges": [
       {
         "to": "cross-team-review",
@@ -44,33 +26,12 @@
     ],
     "nodes": [
       {
-        "id": "_start",
-        "x": -700,
-        "y": 450,
-        "label": "",
-        "kind": "source",
-        "rate": 1,
-        "length": 0.01,
-        "speed": 1,
-        "width": 70,
-        "capacity": 50,
-        "coupleSpeedWidth": true,
-        "colorScheme": "neutral",
-        "labelSide": "above",
-        "labelDx": 0,
-        "labelDy": 0,
-        "successors": [
-          "discovery",
-          "triage",
-          "architecture"
-        ]
-      },
-      {
         "id": "discovery",
         "x": 200,
         "y": 180,
         "label": "discovery",
-        "kind": "normal",
+        "kind": "source",
+        "rate": 0.34,
         "length": 0.6,
         "speed": 1,
         "width": 70,
@@ -147,7 +108,8 @@
         "x": 200,
         "y": 450,
         "label": "triage",
-        "kind": "normal",
+        "kind": "source",
+        "rate": 0.33,
         "length": 0.5,
         "speed": 1,
         "width": 70,
@@ -186,7 +148,8 @@
         "x": 240,
         "y": 720,
         "label": "architecture",
-        "kind": "normal",
+        "kind": "source",
+        "rate": 0.33,
         "length": 0.8,
         "speed": 1,
         "width": 70,
@@ -227,10 +190,10 @@
         "label": "cross-team review",
         "kind": "normal",
         "length": 2,
-        "speed": 0.4,
+        "speed": 1,
         "width": 30,
         "capacity": 1,
-        "coupleSpeedWidth": true,
+        "coupleSpeedWidth": false,
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,

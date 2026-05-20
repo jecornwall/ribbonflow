@@ -187,8 +187,34 @@ test('Fork routing: both fork branches receive traffic and agents reach the leaf
   const eEntries = sim.traces.entries.filter(e => e.nodeId === 'e').length
   assert.ok(eEntries > 0, `e (merge) should receive traffic; got ${eEntries}`)
   // Round-robin: c and d entry counts should be within 1 of each other.
+  // forkFlow declares no `flow.forks`, so nextSuccessor uses even round-robin.
   assert.ok(Math.abs(cEntries - dEntries) <= 1,
     `round-robin: |c - d| should be ≤ 1; got c=${cEntries}, d=${dEntries}`)
+})
+
+// ──────────────────────────────────────────────────────────────────────────
+// rateShare-weighted fork routing (M2 §2.2 + §8 follow-up, bd ai-engineer-dxgu).
+//
+// A first-class `fork` declares a per-branch `rateShare`. nextSuccessor must
+// route agents in PROPORTION to those shares — so agent traffic matches the
+// same split the §5.2 width coupling carries visually. m2-coverage.v2 declares
+// a fork at `intake` splitting 0.7 / 0.3 between lane-fast and lane-slow.
+// ──────────────────────────────────────────────────────────────────────────
+
+test('Fork routing (M2 §2.2): agents route in proportion to branch rateShare', () => {
+  const sim = createFlowSimulation(m2Coverage, { initialAgents: 20 })
+  for (let i = 0; i < 3600; i++) sim.step(1 / 60)  // 60s — a solid sample
+  const fast = sim.traces.entries.filter(e => e.nodeId === 'lane-fast').length
+  const slow = sim.traces.entries.filter(e => e.nodeId === 'lane-slow').length
+  assert.ok(fast > 0 && slow > 0,
+    `both fork branches must receive traffic; got fast=${fast}, slow=${slow}`)
+  // Declared split 0.7 / 0.3 → expected ratio ≈ 2.33. An even round-robin
+  // would land near 1.0 — well outside this band. Lenient [1.6, 3.5] absorbs
+  // integer-count quantisation on a modest, constraint-throttled sample.
+  const ratio = fast / slow
+  assert.ok(ratio >= 1.6 && ratio <= 3.5,
+    `expected lane-fast/lane-slow ≈ 2.33 (rateShare 0.7/0.3); `
+    + `got ${ratio.toFixed(2)} (fast=${fast}, slow=${slow})`)
 })
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -331,11 +357,10 @@ test('Fork flow: no agent escapes the ribbon over 30s', () => {
 // physics actually enforces — looser than the visible pinch curve, which is
 // rendered in the flow-curve layer separately.
 //
-// Includes the three-lane n9-multilane topology — its convergence at the
-// constraint exercises the fork-tiebreaker on three sibling branches that
-// share both an off-canvas root (_start) and the same merge node
-// (cross-team-review). If the tiebreaker ever regresses, this is where
-// it'll surface first.
+// Includes the three-lane n9-multilane topology — three independent
+// on-canvas source nodes (M2 §5.1) whose lanes converge on the same merge
+// node (cross-team-review). Its convergence exercises the merge-side branch
+// tiebreaker; if that ever regresses, this is where it'll surface first.
 // ──────────────────────────────────────────────────────────────────────────
 
 const ALL_FLOWS = [
@@ -833,14 +858,27 @@ test('Source rate-limit (N4): over 30s yields entries gated by constraint throug
     `expected ≥18 entry promotions over 30s (constraint-throttled); got ${entryEntries}`)
 })
 
-test('Source rate-limit (N9): three-lane round-robin, ~1.0/s aggregate', () => {
-  // N9 _start round-robins into 3 lane starts. Aggregate spawn rate is 1.0/s.
-  const sim = createFlowSimulation(n9MultiLane, { initialAgents: 30 })
-  for (let i = 0; i < 1800; i++) sim.step(1 / 60)  // 30s
-  const startEntries = sim.traces.entries.filter(e => e.nodeId === '_start').length
-  // 1.0/s × 30s = 30 nominal entries to _start; floor at 20 lenient.
-  assert.ok(startEntries >= 20,
-    `expected ≥20 _start entries over 30s at spawnRate=1.0; got ${startEntries}`)
+test('Multi-source (N9): three real source nodes each emit, healthy slide-window throughput', () => {
+  // n9-multilane is re-authored (M2 §5.1, bd ai-engineer-dxgu) as THREE real
+  // kind:'source' nodes — one per lane (discovery / triage / architecture) —
+  // retiring the off-canvas `_start` round-robin hack. Each source emits
+  // independently at its own rate (~0.33/s; aggregate ≈ 1.0/s).
+  //
+  // The off-canvas `_start` runway used to throttle slide-window throughput
+  // to ~0-1 exits (bd ai-engineer-v9mj); with on-canvas sources agents reach
+  // the constraint inside the visible band immediately and the constraint
+  // (cap 1) becomes the only gate — the optic the slide actually wants.
+  assert.equal(n9MultiLane.nodes.find(n => n.id === '_start'), undefined,
+    'the off-canvas _start hack must be retired')
+  const sim = createFlowSimulation(n9MultiLane, { initialAgents: 12 })
+  for (let i = 0; i < 1800; i++) sim.step(1 / 60)  // 30s slide window
+  for (const id of ['discovery', 'triage', 'architecture']) {
+    const emissions = sim.traces.entries.filter(e => e.nodeId === id).length
+    assert.ok(emissions >= 5,
+      `source ${id} should emit independently; got ${emissions} over 30s`)
+  }
+  assert.ok(sim.traces.exits.length >= 5,
+    `expected ≥5 exits over the 30s slide window; got ${sim.traces.exits.length}`)
 })
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1027,7 +1065,8 @@ test('§Frame-rate independence (N4): 1/1440s rAF-emulated stepping advances for
 //         entries trickle`)
 //       - throughput respects constraint over 30s (`Source rate-limit (N4):
 //         over 30s yields entries gated by constraint throughput`)
-//       - N9 round-robin (`Source rate-limit (N9): three-lane round-robin`)
+//       - N9 multi-source (`Multi-source (N9): three real source nodes
+//         each emit, healthy slide-window throughput`)
 //
 //   • No-escape ironclad + ribbon-polygon clamp (1al + ebv):
 //       - per-flow 30s × 8 reruns (`Tier 1 invariant (n4-toc-baseline / ...)

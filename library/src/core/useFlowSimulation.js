@@ -388,10 +388,10 @@ export function createFlowSimulation(flow, opts = {}) {
 
   // Compute the ribbon's geometric bounding box — the union of every branch's
   // centerline samples expanded by the local max half-width. This is the
-  // bound the teleport backstop checks against, not the viewBox: flows like
-  // n9-multilane put their entry node off-canvas (x=-300) to keep the
-  // virtual fork stub clipped out of the visible frame, and a strict
-  // viewBox check would teleport every spawn.
+  // bound the teleport backstop checks against, not the viewBox: a flow may
+  // legitimately place geometry (a label leader, a source spawn jitter
+  // envelope) marginally outside the authored viewBox, and a strict viewBox
+  // check would teleport otherwise-valid spawns.
   const ribbonBB = (() => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const b of branches) {
@@ -413,13 +413,62 @@ export function createFlowSimulation(flow, opts = {}) {
     return { minX, maxX, minY, maxY }
   })()
 
-  // fork routing counters: nodeId → index of next successor to use
+  // ── Fork routing (M2 §2.2 + §5.2 — rateShare-weighted) ────────────────────
+  // A first-class `fork` declares how a node's inflow splits across its
+  // successor branches. When the flow declares a fork for a node, agents are
+  // routed in PROPORTION to each branch's `rateShare` — so agent traffic
+  // matches the same split the §5.2 width coupling carries *visually*. Without
+  // a declared fork (or for a branch with no `rateShare`) the share is even,
+  // which degrades exactly to plain round-robin — so flows with no `forks`
+  // (the synthetic `forkFlow`, etc.) are unaffected.
+  //
+  // The proportional distribution uses a deterministic lowest-ratio picker
+  // (assigned-count / share) — the same scheme as pickSourceWeighted — so the
+  // long-run branch counts track the declared rateShare. rateShare values do
+  // not need to sum to 1: the picker normalises by ratio.
+  const forkShares = {}  // nodeId → { successorId: share }
+  for (const fork of flow.forks || []) {
+    if (!fork || fork.from == null) continue
+    const fbranches = fork.branches || []
+    const n = fbranches.length || 1
+    const shares = {}
+    for (const b of fbranches) {
+      const to = typeof b === 'string' ? b : (b && b.to)
+      if (to == null) continue
+      shares[to] = (b && typeof b === 'object' && typeof b.rateShare === 'number')
+        ? b.rateShare
+        : 1 / n  // omitted rateShare → even share (M2 §2.2)
+    }
+    forkShares[fork.from] = shares
+  }
+  // even round-robin counters (nodes with no declared fork)
   const forkCounters = Object.fromEntries(flow.nodes.map(n => [n.id, 0]))
+  // weighted-routing assignment counts (nodes with a declared fork)
+  const forkAssign = {}  // nodeId → { successorId: count }
 
   function nextSuccessor(node) {
     const succ = node.successors || []
     if (succ.length === 0) return null
     if (succ.length === 1) return succ[0]
+    const shares = forkShares[node.id]
+    if (shares) {
+      // rateShare-weighted: pick the successor with the lowest
+      // assigned-count / share ratio. A successor the fork does not list
+      // falls back to an even share so it still receives traffic.
+      let counts = forkAssign[node.id]
+      if (!counts) { counts = {}; forkAssign[node.id] = counts }
+      let best = succ[0]
+      let bestScore = Infinity
+      for (const id of succ) {
+        const share = typeof shares[id] === 'number' ? shares[id] : 1 / succ.length
+        const w = share > 0 ? share : 1e-9
+        const score = (counts[id] || 0) / w
+        if (score < bestScore) { bestScore = score; best = id }
+      }
+      counts[best] = (counts[best] || 0) + 1
+      return best
+    }
+    // even round-robin (no declared fork)
     const i = forkCounters[node.id] % succ.length
     forkCounters[node.id] = (forkCounters[node.id] + 1) % succ.length
     return succ[i]

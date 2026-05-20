@@ -23,7 +23,7 @@ import {
 } from '../src/format/index.js'
 
 import n4FlowV1 from './fixtures/flows/n4-toc-baseline.js'
-import n9FlowV1 from './fixtures/flows/n9-multilane.js'
+import n9FlowV1 from './fixtures/flows/n9-multilane.v1.js'
 import m3FlowV3 from './fixtures/flows/m3-coverage.v3.js'
 
 // ── Bare v1 flow object (the deck-format input) ───────────────────────────────

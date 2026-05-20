@@ -27,7 +27,7 @@ import { migrateFlow } from '../src/format/migrate.js'
 import { speedFromWidth } from '../src/format/model.js'
 
 import n4FlowV1 from './fixtures/flows/n4-toc-baseline.js'
-import n9FlowV1 from './fixtures/flows/n9-multilane.js'
+import n9FlowV1 from './fixtures/flows/n9-multilane.v1.js'
 import m2FlowV2 from './fixtures/flows/m2-coverage.v2.js'
 
 test('FLOW_FORMAT_VERSION is 3 after v1.1', () => {

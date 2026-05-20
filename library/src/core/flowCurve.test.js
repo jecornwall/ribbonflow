@@ -923,7 +923,7 @@ test('RIBBON_SCHEME_COLORS_LIGHT is a lighter tone than the full scheme colour',
 // clipPath can reference it. They do not test the Vue render directly — that is
 // verified by running the parity harness in Playwright.
 
-import n9FlowV1Fixture from '../../test/fixtures/flows/n9-multilane.js'
+import n9FlowV1Fixture from '../../test/fixtures/flows/n9-multilane.v1.js'
 
 // Import migration + normalization to set up the same path <FlowEmbed> uses.
 import { migrateFlow } from '../../src/format/migrate.js'

@@ -46,7 +46,7 @@ test('round-trip is lossless for the N4 baseline flow', () => {
   assert.deepEqual(restored, n4Flow)
 })
 
-test('round-trip is lossless for the N9 multi-lane flow (forks)', () => {
+test('round-trip is lossless for the N9 multi-lane flow (3 real sources, merge)', () => {
   const restored = deserializeFlow(serializeFlow(n9Flow))
   assert.deepEqual(restored, n9Flow)
 })
