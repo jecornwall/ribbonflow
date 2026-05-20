@@ -1,0 +1,255 @@
+{
+  "formatVersion": 3,
+  "flow": {
+    "viewBox": {
+      "x": -300,
+      "y": 0,
+      "w": 2050,
+      "h": 900
+    },
+    "baseSpeed": 200,
+    "initialAgents": 35,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "stageAnchors": true,
+    "showLegend": false,
+    "forks": [
+      {
+        "from": "_start",
+        "branches": [
+          {
+            "to": "discovery",
+            "rateShare": 0.3333333333333333
+          },
+          {
+            "to": "triage",
+            "rateShare": 0.3333333333333333
+          },
+          {
+            "to": "architecture",
+            "rateShare": 0.3333333333333333
+          }
+        ]
+      }
+    ],
+    "merges": [
+      {
+        "to": "cross-team-review",
+        "from": [
+          "build-feature",
+          "build-bug",
+          "build-platform"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "_start",
+        "x": -700,
+        "y": 450,
+        "label": "",
+        "kind": "source",
+        "rate": 1,
+        "length": 0.01,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": 0,
+        "successors": [
+          "discovery",
+          "triage",
+          "architecture"
+        ]
+      },
+      {
+        "id": "discovery",
+        "x": 200,
+        "y": 180,
+        "label": "discovery",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 20,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "design"
+        ]
+      },
+      {
+        "id": "design",
+        "x": 380,
+        "y": 180,
+        "label": "design",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 280,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "design-review"
+        ]
+      },
+      {
+        "id": "design-review",
+        "x": 560,
+        "y": 180,
+        "label": "design review",
+        "kind": "normal",
+        "length": 1,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 540,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "build-feature"
+        ]
+      },
+      {
+        "id": "build-feature",
+        "x": 760,
+        "y": 180,
+        "label": "build · feature",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 820,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "cross-team-review"
+        ]
+      },
+      {
+        "id": "triage",
+        "x": 200,
+        "y": 450,
+        "label": "triage",
+        "kind": "normal",
+        "length": 0.5,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 80,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "build-bug"
+        ]
+      },
+      {
+        "id": "build-bug",
+        "x": 540,
+        "y": 450,
+        "label": "build · bug",
+        "kind": "normal",
+        "length": 0.5,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 700,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "cross-team-review"
+        ]
+      },
+      {
+        "id": "architecture",
+        "x": 240,
+        "y": 720,
+        "label": "architecture",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelX": 80,
+        "labelDx": 0,
+        "labelDy": 60,
+        "successors": [
+          "build-platform"
+        ]
+      },
+      {
+        "id": "build-platform",
+        "x": 540,
+        "y": 720,
+        "label": "build · platform",
+        "kind": "normal",
+        "length": 0.7,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelX": 700,
+        "labelDx": 0,
+        "labelDy": 60,
+        "successors": [
+          "cross-team-review"
+        ]
+      },
+      {
+        "id": "cross-team-review",
+        "x": 1100,
+        "y": 450,
+        "label": "cross-team review",
+        "kind": "normal",
+        "length": 2,
+        "speed": 0.4,
+        "width": 30,
+        "coupleSpeedWidth": true,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "change-board"
+        ]
+      },
+      {
+        "id": "change-board",
+        "x": 1550,
+        "y": 450,
+        "label": "change board",
+        "kind": "normal",
+        "length": 0.5,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": []
+      }
+    ]
+  }
+}

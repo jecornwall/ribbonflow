@@ -1,0 +1,146 @@
+{
+  "formatVersion": 3,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 0,
+      "w": 2000,
+      "h": 550
+    },
+    "baseSpeed": 200,
+    "initialAgents": 12,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "draft",
+        "x": 160,
+        "y": 275,
+        "label": "draft",
+        "kind": "source",
+        "rate": 0.4,
+        "length": 0.5,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "reviewer-arch"
+        ]
+      },
+      {
+        "id": "reviewer-arch",
+        "x": 440,
+        "y": 275,
+        "label": "arch",
+        "kind": "normal",
+        "length": 1.6,
+        "speed": 0.4,
+        "width": 30,
+        "coupleSpeedWidth": true,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "reviewer-legal"
+        ]
+      },
+      {
+        "id": "reviewer-legal",
+        "x": 720,
+        "y": 275,
+        "label": "legal",
+        "kind": "normal",
+        "length": 1.6,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "reviewer-sec"
+        ]
+      },
+      {
+        "id": "reviewer-sec",
+        "x": 1000,
+        "y": 275,
+        "label": "sec",
+        "kind": "normal",
+        "length": 1.6,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "reviewer-data"
+        ]
+      },
+      {
+        "id": "reviewer-data",
+        "x": 1280,
+        "y": 275,
+        "label": "data",
+        "kind": "normal",
+        "length": 1.6,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "reviewer-comms"
+        ]
+      },
+      {
+        "id": "reviewer-comms",
+        "x": 1560,
+        "y": 275,
+        "label": "comms",
+        "kind": "normal",
+        "length": 1.6,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "approved"
+        ]
+      },
+      {
+        "id": "approved",
+        "x": 1840,
+        "y": 275,
+        "label": "approved",
+        "kind": "normal",
+        "length": 0.5,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": []
+      }
+    ]
+  }
+}

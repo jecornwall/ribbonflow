@@ -1,0 +1,19 @@
+{
+  "id": "n17-review-turnaround",
+  "title": "N17 · review turnaround",
+  "flows": [
+    {
+      "slug": "before",
+      "title": "Before"
+    },
+    {
+      "slug": "after",
+      "title": "After · review invest"
+    }
+  ],
+  "transition": {
+    "durationMs": 900,
+    "holdMs": 2400,
+    "easing": "easeInOut"
+  }
+}

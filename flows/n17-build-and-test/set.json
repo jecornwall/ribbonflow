@@ -1,0 +1,19 @@
+{
+  "id": "n17-build-and-test",
+  "title": "N17 · build & test environment",
+  "flows": [
+    {
+      "slug": "before",
+      "title": "Before"
+    },
+    {
+      "slug": "after",
+      "title": "After · platform invest"
+    }
+  ],
+  "transition": {
+    "durationMs": 900,
+    "holdMs": 2400,
+    "easing": "easeInOut"
+  }
+}

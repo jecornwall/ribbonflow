@@ -1,0 +1,186 @@
+{
+  "formatVersion": 3,
+  "flow": {
+    "viewBox": {
+      "x": -120,
+      "y": 0,
+      "w": 1920,
+      "h": 900
+    },
+    "baseSpeed": 200,
+    "initialAgents": 40,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "_start",
+        "x": -700,
+        "y": 450,
+        "label": "",
+        "kind": "source",
+        "rate": 1,
+        "length": 0.01,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": 0,
+        "successors": [
+          "build-a",
+          "build-b",
+          "build-c"
+        ]
+      },
+      {
+        "id": "build-a",
+        "x": 320,
+        "y": 200,
+        "label": "build · A",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 0.7,
+        "width": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 320,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "ci-cd"
+        ]
+      },
+      {
+        "id": "build-b",
+        "x": 320,
+        "y": 450,
+        "label": "build · B",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 0.7,
+        "width": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 320,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "ci-cd"
+        ]
+      },
+      {
+        "id": "build-c",
+        "x": 320,
+        "y": 700,
+        "label": "build · C",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 0.7,
+        "width": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelX": 320,
+        "labelDx": 0,
+        "labelDy": 60,
+        "successors": [
+          "ci-cd"
+        ]
+      },
+      {
+        "id": "ci-cd",
+        "x": 900,
+        "y": 450,
+        "label": "CI / CD",
+        "kind": "normal",
+        "length": 1.7,
+        "speed": 0.4,
+        "width": 30,
+        "coupleSpeedWidth": true,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelX": 900,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "_fanout"
+        ]
+      },
+      {
+        "id": "_fanout",
+        "x": 1080,
+        "y": 450,
+        "label": "",
+        "kind": "normal",
+        "length": 0.01,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": 0,
+        "successors": [
+          "deploy-a",
+          "deploy-b",
+          "deploy-c"
+        ]
+      },
+      {
+        "id": "deploy-a",
+        "x": 1380,
+        "y": 200,
+        "label": "deploy · A",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 0.7,
+        "width": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": []
+      },
+      {
+        "id": "deploy-b",
+        "x": 1380,
+        "y": 450,
+        "label": "deploy · B",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 0.7,
+        "width": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": []
+      },
+      {
+        "id": "deploy-c",
+        "x": 1380,
+        "y": 700,
+        "label": "deploy · C",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 0.7,
+        "width": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 60,
+        "successors": []
+      }
+    ]
+  }
+}

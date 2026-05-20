@@ -1,0 +1,111 @@
+{
+  "formatVersion": 3,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 270,
+      "w": 1600,
+      "h": 310
+    },
+    "baseSpeed": 200,
+    "initialAgents": 24,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "segmentDividers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "problem-definition",
+        "x": 200,
+        "y": 450,
+        "label": "problem definition",
+        "kind": "source",
+        "rate": 1.6,
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "solution-design"
+        ]
+      },
+      {
+        "id": "solution-design",
+        "x": 530,
+        "y": 450,
+        "label": "solution design",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "implementation"
+        ]
+      },
+      {
+        "id": "implementation",
+        "x": 830,
+        "y": 450,
+        "label": "implementation",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "test"
+        ]
+      },
+      {
+        "id": "test",
+        "x": 1130,
+        "y": 450,
+        "label": "test",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "ship"
+        ]
+      },
+      {
+        "id": "ship",
+        "x": 1400,
+        "y": 450,
+        "label": "ship",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": []
+      }
+    ]
+  }
+}

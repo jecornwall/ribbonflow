@@ -1,0 +1,19 @@
+{
+  "id": "n7-startup",
+  "title": "N7 · startup collapse",
+  "flows": [
+    {
+      "slug": "before",
+      "title": "Before"
+    },
+    {
+      "slug": "after",
+      "title": "After · Claude Code"
+    }
+  ],
+  "transition": {
+    "durationMs": 900,
+    "holdMs": 2400,
+    "easing": "easeInOut"
+  }
+}

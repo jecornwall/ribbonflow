@@ -1,0 +1,19 @@
+{
+  "id": "n18-speckit-alignment",
+  "title": "N18 · speckit alignment",
+  "flows": [
+    {
+      "slug": "before",
+      "title": "Before"
+    },
+    {
+      "slug": "after",
+      "title": "After · alignment sprint"
+    }
+  ],
+  "transition": {
+    "durationMs": 900,
+    "holdMs": 2400,
+    "easing": "easeInOut"
+  }
+}

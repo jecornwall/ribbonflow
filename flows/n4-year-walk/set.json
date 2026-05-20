@@ -1,0 +1,23 @@
+{
+  "id": "n4-year-walk",
+  "title": "N4 · year-paradigm walk",
+  "flows": [
+    {
+      "slug": "2024",
+      "title": "2024 · Copilot"
+    },
+    {
+      "slug": "2025",
+      "title": "2025 · Cursor"
+    },
+    {
+      "slug": "2026",
+      "title": "2026 · Claude Code"
+    }
+  ],
+  "transition": {
+    "durationMs": 900,
+    "holdMs": 2400,
+    "easing": "easeInOut"
+  }
+}

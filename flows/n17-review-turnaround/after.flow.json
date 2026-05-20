@@ -1,0 +1,110 @@
+{
+  "formatVersion": 3,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 0,
+      "w": 1600,
+      "h": 700
+    },
+    "baseSpeed": 200,
+    "initialAgents": 14,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "code",
+        "x": 200,
+        "y": 360,
+        "label": "code",
+        "kind": "source",
+        "rate": 1,
+        "length": 0.55,
+        "speed": 1.75,
+        "width": 120,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "code-review"
+        ]
+      },
+      {
+        "id": "code-review",
+        "x": 580,
+        "y": 360,
+        "label": "code review",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 1.75,
+        "width": 120,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "merge"
+        ]
+      },
+      {
+        "id": "merge",
+        "x": 900,
+        "y": 360,
+        "label": "merge",
+        "kind": "normal",
+        "length": 0.5,
+        "speed": 1.75,
+        "width": 120,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "deploy"
+        ]
+      },
+      {
+        "id": "deploy",
+        "x": 1180,
+        "y": 360,
+        "label": "deploy",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 1.75,
+        "width": 120,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "production"
+        ]
+      },
+      {
+        "id": "production",
+        "x": 1440,
+        "y": 360,
+        "label": "production",
+        "kind": "normal",
+        "length": 0.35,
+        "speed": 1.75,
+        "width": 120,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": []
+      }
+    ]
+  }
+}
