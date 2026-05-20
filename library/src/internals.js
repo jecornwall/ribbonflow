@@ -32,6 +32,7 @@ export {
   ribbonOutlinePath,
   // width model
   computeNodeWidths,
+  effectiveNodeRates,
   segmentBoundsByLatency,
   buildPinchWidthFn,
   pinchZoneArcRanges,

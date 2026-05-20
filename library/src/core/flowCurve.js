@@ -167,8 +167,9 @@ export function buildCenterline(anchors) {
 // ---- Branch builder -------------------------------------------------------
 
 /**
- * Walk the flow's node graph starting at entryId and emit a list of
- * "branches" — linear paths of nodes that share one continuous centerline.
+ * Walk the flow's node graph starting at each root (predecessor-free /
+ * source) node and emit a list of "branches" — linear paths of nodes that
+ * share one continuous centerline.
  *
  * A branch ends at a fork (current node has multiple successors), at a
  * merge (a successor has multiple predecessors), or at a leaf (no successors).
@@ -197,19 +198,26 @@ export function buildBranches(flow) {
   // Helper: walk forward from startId, optionally prepending prefix nodes.
   const addSeed = (prefix, startId) => seeds.push({ prefix, startId })
 
-  // Seed the entry point. If it's a fork, each child branch gets entry prepended.
-  // If not a fork, the entry itself begins a branch.
-  if (isFork(flow.entryId)) {
-    for (const s of nodeById.get(flow.entryId).successors) {
-      addSeed([flow.entryId], s)
+  // Roots: every predecessor-free node seeds a branch tree. M2 (spec §5.1):
+  // a v2 flow may have MULTIPLE real source nodes, so buildBranches no longer
+  // keys off flow.entryId — it seeds from each root. For a v1 single-entry
+  // flow the entry node is the sole root, so behaviour is unchanged.
+  const isRoot = (id) => (predecessors.get(id) || []).length === 0
+  const rootIds = flow.nodes.map(n => n.id).filter(isRoot)
+
+  // Seed each root. If a root is a fork, each child branch gets the root
+  // prepended; otherwise the root itself begins a branch.
+  for (const rootId of rootIds) {
+    if (isFork(rootId)) {
+      for (const s of nodeById.get(rootId).successors) addSeed([rootId], s)
+    } else {
+      addSeed([], rootId)
     }
-  } else {
-    addSeed([], flow.entryId)
   }
 
-  // For all non-entry fork nodes, each fork child gets the fork parent prepended.
+  // For all non-root fork nodes, each fork child gets the fork parent prepended.
   for (const n of flow.nodes) {
-    if (n.id !== flow.entryId && isFork(n.id)) {
+    if (!isRoot(n.id) && isFork(n.id)) {
       for (const s of n.successors) {
         addSeed([n.id], s)
       }
@@ -242,6 +250,10 @@ export function buildBranches(flow) {
       nodeIds.push(nextId)
       cur = nextId
     }
+    // A lone node has no centerline (buildCenterline needs ≥2 anchors). This
+    // skips an isolated node — e.g. a stray predecessor-free leaf — that the
+    // multi-root seeding above could otherwise turn into a single-node seed.
+    if (nodeIds.length < 2) continue
     const anchors = nodeIds.map(id => ({ x: nodeById.get(id).x, y: nodeById.get(id).y }))
     branches.push({
       nodeIds,
@@ -280,18 +292,120 @@ export const WIDTH_POWER = 1.7
 export const MAX_RIBBON_WIDTH = 70
 
 /**
+ * Default source emit rate (particles/sec). Mirrors format/model.js's
+ * DEFAULT_SOURCE_RATE — inlined (module-private) so the curve/engine layer
+ * carries no dependency on the format layer (M2 spec §5.2).
+ */
+const DEFAULT_SOURCE_RATE = 1.0
+
+/**
+ * Propagate per-node *effective flow rate* through the flow's DAG (M2 §5.2).
+ *
+ * Rate originates at `kind:'source'` nodes — each contributes its own `rate`
+ * (default DEFAULT_SOURCE_RATE) — then flows along `successors`: it splits at
+ * a declared fork by per-branch `rateShare` (even split when a branch omits
+ * `rateShare`, or when the node has no `forks[]` entry) and sums at a merge.
+ * Nodes are processed in topological order (Kahn). Cyclic nodes — which
+ * validateFlow() flags as an error — keep whatever rate reached them before
+ * the cycle rather than throwing here.
+ *
+ * @param {object} flow — a flow config (v2 shape: source nodes + optional forks)
+ * @returns {{ [id: string]: number }} effective rate per node id
+ */
+export function effectiveNodeRates(flow) {
+  const nodes = flow.nodes || []
+  const byId = new Map(nodes.map(n => [n.id, n]))
+  const forkByFrom = new Map((flow.forks || []).map(f => [f.from, f]))
+
+  const rate = {}
+  const indeg = {}
+  for (const n of nodes) {
+    rate[n.id] = n.kind === 'source'
+      ? (typeof n.rate === 'number' ? n.rate : DEFAULT_SOURCE_RATE)
+      : 0
+    indeg[n.id] = 0
+  }
+  for (const n of nodes) {
+    for (const s of n.successors || []) {
+      if (indeg[s] !== undefined) indeg[s] += 1
+    }
+  }
+
+  // Kahn topological order.
+  const queue = nodes.filter(n => indeg[n.id] === 0).map(n => n.id)
+  const order = []
+  while (queue.length) {
+    const id = queue.shift()
+    order.push(id)
+    for (const s of byId.get(id).successors || []) {
+      if (indeg[s] === undefined) continue
+      indeg[s] -= 1
+      if (indeg[s] === 0) queue.push(s)
+    }
+  }
+
+  for (const id of order) {
+    const node = byId.get(id)
+    const succ = node.successors || []
+    if (succ.length === 0) continue
+    const fork = forkByFrom.get(id)
+    for (const s of succ) {
+      let share = 1 / succ.length
+      if (fork) {
+        const br = (fork.branches || []).find(
+          b => (typeof b === 'string' ? b : b.to) === s,
+        )
+        if (br && typeof br.rateShare === 'number') share = br.rateShare
+      }
+      if (rate[s] !== undefined) rate[s] += rate[id] * share
+    }
+  }
+  return rate
+}
+
+/**
  * Compute per-node ribbon width from a flow config.
  *
- * throughput_i = capacity_i / latency_i
- * width_i = MIN_RIBBON_WIDTH × (throughput_i / min_throughput)^WIDTH_POWER
+ * Two modes, keyed on `flow.widthMode` (M2 spec §2.3 / §5.2):
  *
- * The lowest-throughput node is the actual constraint and gets MIN_RIBBON_WIDTH.
- * If a node is tagged `kind: 'constraint'` but isn't the narrowest, we collect
- * a warning (per the spec — useful sanity check).
+ *  - `'coupled'` — width is the visual encoding of *effective flow rate*:
+ *      width_i = MIN_RIBBON_WIDTH × (rate_i / min_rate)^WIDTH_POWER,
+ *    capped at MAX_RIBBON_WIDTH. Rate is propagated by effectiveNodeRates().
+ *  - `'manual'` or unset (legacy v1) — width is throughput-encoded:
+ *      throughput_i = capacity_i / latency_i,
+ *      width_i = MIN_RIBBON_WIDTH × (throughput_i / min_throughput)^WIDTH_POWER.
+ *
+ * In BOTH modes an explicit `node.width` is authoritative and overrides the
+ * derived value — that is the charter's "independent tweaking / artistic
+ * licence" knob.
+ *
+ * `opts.collectWarnings` (throughput mode only) flags a `kind:'constraint'`
+ * node that is not actually the narrowest.
  *
  * Returns { [id]: width, warnings? }.
  */
 export function computeNodeWidths(flow, opts = {}) {
+  const widths = {}
+
+  // ── Coupled mode: width derives from propagated flow rate (M2 §5.2) ────────
+  if (flow.widthMode === 'coupled') {
+    const rates = effectiveNodeRates(flow)
+    const positive = Object.values(rates).filter(r => r > 0)
+    const minRate = positive.length ? Math.min(...positive) : 1
+    for (const n of flow.nodes) {
+      if (typeof n.width === 'number') { widths[n.id] = n.width; continue }
+      const r = rates[n.id]
+      if (!(r > 0)) { widths[n.id] = MIN_RIBBON_WIDTH; continue }
+      widths[n.id] = Math.min(
+        MAX_RIBBON_WIDTH,
+        MIN_RIBBON_WIDTH * Math.pow(r / minRate, WIDTH_POWER),
+      )
+    }
+    if (opts.collectWarnings) widths.warnings = []
+    return widths
+  }
+
+  // ── Manual / legacy mode: throughput-encoded ───────────────────────────────
   const throughputs = {}
   for (const n of flow.nodes) {
     throughputs[n.id] = n.capacity / n.latency
@@ -301,8 +415,8 @@ export function computeNodeWidths(flow, opts = {}) {
     id => Math.abs(throughputs[id] - minThroughput) < 1e-9,
   )
 
-  const widths = {}
   for (const n of flow.nodes) {
+    if (typeof n.width === 'number') { widths[n.id] = n.width; continue }
     const ratio = throughputs[n.id] / minThroughput
     widths[n.id] = Math.min(
       MAX_RIBBON_WIDTH,

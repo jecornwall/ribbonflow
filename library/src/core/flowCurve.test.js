@@ -198,7 +198,12 @@ test('buildBranches covers post-merge linear continuation (N4-like topology)', (
   }
 })
 
-import { computeNodeWidths, WIDTH_POWER, MAX_RIBBON_WIDTH } from './flowCurve.js'
+import {
+  computeNodeWidths,
+  effectiveNodeRates,
+  WIDTH_POWER,
+  MAX_RIBBON_WIDTH,
+} from './flowCurve.js'
 
 test('computeNodeWidths assigns MIN_RIBBON_WIDTH to the lowest-throughput node', () => {
   const widths = computeNodeWidths(linearFlow)
@@ -498,4 +503,117 @@ test('§Geometric-correctness: N4 narrowest x falls within the implementation la
     `fall inside implementation label segment ` +
     `[${labelSegStart.toFixed(1)}, ${labelSegEnd.toFixed(1)}]`,
   )
+})
+
+// ──────────────────────────────────────────────────────────────────────────
+// M2 — width/rate coupling (bd ai-engineer-8aee, spec §5.2).
+//
+// In flow.widthMode==='coupled' a node's ribbon width is the visual encoding
+// of its EFFECTIVE FLOW RATE: rate originates at kind:'source' nodes, flows
+// along successors, splits at a declared fork by per-branch rateShare, and
+// sums at a merge. An explicit node.width overrides the derived value. In
+// 'manual' mode (or undefined — legacy v1) width stays throughput-encoded,
+// with node.width still authoritative.
+// ──────────────────────────────────────────────────────────────────────────
+
+// A fork-then-merge DAG: one source (rate 4), a 0.75/0.25 rate-split fork,
+// re-merged at the sink. Effective rates: src 4, fork 4, hi 3, lo 1, sink 4.
+const coupledForkFlow = {
+  widthMode: 'coupled',
+  forks: [
+    { from: 'fork', branches: [
+      { to: 'hi', rateShare: 0.75 },
+      { to: 'lo', rateShare: 0.25 },
+    ] },
+  ],
+  merges: [{ to: 'sink', from: ['hi', 'lo'] }],
+  nodes: [
+    { id: 'src',  x: 0, y: 0, kind: 'source', rate: 4, capacity: 1, latency: 1, successors: ['fork'] },
+    { id: 'fork', x: 1, y: 0, capacity: 1, latency: 1, successors: ['hi', 'lo'] },
+    { id: 'hi',   x: 2, y: -1, capacity: 1, latency: 1, successors: ['sink'] },
+    { id: 'lo',   x: 2, y:  1, capacity: 1, latency: 1, successors: ['sink'] },
+    { id: 'sink', x: 3, y: 0, capacity: 1, latency: 1, successors: [] },
+  ],
+}
+
+test('effectiveNodeRates: source rate propagates, splits at a fork, sums at a merge', () => {
+  const r = effectiveNodeRates(coupledForkFlow)
+  assert.equal(r.src, 4)
+  assert.equal(r.fork, 4)
+  assert.ok(Math.abs(r.hi - 3) < 1e-9, `hi rate should be 3, got ${r.hi}`)
+  assert.ok(Math.abs(r.lo - 1) < 1e-9, `lo rate should be 1, got ${r.lo}`)
+  assert.ok(Math.abs(r.sink - 4) < 1e-9, `sink rate should be 4, got ${r.sink}`)
+})
+
+test('effectiveNodeRates: a fork branch with no rateShare gets an even split', () => {
+  const flow = {
+    nodes: [
+      { id: 's', kind: 'source', rate: 6, successors: ['f'] },
+      { id: 'f', successors: ['a', 'b', 'c'] },
+      { id: 'a', successors: [] },
+      { id: 'b', successors: [] },
+      { id: 'c', successors: [] },
+    ],
+  }
+  const r = effectiveNodeRates(flow)
+  assert.ok(Math.abs(r.a - 2) < 1e-9, `even split → a=2, got ${r.a}`)
+  assert.ok(Math.abs(r.b - 2) < 1e-9)
+  assert.ok(Math.abs(r.c - 2) < 1e-9)
+})
+
+test('effectiveNodeRates: multiple real sources sum at a shared successor', () => {
+  const flow = {
+    nodes: [
+      { id: 'src-a', kind: 'source', rate: 1, successors: ['m'] },
+      { id: 'src-b', kind: 'source', rate: 3, successors: ['m'] },
+      { id: 'm', successors: [] },
+    ],
+  }
+  const r = effectiveNodeRates(flow)
+  assert.equal(r['src-a'], 1)
+  assert.equal(r['src-b'], 3)
+  assert.equal(r.m, 4)
+})
+
+test('computeNodeWidths (coupled): width derives from propagated rate', () => {
+  const w = computeNodeWidths(coupledForkFlow)
+  // lo carries the minimum positive rate (1) → MIN_RIBBON_WIDTH.
+  assert.equal(w.lo, MIN_RIBBON_WIDTH, `lo should be MIN_RIBBON_WIDTH, got ${w.lo}`)
+  // hi (rate 3) is wider than lo, narrower than the cap.
+  const expectedHi = Math.min(MAX_RIBBON_WIDTH, MIN_RIBBON_WIDTH * Math.pow(3, WIDTH_POWER))
+  assert.ok(Math.abs(w.hi - expectedHi) < 1e-6, `hi should be ${expectedHi}, got ${w.hi}`)
+  assert.ok(w.hi > w.lo, 'hi must be wider than lo')
+  // src/fork/sink all carry rate 4 → ratio 4 → power-curve clamps at the cap.
+  assert.equal(w.src, MAX_RIBBON_WIDTH)
+  assert.equal(w.sink, MAX_RIBBON_WIDTH)
+})
+
+test('computeNodeWidths (coupled): explicit node.width overrides the derived value', () => {
+  const flow = {
+    ...coupledForkFlow,
+    nodes: coupledForkFlow.nodes.map(n => (n.id === 'hi' ? { ...n, width: 37 } : n)),
+  }
+  const w = computeNodeWidths(flow)
+  assert.equal(w.hi, 37, 'explicit node.width must win over the rate-derived width')
+  // siblings still derive normally.
+  assert.equal(w.lo, MIN_RIBBON_WIDTH)
+})
+
+test('computeNodeWidths (manual): width stays throughput-encoded, node.width overrides', () => {
+  const flow = {
+    widthMode: 'manual',
+    nodes: [
+      { id: 'a', capacity: 4, latency: 1, successors: ['b'] },        // throughput 4
+      { id: 'b', capacity: 1, latency: 1, kind: 'constraint', successors: ['c'] }, // throughput 1
+      { id: 'c', capacity: 2, latency: 1, width: 51, successors: [] }, // explicit override
+    ],
+  }
+  const w = computeNodeWidths(flow)
+  // b is the throughput floor → MIN_RIBBON_WIDTH.
+  assert.equal(w.b, MIN_RIBBON_WIDTH)
+  // a derives from the throughput ratio (4).
+  const expectedA = Math.min(MAX_RIBBON_WIDTH, MIN_RIBBON_WIDTH * Math.pow(4, WIDTH_POWER))
+  assert.ok(Math.abs(w.a - expectedA) < 1e-6, `a should be ${expectedA}, got ${w.a}`)
+  // c carries an explicit width — authoritative even in manual mode.
+  assert.equal(w.c, 51)
 })
