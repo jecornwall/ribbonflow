@@ -296,6 +296,37 @@ export function createFlowSimulation(flow, opts = {}) {
   const { branches } = buildBranches(flow)
   const widths = computeNodeWidths(flow)
 
+  // Topology classifiers for the junction-cross check (bd ai-engineer-qmti).
+  //
+  // A *junction* is a node where the agent's inbound branch terminates and a
+  // SEPARATELY SEEDED outbound branch begins — the two meeting only at the
+  // node anchor. buildBranches seeds exactly two such cases:
+  //   - a MERGE  (>1 predecessor): the post-merge continuation is its own
+  //     branch, seeded fresh at the merge node;
+  //   - a FORK   (>1 successor):   each fork-child branch is seeded fresh
+  //     with the fork node prepended.
+  // Crossing into either EARLY (well upstream of the anchor, at segHoldBounds)
+  // re-seats the agent on the outbound branch and the post-gate clamp snaps it
+  // forward to that branch's start — the e0cj teleport. The two-stage cross
+  // defers the physical crossing to the anchor.
+  //
+  // This pair of explicit predecessor-/successor-map checks replaces the old
+  // structural-coincidence proxy `target === branch.nodeIds[last]`, which was
+  // branch-relative and also fired for a plain LEAF terminus (a leaf has no
+  // outbound branch, so it never needs the two-stage cross). Mirrors
+  // buildBranches' own internal `isMerge` / `isFork`.
+  const predCount = new Map()
+  for (const n of flow.nodes) {
+    for (const s of n.successors || []) {
+      predCount.set(s, (predCount.get(s) || 0) + 1)
+    }
+  }
+  const succCountById = new Map(
+    flow.nodes.map(n => [n.id, (n.successors || []).length]))
+  const isMergeNode = (id) => (predCount.get(id) || 0) > 1
+  const isForkNode = (id) => (succCountById.get(id) || 0) > 1
+  const isJunctionNode = (id) => isMergeNode(id) || isForkNode(id)
+
   // Per-node SPEED multipliers (v1.1 §7, bd ai-engineer-06e7). The v1.1 node
   // model carries an authored SPEED knob; this is the engine's physical hook
   // for it. Default 1.0 so legacy fixtures with no `speed` field run
@@ -1579,9 +1610,16 @@ export function createFlowSimulation(flow, opts = {}) {
       //            inbound and outbound branches coincide here, so the
       //            post-gate clamp has nothing to snap.
       // Non-junction targets keep the legacy single-stage cross.
-      const isLastNodeOfBranch =
-        branch.nodeIds[branch.nodeIds.length - 1] === agent.targetNodeId
-      const junctionCross = isLastNodeOfBranch && segGated
+      //
+      // bd ai-engineer-qmti: the junction condition is checked explicitly via
+      // the predecessor / successor maps — the target is a MERGE or a FORK
+      // (see isJunctionNode above). The old proxy `target ===
+      // branch.nodeIds[last]` was a branch-relative structural coincidence:
+      // a branch terminates at a merge, a fork, OR a leaf, and the proxy
+      // fired for all three — including the leaf case, which has no outbound
+      // branch and so never needs the two-stage cross.
+      const targetIsJunction = isJunctionNode(agent.targetNodeId)
+      const junctionCross = targetIsJunction && segGated
       if (distToTarget < ENTRY_DIST || atSegmentEdge) {
         // Stage 1 — junction only: reserve the slot without crossing.
         if (junctionCross
