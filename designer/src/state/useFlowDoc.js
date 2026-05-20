@@ -22,6 +22,7 @@ import {
   deserializeFlow,
 } from '@flow-designer/library/internals'
 import { makeSampleFlow } from './sampleFlow.js'
+import { GRID_SIZE } from '../lib/constants.js'
 import * as M from './flowMutations.js'
 
 const state = reactive({
@@ -32,6 +33,8 @@ const state = reactive({
   tool: 'select',
   // when add-edge has a first endpoint chosen, its node id sits here
   pendingEdgeFrom: null,
+  // optional snap-to-grid: when true, node moves / creation snap to GRID_SIZE
+  snapToGrid: false,
   // bumped on STRUCTURAL edits so PreviewPane cleanly remounts the simulation
   previewKey: 0,
 })
@@ -105,22 +108,39 @@ function cancelPendingEdge() {
   state.pendingEdgeFrom = null
 }
 
+// ── grid snapping ────────────────────────────────────────────────────────────
+/** Toggle the optional snap-to-grid mode (bd ai-engineer-esx8). */
+function setSnapToGrid(on) {
+  state.snapToGrid = !!on
+}
+function toggleSnap() {
+  state.snapToGrid = !state.snapToGrid
+}
+/** Snap a coordinate pair to the grid when the mode is enabled; else pass-through. */
+function snapXY(x, y) {
+  if (!state.snapToGrid) return { x, y }
+  return { x: M.snapToGrid(x, GRID_SIZE), y: M.snapToGrid(y, GRID_SIZE) }
+}
+
 // ── node / edge edits ────────────────────────────────────────────────────────
 /**
  * Place a node. The x comes from the click; the y is SNAPPED to the flow's
  * centerline (median node y) so additions stay symmetric with the existing
  * flow line rather than landing at an arbitrary cursor height — "better
  * defaults favouring symmetry" (bd ai-engineer-1dr8). Drag the node afterwards
- * to take it off the line.
+ * to take it off the line. When snap-to-grid is on, the placement also snaps
+ * to the grid lattice (bd ai-engineer-esx8).
  */
 function addNode(x) {
-  const id = M.addNode(state.flow, x, M.flowCenterlineY(state.flow))
+  const p = snapXY(x, M.flowCenterlineY(state.flow))
+  const id = M.addNode(state.flow, p.x, p.y)
   select('node', id)
   bumpPreview()
   return id
 }
 function moveNode(id, x, y) {
-  M.moveNode(state.flow, id, x, y)
+  const p = snapXY(x, y)
+  M.moveNode(state.flow, id, p.x, p.y)
 }
 function moveLabel(id, dx, dy) {
   M.moveLabel(state.flow, id, dx, dy)
@@ -204,6 +224,8 @@ const api = {
   setTool,
   setPendingEdge,
   cancelPendingEdge,
+  setSnapToGrid,
+  toggleSnap,
   commitEdit,
   addNode,
   moveNode,

@@ -222,3 +222,14 @@ export function flowCenterlineY(flow) {
     ? ys[mid]
     : Math.round((ys[mid - 1] + ys[mid]) / 2)
 }
+
+/**
+ * Snap a coordinate to the nearest multiple of `grid` (bd ai-engineer-esx8).
+ * Pure helper; the store applies it to node moves / creation only while the
+ * optional snap-to-grid mode is enabled. A zero / missing grid is a no-op.
+ */
+export function snapToGrid(value, grid) {
+  if (!grid || grid <= 0) return value
+  // `|| 0` normalises the -0 that Math.round yields for small negatives.
+  return Math.round(value / grid) * grid || 0
+}

@@ -30,6 +30,7 @@ import {
   findNode,
   withNodeAnchoredLabels,
   flowCenterlineY,
+  snapToGrid,
 } from '../src/state/flowMutations.js'
 
 function emptyFlow() {
@@ -173,6 +174,20 @@ test('flowCenterlineY returns the median node y (symmetry default)', () => {
 test('flowCenterlineY falls back to the viewBox centre for an empty flow', () => {
   assert.equal(flowCenterlineY(emptyFlow()), 450)
   assert.equal(flowCenterlineY({ viewBox: { y: 100, h: 600 } }), 400)
+})
+
+test('snapToGrid rounds to the nearest grid multiple', () => {
+  assert.equal(snapToGrid(0, 40), 0)
+  assert.equal(snapToGrid(19, 40), 0)
+  assert.equal(snapToGrid(21, 40), 40)
+  assert.equal(snapToGrid(-19, 40), 0)
+  assert.equal(snapToGrid(-21, 40), -40)
+  assert.equal(snapToGrid(637, 40), 640)
+})
+
+test('snapToGrid is a no-op for a zero / missing grid', () => {
+  assert.equal(snapToGrid(637, 0), 637)
+  assert.equal(snapToGrid(637), 637)
 })
 
 test('setNodeField clears the field when given an empty value', () => {

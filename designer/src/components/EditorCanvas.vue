@@ -14,6 +14,7 @@
 import { ref, computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { clientToSvg } from '../lib/svgCoords.js'
+import { GRID_SIZE } from '../lib/constants.js'
 import CanvasNode from './CanvasNode.vue'
 import CanvasEdge from './CanvasEdge.vue'
 
@@ -162,6 +163,18 @@ function onUp(e) {
       @pointerup="onUp"
     >
       <defs>
+        <!-- snap-to-grid lattice: faint dots at every grid intersection,
+             shown only while snap mode is enabled (bd ai-engineer-esx8). -->
+        <pattern
+          id="ec-grid"
+          :width="GRID_SIZE"
+          :height="GRID_SIZE"
+          patternUnits="userSpaceOnUse"
+        >
+          <!-- dot at the tile origin: tiling places one at every grid
+               intersection — exactly the coordinates a node snaps to. -->
+          <circle cx="0" cy="0" r="2.4" fill="#b2bac6" />
+        </pattern>
         <marker
           id="designer-arrow"
           viewBox="0 0 10 10"
@@ -184,6 +197,18 @@ function onUp(e) {
         :height="(state.flow.viewBox && state.flow.viewBox.h) || 900"
         fill="#fbfaf7"
         @pointerdown="onBackgroundDown"
+      />
+
+      <!-- snap grid overlay (only while snap mode is on; pointer-transparent
+           so it does not steal the add-node / clear-selection click) -->
+      <rect
+        v-if="state.snapToGrid"
+        :x="0"
+        :y="0"
+        :width="(state.flow.viewBox && state.flow.viewBox.w) || 1600"
+        :height="(state.flow.viewBox && state.flow.viewBox.h) || 900"
+        fill="url(#ec-grid)"
+        pointer-events="none"
       />
 
       <!-- edges (under nodes) -->
