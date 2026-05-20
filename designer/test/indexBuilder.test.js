@@ -121,3 +121,45 @@ test('buildIndex tolerates a missing / malformed envelope', () => {
   assert.equal(idx.sets[0].flows[0].nodeCount, 0)
   assert.equal(idx.sets[0].flows[0].formatVersion, null)
 })
+
+// ── transition field round-trip ───────────────────────────────────────────────
+
+test('buildIndex carries a set-level transition field through to the index', () => {
+  const transition = { durationMs: 1200, holdMs: 3000, easing: 'linear' }
+  const idx = buildIndex(
+    {
+      sets: [
+        {
+          id: 'toc-baseline',
+          title: 'TOC Baseline',
+          transition,
+          flows: [
+            { slug: 'before', title: 'Before', envelope: envelope(3), updatedAt: 't' },
+          ],
+        },
+      ],
+    },
+    { generatedAt: 't' },
+  )
+  assert.deepEqual(idx.sets[0].transition, transition)
+})
+
+test('buildIndex omits the transition field when the set has none (back-compat)', () => {
+  // Existing set.json files without a transition field must produce an index
+  // entry with no `transition` key — consumers fall back to TRANSITION_DEFAULTS.
+  const idx = buildIndex(
+    {
+      sets: [
+        {
+          id: 'old-set',
+          title: 'Old',
+          flows: [
+            { slug: 'a', title: 'A', envelope: envelope(1), updatedAt: 't' },
+          ],
+        },
+      ],
+    },
+    { generatedAt: 't' },
+  )
+  assert.equal(Object.hasOwn(idx.sets[0], 'transition'), false)
+})

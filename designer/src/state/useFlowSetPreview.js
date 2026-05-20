@@ -10,10 +10,15 @@
  * Library access is exclusively through the `/internals` face (M3 §2.4):
  * deserializeFlow / assembleFlowSet / validateFlowSet / TRANSITION_DEFAULTS.
  *
+ * Transition persistence (bd ai-engineer-qwtp): the transition controls in
+ * SetPreview.vue mutate `state.flowSet.transition` in place via v-model. A
+ * debounced watcher here saves the updated transition to set.json via the
+ * PUT /__flows/set/<id> REST endpoint, so changes round-trip across sessions.
+ *
  * Module singleton — SetPreview.vue and IndexPage.vue share one preview state.
  */
 
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import {
   deserializeFlow,
   assembleFlowSet,
@@ -38,9 +43,57 @@ const state = reactive({
   error: null,
 })
 
+// ── transition persistence ────────────────────────────────────────────────────
+
 /**
- * Load every flow in `setEntry` (an index `sets[]` entry: { id, title, flows[] }),
- * assemble a flow-set in the set's authored flow order, and arm the preview.
+ * Guard that swallows the one watcher firing caused by a fresh load() —
+ * prevents the initial load from triggering a redundant save.  Mirrors the
+ * `justLoaded` pattern in useFlowDoc.js.
+ */
+let justLoaded = false
+let saveTimer = null
+
+/** Persist the current transition to set.json via the REST API. */
+async function saveTransition(setId, transition) {
+  try {
+    await store.saveSetMeta(setId, { transition })
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('set-preview: transition save failed:', err)
+  }
+}
+
+// Watch the assembled flow-set's transition object deep. When the user moves a
+// slider or changes the easing, the v-model mutation lands here after debounce
+// and is persisted to set.json. The guard skips the first fire on load.
+watch(
+  () => state.flowSet?.transition,
+  (newTransition) => {
+    if (justLoaded) {
+      justLoaded = false
+      return
+    }
+    if (!state.setMeta?.id || !newTransition) return
+    if (saveTimer) clearTimeout(saveTimer)
+    // 600 ms: above slider tick rate, well below the 800 ms flow auto-save
+    // debounce in useFlowDoc.js, so saves interleave cleanly.
+    const setId = state.setMeta.id
+    const snapshot = { ...newTransition }
+    saveTimer = setTimeout(() => saveTransition(setId, snapshot), 600)
+  },
+  { deep: true },
+)
+
+// ── load / clear ──────────────────────────────────────────────────────────────
+
+/**
+ * Load every flow in `setEntry` (an index `sets[]` entry:
+ * { id, title, flows[], transition? }), assemble a flow-set in the set's
+ * authored flow order, and arm the preview.
+ *
+ * If the index carries a persisted `transition` (written by a previous
+ * set-preview session), it is used as the initial transition so the user's
+ * last-tuned settings are restored. Otherwise TRANSITION_DEFAULTS apply.
  */
 async function load(setEntry) {
   state.setMeta = setEntry
@@ -57,12 +110,20 @@ async function load(setEntry) {
         flow: deserializeFlow(envelope),
       })
     }
+    // Restore the persisted transition when the index has one; else use
+    // defaults. The { ...spread } ensures we own the copy.
+    const transition = setEntry.transition
+      ? { ...TRANSITION_DEFAULTS, ...setEntry.transition }
+      : { ...TRANSITION_DEFAULTS }
     const flowSet = assembleFlowSet(states, {
       id: setEntry.id,
       title: setEntry.title,
-      transition: { ...TRANSITION_DEFAULTS },
+      transition,
     })
     state.validation = validateFlowSet(flowSet)
+    // Arm the justLoaded guard BEFORE making state.flowSet reactive so the
+    // watcher sees the flag before it processes the transition change.
+    justLoaded = true
     state.flowSet = reactive(flowSet)
   } catch (err) {
     state.error = String(err?.message || err)
@@ -73,6 +134,10 @@ async function load(setEntry) {
 
 /** Clear the preview (called when leaving the set-preview view). */
 function clear() {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
   state.setMeta = null
   state.flowSet = null
   state.error = null

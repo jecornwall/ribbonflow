@@ -69,19 +69,27 @@ export function uniqueSlug(base, existing) {
 export function buildIndex(scan, { generatedAt }) {
   const sets = [...(scan?.sets ?? [])]
     .sort((a, b) => String(a.id).localeCompare(String(b.id)))
-    .map((set) => ({
-      id: set.id,
-      title: set.title ?? set.id,
-      flows: [...(set.flows ?? [])]
-        .map((flow) => ({
-          id: `${set.id}/${flow.slug}`,
-          slug: flow.slug,
-          title: flow.title ?? flow.slug,
-          file: `${set.id}/${flow.slug}.flow.json`,
-          formatVersion: flow.envelope?.formatVersion ?? null,
-          nodeCount: flow.envelope?.flow?.nodes?.length ?? 0,
-          updatedAt: flow.updatedAt ?? null,
-        })),
-    }))
+    .map((set) => {
+      const entry = {
+        id: set.id,
+        title: set.title ?? set.id,
+        flows: [...(set.flows ?? [])]
+          .map((flow) => ({
+            id: `${set.id}/${flow.slug}`,
+            slug: flow.slug,
+            title: flow.title ?? flow.slug,
+            file: `${set.id}/${flow.slug}.flow.json`,
+            formatVersion: flow.envelope?.formatVersion ?? null,
+            nodeCount: flow.envelope?.flow?.nodes?.length ?? 0,
+            updatedAt: flow.updatedAt ?? null,
+          })),
+      }
+      // Carry the set-level transition metadata through from set.json so the
+      // designer client can restore the persisted transition on set-preview open.
+      // Only present when set.json has a transition field — consumers fall back
+      // to TRANSITION_DEFAULTS when absent (back-compat with existing set.json).
+      if (set.transition !== undefined) entry.transition = set.transition
+      return entry
+    })
   return { indexVersion: INDEX_VERSION, generatedAt, sets }
 }

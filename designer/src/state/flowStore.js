@@ -72,6 +72,19 @@ async function createSet(title) {
   return request('POST', `${API}/set`, { title })
 }
 
+/**
+ * Update a set's metadata (title and/or transition).
+ *
+ * The server merges `partial` into the existing set.json; unknown fields are
+ * ignored. Regenerates the index and returns `{ ok, index }`.
+ *
+ * @param {string} setId — the set slug (no slash)
+ * @param {{ title?: string, transition?: object }} partial
+ */
+async function saveSetMeta(setId, partial) {
+  return request('PUT', `${API}/set/${setId}`, partial)
+}
+
 export function useFlowStore() {
-  return { state, refreshIndex, loadFlow, saveFlow, deleteFlow, createSet }
+  return { state, refreshIndex, loadFlow, saveFlow, deleteFlow, createSet, saveSetMeta }
 }

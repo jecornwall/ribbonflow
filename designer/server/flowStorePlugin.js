@@ -23,6 +23,7 @@
  *   PUT    /__flows/file/<set>/<flow>      → write flow + upsert set.json + regen
  *   DELETE /__flows/file/<set>/<flow>      → delete flow + update set.json + regen
  *   POST   /__flows/set                   → create a set dir + set.json + regen
+ *   PUT    /__flows/set/<set>             → update set metadata (title, transition) + regen
  */
 
 import { promises as fs } from 'node:fs'
@@ -87,11 +88,17 @@ function makeStore(root) {
     const file = path.join(root, setSlug, 'set.json')
     try {
       const meta = JSON.parse(await fs.readFile(file, 'utf8'))
-      return {
+      const result = {
         id: setSlug,
         title: typeof meta.title === 'string' ? meta.title : setSlug,
         flows: Array.isArray(meta.flows) ? meta.flows : [],
       }
+      // Carry the optional transition field through so the index and the client
+      // can restore the persisted transition on set-preview open.
+      if (meta.transition !== undefined && typeof meta.transition === 'object') {
+        result.transition = meta.transition
+      }
+      return result
     } catch {
       // No set.json (or unreadable): synthesize a minimal one.
       return { id: setSlug, title: setSlug, flows: [] }
@@ -142,7 +149,10 @@ function makeStore(root) {
           updatedAt: stat.mtime.toISOString(),
         })
       }
-      sets.push({ id: setSlug, title: meta.title, flows })
+      // Include transition when present so buildIndex can carry it to the client.
+      const setEntry = { id: setSlug, title: meta.title, flows }
+      if (meta.transition !== undefined) setEntry.transition = meta.transition
+      sets.push(setEntry)
     }
     return { sets }
   }
@@ -191,6 +201,25 @@ function makeStore(root) {
     await writeSetMeta(setSlug, meta)
   }
 
+  /**
+   * Merge partial metadata into an existing set's set.json.
+   *
+   * Recognised fields: `title` (string) and `transition` (object). Unknown
+   * fields are silently ignored so future additions stay back-compat. The
+   * caller is responsible for re-running regenIndex() after this call.
+   *
+   * @param {string} setSlug
+   * @param {{ title?: string, transition?: object }} partial
+   */
+  async function updateSet(setSlug, partial) {
+    const meta = await readSetMeta(setSlug)
+    if (typeof partial.title === 'string') meta.title = partial.title
+    if (partial.transition !== undefined && typeof partial.transition === 'object') {
+      meta.transition = partial.transition
+    }
+    await writeSetMeta(setSlug, meta)
+  }
+
   /** Create a new set directory with a unique slug derived from `title`. */
   async function createSet(title) {
     const existing = await listSetSlugs()
@@ -207,6 +236,7 @@ function makeStore(root) {
     writeFlow,
     deleteFlow,
     createSet,
+    updateSet,
     listSetSlugs,
     readSetMeta,
   }
@@ -244,6 +274,18 @@ export function flowStorePlugin(opts = {}) {
             const set = await store.createSet(body.title)
             await store.regenIndex()
             return sendJson(res, 201, set)
+          }
+
+          // PUT /__flows/set/<setSlug>
+          if (req.method === 'PUT' && parts[0] === 'set' && parts.length === 2) {
+            const setSlug = parts[1]
+            if (!SLUG_RE.test(setSlug)) {
+              return sendJson(res, 400, { error: 'invalid set slug' })
+            }
+            const body = await readBody(req)
+            await store.updateSet(setSlug, body)
+            const index = await store.regenIndex()
+            return sendJson(res, 200, { ok: true, index })
           }
 
           // .../file/<set>/<flow>
