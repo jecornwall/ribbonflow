@@ -1,0 +1,21 @@
+{
+  "name": "@flow-designer/designer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Interactive flow designer app — place/move nodes & edges, label & width editing, source rates, live preview through @flow-designer/library, export/import a single flow.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@flow-designer/library": "workspace:*",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.0",
+    "vite": "^6.0.0"
+  }
+}

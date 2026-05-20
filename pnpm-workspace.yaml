@@ -1,7 +1,7 @@
 # Flow Designer project — pnpm workspace.
 #
 # The flow-designer project lives entirely under flow/. M1 ships the shared
-# library; M3 adds the interactive designer app at flow/designer/ (added to
-# this list when M3 scaffolds it).
+# library; M3 adds the interactive designer app at flow/designer/.
 packages:
   - library
+  - designer
