@@ -166,3 +166,34 @@ export function setFlowField(flow, key, value) {
     flow[key] = value
   }
 }
+
+/**
+ * Project a flow for the LIVE PREVIEW so its segment labels anchor at each
+ * node's own xy position (bd ai-engineer-t173).
+ *
+ * Why: the library renderer (FlowGraph.markerPropsFor) places a segment label
+ * at the *latency-proportioned arc-midpoint* of the node's branch segment by
+ * default — an arc fraction that does NOT track the node's geometric anchor.
+ * So when the designer drags a node, the preview ribbon's pinch/segment moves
+ * with the node but the label stays behind at the stale arc fraction: "label
+ * does not follow its segment". The editor canvas never had this bug — it draws
+ * the label at `node.x + labelDx` directly.
+ *
+ * The library already exposes a node-anchored label path: when a node carries
+ * `labelX` / `labelY`, markerPropsFor anchors the label (and its leader) at
+ * that point instead of the arc-midpoint. This projection stamps each node's
+ * own xy as `labelX` / `labelY` so the preview label sits at exactly
+ * `node.x + labelDx, node.y + labelDy` — byte-for-byte the editor-canvas
+ * placement, and it tracks the node on every move.
+ *
+ * Preview-only: this is applied to `doc.normalized`, never to the authored
+ * `doc.flow` that `export` serialises — so the exported file stays free of
+ * derived `labelX` / `labelY` and the round-trip invariant is untouched.
+ * Returns a fresh flow with fresh node objects; the input is not mutated.
+ */
+export function withNodeAnchoredLabels(flow) {
+  return {
+    ...flow,
+    nodes: (flow.nodes || []).map((n) => ({ ...n, labelX: n.x, labelY: n.y })),
+  }
+}

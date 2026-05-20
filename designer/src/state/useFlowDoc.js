@@ -36,7 +36,7 @@ const state = reactive({
   previewKey: 0,
 })
 
-/** What the live preview renders: the authored flow with library defaults. */
+/** The authored flow with library defaults applied (normalized v2 shape). */
 const normalized = computed(() => {
   try {
     return normalizeFlow(state.flow)
@@ -44,6 +44,15 @@ const normalized = computed(() => {
     return state.flow
   }
 })
+
+/**
+ * What the live preview renders: the normalized flow with each segment label
+ * anchored at its node's xy (bd ai-engineer-t173). Without this projection the
+ * library renderer places labels at a latency-proportioned arc-midpoint that
+ * does not track the node — so a dragged node's preview label "stays behind".
+ * Preview-only: export still serialises the authored `state.flow`, never this.
+ */
+const previewFlow = computed(() => M.withNodeAnchoredLabels(normalized.value))
 
 /** Advisory structural validation, surfaced in the status strip. */
 const validation = computed(() => {
@@ -181,6 +190,7 @@ function newFlow() {
 const api = {
   state,
   normalized,
+  previewFlow,
   validation,
   select,
   selectEdge,

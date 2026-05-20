@@ -28,6 +28,7 @@ import {
   setNodeField,
   uniqueId,
   findNode,
+  withNodeAnchoredLabels,
 } from '../src/state/flowMutations.js'
 
 function emptyFlow() {
@@ -133,6 +134,25 @@ test('moveLabel updates offsets and re-derives labelSide', () => {
   assert.equal(findNode(flow, id).labelDx, 10)
   assert.equal(findNode(flow, id).labelDy, 40)
   assert.equal(findNode(flow, id).labelSide, 'below')
+})
+
+test('withNodeAnchoredLabels stamps labelX/labelY = node xy for the preview', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 100, 200)
+  moveNode(flow, a, 640, 318)
+  const projected = withNodeAnchoredLabels(flow)
+  const pn = findNode(projected, a)
+  assert.equal(pn.labelX, 640, 'preview label anchors at node x')
+  assert.equal(pn.labelY, 318, 'preview label anchors at node y')
+  // The projection must NOT mutate the authored flow (export stays clean).
+  assert.equal('labelX' in findNode(flow, a), false, 'authored flow untouched')
+  assert.notEqual(projected.nodes, flow.nodes, 'fresh nodes array')
+  assert.notEqual(projected.nodes[0], flow.nodes[0], 'fresh node objects')
+})
+
+test('withNodeAnchoredLabels tolerates a flow with no nodes', () => {
+  const projected = withNodeAnchoredLabels({ viewBox: { w: 1600, h: 900 } })
+  assert.deepEqual(projected.nodes, [])
 })
 
 test('setNodeField clears the field when given an empty value', () => {
