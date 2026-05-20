@@ -63,6 +63,10 @@ export { default as FlowRibbon } from './core/FlowRibbon.vue'
 export { default as FlowAgent } from './core/FlowAgent.vue'
 export { default as FlowSegmentMarker } from './core/FlowSegmentMarker.vue'
 
+// The flow-set player (M4). The designer drives this directly for its
+// set-preview view; <FlowEmbed> wraps it for the slide face.
+export { default as FlowSetPlayer } from './embed/FlowSetPlayer.vue'
+
 // ── Format layer (also on the slide face) ───────────────────────────────────
 // The designer reads AND writes the format; slides only read it. Both faces
 // re-export the same single owner module — there is one format definition.
@@ -100,3 +104,20 @@ export {
 } from './format/model.js'
 
 export { migrateFlow } from './format/migrate.js'
+
+// ── Flow-set format (M4 — designer + slide) ──────────────────────────────────
+// The flow-set abstraction: an ordered set of flow states with animated
+// transitions. The designer assembles, validates and previews a set; the
+// interpolation engine + easings back the player and future scrub UIs.
+export {
+  serializeFlowSet,
+  deserializeFlowSet,
+  isFlowSetEnvelope,
+  assembleFlowSet,
+  normalizeFlowSet,
+  validateFlowSet,
+  interpolateFlow,
+  EASINGS,
+  TRANSITION_DEFAULTS,
+  FLOW_SET_DEFAULTS,
+} from './format/flowSet.js'

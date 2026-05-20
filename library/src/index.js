@@ -24,3 +24,12 @@ export {
   cloneFlow,
   normalizeFlowInput,
 } from './format/index.js'
+
+// The flow-set format (M4). A slide build step may load a flow-set file the
+// same way it loads a single flow; <FlowEmbed> plays either. isFlowSetEnvelope
+// lets a build tell the two payloads apart. The format is OWNED in flowSet.js.
+export {
+  serializeFlowSet,
+  deserializeFlowSet,
+  isFlowSetEnvelope,
+} from './format/flowSet.js'
