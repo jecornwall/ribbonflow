@@ -20,6 +20,8 @@ import {
   capacityFromWidth,
   WIDTH_RANGE,
   SPEED_RANGE,
+  SPEED_CONTROL_RANGE,
+  DEFAULT_NODE_SPEED,
   DEFAULT_REJECTION_RATE,
   DEFAULT_REJECTION_BOW_DEPTH,
   DEFAULT_SPLIT_COUNT,
@@ -162,6 +164,32 @@ test('the coupling maps clamp out-of-range inputs', () => {
   assert.equal(speedFromWidth(-10), SPEED_RANGE.min)
   assert.equal(widthFromSpeed(10), WIDTH_RANGE.max)
   assert.equal(widthFromSpeed(-1), WIDTH_RANGE.min)
+})
+
+// ── bd ai-engineer-gez3 — the SPEED slider reaches well past the coupling
+// ceiling so a heavily-converged node can be sped up enough to clear. ────────
+test('SPEED_CONTROL_RANGE extends well beyond the coupling SPEED_RANGE', () => {
+  // The slider's low end stays at the coupling minimum (no reason to widen it),
+  // but its max must clear a ~4–5× converged node.
+  assert.equal(SPEED_CONTROL_RANGE.min, SPEED_RANGE.min)
+  assert.ok(SPEED_CONTROL_RANGE.max > SPEED_RANGE.max,
+    'control max must exceed the 1.75 coupling ceiling')
+  assert.ok(SPEED_CONTROL_RANGE.max >= 4,
+    `control max ${SPEED_CONTROL_RANGE.max} must reach ~4×+ for a converged node`)
+})
+
+test('the default node speed sits inside the wider control range', () => {
+  assert.ok(DEFAULT_NODE_SPEED >= SPEED_CONTROL_RANGE.min)
+  assert.ok(DEFAULT_NODE_SPEED <= SPEED_CONTROL_RANGE.max)
+})
+
+test('widening the control range leaves the coupling maps untouched', () => {
+  // The coupling map is anchored to SPEED_RANGE, not SPEED_CONTROL_RANGE — the
+  // aligned default (width 70 ⇄ speed 1.0) must NOT shift.
+  assert.equal(speedFromWidth(70), 1.0)
+  assert.equal(widthFromSpeed(1.0), 70)
+  // A speed past the coupling ceiling pegs width at WIDTH_RANGE.max.
+  assert.equal(widthFromSpeed(SPEED_CONTROL_RANGE.max), WIDTH_RANGE.max)
 })
 
 test('a narrow node couples to a low speed (the constraint reads)', () => {
