@@ -17,6 +17,7 @@ import {
   uniqueSlug,
   buildIndex,
   insertFlowAfter,
+  reorderFlows,
 } from '../server/indexBuilder.js'
 
 // ── slugify ──────────────────────────────────────────────────────────────────
@@ -198,4 +199,55 @@ test('insertFlowAfter does not mutate the input array', () => {
 
 test('insertFlowAfter tolerates a missing flows array', () => {
   assert.deepEqual(insertFlowAfter(undefined, 'a', { slug: 'x' }), [{ slug: 'x' }])
+})
+
+// ── reorderFlows (bd ai-engineer-soln) ───────────────────────────────────────
+
+test('reorderFlows reorders entries to match the slug order', () => {
+  const flows = [{ slug: 'a' }, { slug: 'b' }, { slug: 'c' }]
+  const out = reorderFlows(flows, ['c', 'a', 'b'])
+  assert.deepEqual(
+    out.map((f) => f.slug),
+    ['c', 'a', 'b'],
+  )
+})
+
+test('reorderFlows preserves entry objects (title etc.) while reordering', () => {
+  const flows = [
+    { slug: 'before', title: 'Before' },
+    { slug: 'after', title: 'After' },
+  ]
+  const out = reorderFlows(flows, ['after', 'before'])
+  assert.deepEqual(out, [
+    { slug: 'after', title: 'After' },
+    { slug: 'before', title: 'Before' },
+  ])
+})
+
+test('reorderFlows keeps un-named entries after, in original order', () => {
+  const flows = [{ slug: 'a' }, { slug: 'b' }, { slug: 'c' }, { slug: 'd' }]
+  // a stale order list missing c and d must not drop them
+  const out = reorderFlows(flows, ['b', 'a'])
+  assert.deepEqual(
+    out.map((f) => f.slug),
+    ['b', 'a', 'c', 'd'],
+  )
+})
+
+test('reorderFlows does not mutate the input array', () => {
+  const flows = [{ slug: 'a' }, { slug: 'b' }]
+  reorderFlows(flows, ['b', 'a'])
+  assert.deepEqual(
+    flows.map((f) => f.slug),
+    ['a', 'b'],
+    'input untouched',
+  )
+})
+
+test('reorderFlows tolerates a missing flows / order array', () => {
+  assert.deepEqual(reorderFlows(undefined, ['a']), [])
+  assert.deepEqual(
+    reorderFlows([{ slug: 'a' }], undefined).map((f) => f.slug),
+    ['a'],
+  )
 })

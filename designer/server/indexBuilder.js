@@ -114,3 +114,27 @@ export function insertFlowAfter(flows, afterSlug, entry) {
   list.splice(i >= 0 ? i + 1 : list.length, 0, entry)
   return list
 }
+
+/**
+ * Reorder a set's `set.json` flows array to match `orderedSlugs`.
+ *
+ * A flow-set is an ordered list of states (M4) — the order is the animation
+ * sequence — so the designer must be able to reorder it (bd ai-engineer-soln).
+ * Entries whose slug appears in `orderedSlugs` are emitted first, in that
+ * order; any entry NOT named is kept afterwards in its original relative
+ * order, so a partial / stale order list can never silently drop a flow.
+ * Pure — the input array is not mutated.
+ *
+ * @param {Array<{slug:string}>} flows
+ * @param {string[]} orderedSlugs
+ * @returns {Array}
+ */
+export function reorderFlows(flows, orderedSlugs) {
+  const list = [...(flows ?? [])]
+  const rank = new Map((orderedSlugs ?? []).map((s, i) => [s, i]))
+  const named = list
+    .filter((f) => rank.has(f.slug))
+    .sort((a, b) => rank.get(a.slug) - rank.get(b.slug))
+  const rest = list.filter((f) => !rank.has(f.slug))
+  return [...named, ...rest]
+}

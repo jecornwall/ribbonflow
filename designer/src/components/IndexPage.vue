@@ -7,7 +7,7 @@
   docs/superpowers/specs/2026-05-20-flow-persistence-design.md §2.6.
 -->
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, reactive } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { useFlowStore } from '../state/flowStore.js'
 import { useFlowSetPreview } from '../state/useFlowSetPreview.js'
@@ -18,6 +18,46 @@ const preview = useFlowSetPreview()
 const { state } = store
 
 onMounted(() => store.refreshIndex())
+
+// ── drag-to-reorder flows within a set (bd ai-engineer-soln) ──────────────────
+// A flow-set is an ordered list of states — the order IS the animation
+// sequence. drag.from / drag.over track the in-flight drag; drop persists the
+// new order to set.json via saveSetMeta({ flows }).
+const drag = reactive({ setId: null, from: -1, over: -1 })
+
+function onDragStart(setId, index) {
+  drag.setId = setId
+  drag.from = index
+  drag.over = index
+}
+
+function onDragOver(setId, index) {
+  if (drag.setId === setId) drag.over = index
+}
+
+function endDrag() {
+  drag.setId = null
+  drag.from = -1
+  drag.over = -1
+}
+
+/** Drop the dragged flow at `toIndex` within `set`, persisting the new order. */
+async function onDrop(set, toIndex) {
+  const { setId, from } = drag
+  endDrag()
+  if (setId !== set.id || from < 0 || from === toIndex) return
+  // Reorder a local copy, optimistically apply it, then persist.
+  const flows = set.flows.slice()
+  const [moved] = flows.splice(from, 1)
+  flows.splice(toIndex, 0, moved)
+  set.flows = flows
+  try {
+    await store.saveSetMeta(set.id, { flows: flows.map((f) => f.slug) })
+  } catch (err) {
+    window.alert(`Could not reorder flows: ${err.message || err}`)
+    await store.refreshIndex()
+  }
+}
 
 async function newSet() {
   const title = window.prompt('New flow-set name:')
@@ -117,7 +157,24 @@ async function removeFlow(flow) {
       </div>
       <p v-if="set.flows.length === 0" class="ix-empty">No flows in this set yet.</p>
       <ul v-else class="ix-flows">
-        <li v-for="flow in set.flows" :key="flow.id" class="ix-flow">
+        <li
+          v-for="(flow, fi) in set.flows"
+          :key="flow.id"
+          class="ix-flow"
+          :class="{
+            'ix-flow-dragging': drag.setId === set.id && drag.from === fi,
+            'ix-flow-dropzone':
+              drag.setId === set.id && drag.over === fi && drag.from !== fi,
+          }"
+          draggable="true"
+          @dragstart="onDragStart(set.id, fi)"
+          @dragover.prevent="onDragOver(set.id, fi)"
+          @drop.prevent="onDrop(set, fi)"
+          @dragend="endDrag"
+        >
+          <span class="ix-flow-grip" title="drag to reorder the animation sequence"
+            >⠿</span
+          >
           <button class="ix-flow-open" @click="open(flow)">
             <span class="ix-flow-title">{{ flow.title }}</span>
             <span class="ix-flow-meta">
@@ -197,10 +254,31 @@ async function removeFlow(flow) {
 }
 .ix-flow {
   display: flex;
+  align-items: stretch;
   background: #fff;
   border: 1px solid #d8d3c6;
   border-radius: 7px;
   overflow: hidden;
+}
+.ix-flow-dragging {
+  opacity: 0.4;
+}
+.ix-flow-dropzone {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 2px #1d4ed8 inset;
+}
+.ix-flow-grip {
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  color: #b3ad9c;
+  font-size: 15px;
+  cursor: grab;
+  user-select: none;
+  border-right: 1px solid #ece8dc;
+}
+.ix-flow-grip:active {
+  cursor: grabbing;
 }
 .ix-flow-open {
   flex: 1;

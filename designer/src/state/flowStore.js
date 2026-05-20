@@ -83,13 +83,14 @@ async function createSet(title) {
 }
 
 /**
- * Update a set's metadata (title and/or transition).
+ * Update a set's metadata (title, transition, and/or flow order).
  *
  * The server merges `partial` into the existing set.json; unknown fields are
- * ignored. Regenerates the index and returns `{ ok, index }`.
+ * ignored. `flows` is an array of slugs giving the new flow order
+ * (bd ai-engineer-soln). Regenerates the index and returns `{ ok, index }`.
  *
  * @param {string} setId — the set slug (no slash)
- * @param {{ title?: string, transition?: object }} partial
+ * @param {{ title?: string, transition?: object, flows?: string[] }} partial
  */
 async function saveSetMeta(setId, partial) {
   return request('PUT', `${API}/set/${setId}`, partial)

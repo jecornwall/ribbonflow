@@ -34,6 +34,7 @@ import {
   uniqueSlug,
   buildIndex,
   insertFlowAfter,
+  reorderFlows,
   SLUG_RE,
 } from './indexBuilder.js'
 
@@ -210,18 +211,22 @@ function makeStore(root) {
   /**
    * Merge partial metadata into an existing set's set.json.
    *
-   * Recognised fields: `title` (string) and `transition` (object). Unknown
-   * fields are silently ignored so future additions stay back-compat. The
-   * caller is responsible for re-running regenIndex() after this call.
+   * Recognised fields: `title` (string), `transition` (object), and `flows`
+   * (an array of slugs giving the new flow order — bd ai-engineer-soln).
+   * Unknown fields are silently ignored so future additions stay back-compat.
+   * The caller is responsible for re-running regenIndex() after this call.
    *
    * @param {string} setSlug
-   * @param {{ title?: string, transition?: object }} partial
+   * @param {{ title?: string, transition?: object, flows?: string[] }} partial
    */
   async function updateSet(setSlug, partial) {
     const meta = await readSetMeta(setSlug)
     if (typeof partial.title === 'string') meta.title = partial.title
     if (partial.transition !== undefined && typeof partial.transition === 'object') {
       meta.transition = partial.transition
+    }
+    if (Array.isArray(partial.flows)) {
+      meta.flows = reorderFlows(meta.flows, partial.flows)
     }
     await writeSetMeta(setSlug, meta)
   }
