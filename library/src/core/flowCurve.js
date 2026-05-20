@@ -549,6 +549,40 @@ export const RIBBON_SCHEME_COLORS = {
   green:   '#3FAE6B',
 }
 
+/**
+ * Mix a `#rrggbb` hex colour toward a target hex by fraction t ∈ [0,1].
+ * t=0 returns `hex` unchanged; t=1 returns `target`. Per-channel linear blend.
+ */
+export function mixHex(hex, target, t) {
+  const parse = (h) => {
+    const s = h.replace('#', '')
+    return [
+      parseInt(s.slice(0, 2), 16),
+      parseInt(s.slice(2, 4), 16),
+      parseInt(s.slice(4, 6), 16),
+    ]
+  }
+  const [r1, g1, b1] = parse(hex)
+  const [r2, g2, b2] = parse(target)
+  const tc = Math.max(0, Math.min(1, t))
+  const mix = (a, b) => Math.round(a + (b - a) * tc)
+  const hx = (n) => n.toString(16).padStart(2, '0')
+  return `#${hx(mix(r1, r2))}${hx(mix(g1, g2))}${hx(mix(b1, b2))}`
+}
+
+/**
+ * Lighter tone for each scheme colour — the transition-curve "wing" fill
+ * (bd ai-engineer-0sdz, v1.1 spec §8.4). Each scheme colour mixed 45% toward
+ * white, mirroring the locked-v2 PINCH_ROSE-vs-CONSTRAINT_ROSE two-tone
+ * grammar: the curve reads lighter than the straight plateau.
+ */
+export const RIBBON_SCHEME_COLOR_MIX = 0.45
+export const RIBBON_SCHEME_COLORS_LIGHT = {
+  neutral: mixHex(RIBBON_SCHEME_COLORS.neutral, '#ffffff', RIBBON_SCHEME_COLOR_MIX),
+  red:     mixHex(RIBBON_SCHEME_COLORS.red,     '#ffffff', RIBBON_SCHEME_COLOR_MIX),
+  green:   mixHex(RIBBON_SCHEME_COLORS.green,   '#ffffff', RIBBON_SCHEME_COLOR_MIX),
+}
+
 // ---- Pinch-around-constraint width function (locked-v2) -------------------
 
 export const DEFAULT_BAND_WIDTH       = 70  // full-width plateau (viewBox units)
@@ -626,6 +660,106 @@ export function segmentBoundsByLatency(branch, flow) {
     bounds.push(bounds[i] + segLens[i])
   }
   return bounds
+}
+
+// ---- Smooth segmented width profile (non-pinch flows) ---------------------
+//
+// bd ai-engineer-0sdz. The locked-v2 pinch register (buildPinchWidthFn) gives
+// a single kind:'constraint' a smooth wineglass taper; every OTHER flow used a
+// hard STEP function — adjacent node-width segments jumped abruptly. v1.1
+// removed node kinds, so no flow takes the pinch path any more. This
+// generalises the smoothstep wineglass treatment to ANY interior boundary
+// where the two adjacent node widths differ.
+
+/**
+ * Transition fraction for smooth segmented width curves. At an interior
+ * boundary between two different-width segments, the smoothstep transition
+ * zone spans this fraction of the SHORTER adjacent segment (centred on the
+ * boundary). 0.45 mirrors buildPinchWidthFn's transitionFraction default and
+ * guarantees the two zones inside any one segment never overlap — a
+ * constant-width plateau always survives in the middle of every segment.
+ */
+export const TRANSITION_FRACTION = 0.45
+
+/**
+ * Build the smooth segmented ribbon profile for a non-pinch branch.
+ *
+ * Each node owns a constant-width PLATEAU; at every interior boundary where
+ * the two adjacent node widths DIFFER, a cubic smoothstep transition zone
+ * replaces the hard step. Boundaries between equal-width segments stay flat
+ * (zero-length transition — "a curve only between *different* widths").
+ *
+ * This is the single source of truth for the non-pinch ribbon width: BOTH
+ * FlowGraph.vue's visual `branchWidthFn` and useFlowSimulation.js's physics
+ * `branch.widthFn` call it, so the renderer and the wall-clamp engine agree
+ * by construction — the no-escape invariant cannot drift.
+ *
+ * @param {object} branch — a branch from buildBranches() ({ nodeIds, centerline })
+ * @param {object} flow   — the flow config (for per-node latency)
+ * @param {{[id:string]: number}} widths — per-node width map (computeNodeWidths)
+ * @returns {{
+ *   widthFn: (s:number)=>number,
+ *   segments: Array<{ nodeId:string, plateau:{sStart,sEnd},
+ *                     leftWing:{sStart,sEnd}|null, rightWing:{sStart,sEnd}|null }>
+ * }}
+ */
+export function segmentedRibbonLayout(branch, flow, widths) {
+  const bounds = segmentBoundsByLatency(branch, flow)   // length N+1
+  const N = branch.nodeIds.length
+  const total = branch.centerline.totalLength
+  const segWidths = branch.nodeIds.map(
+    id => (typeof widths[id] === 'number' ? widths[id] : MIN_RIBBON_WIDTH),
+  )
+
+  // Interior-boundary transition half-widths. transHalf has length N+1; index
+  // k is the boundary at bounds[k]. The two open ends (k=0, k=N) and every
+  // boundary between equal-width segments stay 0 (flat — no curve).
+  const transHalf = new Array(N + 1).fill(0)
+  for (let k = 1; k < N; k++) {
+    if (segWidths[k - 1] === segWidths[k]) continue
+    const leftLen  = bounds[k]     - bounds[k - 1]
+    const rightLen = bounds[k + 1] - bounds[k]
+    const shorter  = Math.min(leftLen, rightLen)
+    transHalf[k] = (TRANSITION_FRACTION * shorter) / 2
+  }
+
+  // widthFn: constant plateau, smoothstep across each interior transition zone
+  // [bounds[k] - transHalf[k], bounds[k] + transHalf[k]].
+  const widthFn = (s) => {
+    const sc = Math.max(0, Math.min(total, s))
+    let i = 0
+    while (i < N - 1 && sc > bounds[i + 1]) i++
+    // Inside this segment's LEFT transition zone (boundary i)?
+    if (transHalf[i] > 0 && sc < bounds[i] + transHalf[i]) {
+      const zStart = bounds[i] - transHalf[i]
+      const t = (sc - zStart) / (2 * transHalf[i])
+      return segWidths[i - 1] + (segWidths[i] - segWidths[i - 1]) * smoothstep(t)
+    }
+    // Inside this segment's RIGHT transition zone (boundary i+1)?
+    if (transHalf[i + 1] > 0 && sc > bounds[i + 1] - transHalf[i + 1]) {
+      const zStart = bounds[i + 1] - transHalf[i + 1]
+      const t = (sc - zStart) / (2 * transHalf[i + 1])
+      return segWidths[i] + (segWidths[i + 1] - segWidths[i]) * smoothstep(t)
+    }
+    return segWidths[i]
+  }
+
+  // Per-node plateau + transition-wing arc-ranges, for the renderer's tonal
+  // overlay. A wing is null when the adjacent boundary has no transition.
+  const segments = []
+  for (let i = 0; i < N; i++) {
+    const segStart = bounds[i]
+    const segEnd   = bounds[i + 1]
+    const plateauStart = segStart + transHalf[i]
+    const plateauEnd   = segEnd   - transHalf[i + 1]
+    segments.push({
+      nodeId: branch.nodeIds[i],
+      plateau:   { sStart: plateauStart, sEnd: plateauEnd },
+      leftWing:  transHalf[i]     > 0 ? { sStart: segStart, sEnd: plateauStart } : null,
+      rightWing: transHalf[i + 1] > 0 ? { sStart: plateauEnd, sEnd: segEnd }     : null,
+    })
+  }
+  return { widthFn, segments }
 }
 
 /**

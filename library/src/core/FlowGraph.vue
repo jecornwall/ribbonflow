@@ -329,10 +329,12 @@ import {
   MIN_RIBBON_WIDTH,
   MAX_RIBBON_WIDTH,
   buildPinchWidthFn,
+  segmentedRibbonLayout,
   pinchZoneArcRanges,
   pinchZoneOutlinePath,
   junctionNodeIds,
   RIBBON_SCHEME_COLORS,
+  RIBBON_SCHEME_COLORS_LIGHT,
 } from './flowCurve.js'
 import FlowRibbon from './FlowRibbon.vue'
 import FlowSegmentMarker from './FlowSegmentMarker.vue'
@@ -453,19 +455,15 @@ function branchWidthFn(branch) {
     return buildPinchWidthFn(branch, props.flow)
   }
 
-  // Legacy: per-node throughput-encoded step function. Each segment renders
-  // at its node's computed width; transitions are sample-by-sample linear ramps
-  // between adjacent widths. Retained for iter-1 variants (n4-flow-a/b) and
-  // for the upcoming n9-multilane.js width-encodes-throughput register.
-  const segLens = branchLatencyArc(branch)
-  return (s) => {
-    let acc = 0
-    for (let i = 0; i < branch.nodeIds.length; i++) {
-      if (s <= acc + segLens[i]) return widths[branch.nodeIds[i]]
-      acc += segLens[i]
-    }
-    return widths[branch.nodeIds[branch.nodeIds.length - 1]]
-  }
+  // bd ai-engineer-0sdz: the non-pinch ribbon profile is the SMOOTH segmented
+  // width function — a constant-width plateau per node with smoothstep
+  // transition curves at every interior boundary where adjacent widths differ.
+  // It replaces a hard per-node STEP function (adjacent segments jumped
+  // abruptly — beige→thin-red→wide-green visibly stepped). This is the SAME
+  // segmentedRibbonLayout the engine's `branch.widthFn` uses, so the rendered
+  // ribbon and the physics wall-clamp agree by construction (the no-escape
+  // invariant cannot drift).
+  return segmentedRibbonLayout(branch, props.flow, widths).widthFn
 }
 
 // Per-segment colour-scheme overlays (bd ai-engineer-3ihf, v1.1 §3 + §7).
@@ -481,25 +479,58 @@ function branchWidthFn(branch) {
 //
 // REACTIVE: a computed() so the overlays re-derive when the `flow` prop
 // changes (the before/after click-toggle idiom — see junctionDiscs / pinch).
+// bd ai-engineer-0sdz §8.4 — TWO-TONE per-segment overlay. Each non-neutral
+// coloured segment paints its constant-width PLATEAU in the full scheme tone
+// and its transition-curve WINGS in a lighter tone (RIBBON_SCHEME_COLORS_LIGHT,
+// the scheme colour mixed 45% toward white) — mirroring the locked-v2
+// PINCH_ROSE-vs-CONSTRAINT_ROSE grammar so the curve reads lighter than the
+// straight part. NEUTRAL segments stay un-overlaid (the wheat base ribbon).
 const coloredSegments = computed(() => {
   const out = []
+  // Locked-v2 pinch flows keep the legacy FLAT per-segment overlay — their
+  // ribbon profile is buildPinchWidthFn, not the segmented layout, and the
+  // dusty-rose pinch overlay already carries the constraint's two-tone read.
+  if (props.flow.pinchMode === 'constraint-only') {
+    branches.forEach((branch, bi) => {
+      const segLens = branchLatencyArc(branch)
+      const wfn = branchWidthFn(branch)
+      const total = branch.centerline.totalLength
+      let acc = 0
+      for (let i = 0; i < branch.nodeIds.length; i++) {
+        const sStart = acc
+        const sEnd = Math.min(acc + segLens[i], total)
+        acc += segLens[i]
+        const node = props.flow.nodes.find(n => n.id === branch.nodeIds[i])
+        const scheme = (node && node.colorScheme) || 'neutral'
+        if (scheme === 'neutral') continue
+        const color = RIBBON_SCHEME_COLORS[scheme]
+        if (!color) continue
+        const d = pinchZoneOutlinePath(branch.centerline, wfn, { sStart, sEnd })
+        if (d) out.push({ key: `seg-${bi}-${i}`, d, color })
+      }
+    })
+    return out
+  }
+  // Non-pinch flows: smooth segmented layout → plateau + lighter wings.
   branches.forEach((branch, bi) => {
-    const segLens = branchLatencyArc(branch)
-    const wfn = branchWidthFn(branch)
-    const total = branch.centerline.totalLength
-    let acc = 0
-    for (let i = 0; i < branch.nodeIds.length; i++) {
-      const sStart = acc
-      const sEnd = Math.min(acc + segLens[i], total)
-      acc += segLens[i]
-      const node = props.flow.nodes.find(n => n.id === branch.nodeIds[i])
+    const { widthFn, segments } = segmentedRibbonLayout(branch, props.flow, widths)
+    segments.forEach((seg, i) => {
+      const node = props.flow.nodes.find(n => n.id === seg.nodeId)
       const scheme = (node && node.colorScheme) || 'neutral'
-      if (scheme === 'neutral') continue
-      const color = RIBBON_SCHEME_COLORS[scheme]
-      if (!color) continue
-      const d = pinchZoneOutlinePath(branch.centerline, wfn, { sStart, sEnd })
-      if (d) out.push({ key: `seg-${bi}-${i}`, d, color })
-    }
+      if (scheme === 'neutral') return
+      const full  = RIBBON_SCHEME_COLORS[scheme]
+      const light = RIBBON_SCHEME_COLORS_LIGHT[scheme]
+      if (!full) return
+      const pd = pinchZoneOutlinePath(branch.centerline, widthFn, seg.plateau)
+      if (pd) out.push({ key: `seg-${bi}-${i}-p`, d: pd, color: full })
+      // Transition wings — lighter tone (only present where adjacent widths
+      // differ; null at the ribbon's open ends).
+      ;[['l', seg.leftWing], ['r', seg.rightWing]].forEach(([wk, wing]) => {
+        if (!wing) return
+        const wd = pinchZoneOutlinePath(branch.centerline, widthFn, wing)
+        if (wd) out.push({ key: `seg-${bi}-${i}-w${wk}`, d: wd, color: light })
+      })
+    })
   })
   return out
 })

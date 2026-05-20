@@ -746,3 +746,135 @@ test('RIBBON_SCHEME_COLORS maps every v1.1 colorScheme to a hex colour', async (
   // red matches the designer's accent exactly.
   assert.equal(RIBBON_SCHEME_COLORS.red, CONSTRAINT_INK)
 })
+
+// ── Smooth segmented width profile (bd ai-engineer-0sdz, v1.1 §8) ───────────
+import {
+  segmentedRibbonLayout,
+  TRANSITION_FRACTION,
+  mixHex,
+  RIBBON_SCHEME_COLORS_LIGHT,
+  RIBBON_SCHEME_COLORS,
+} from './flowCurve.js'
+
+// A 3-node linear flow on a straight horizontal line — equal latencies so the
+// latency-distributed segments are equal thirds of the centerline.
+const segFlow3 = {
+  nodes: [
+    { id: 'a', x: 0,   y: 100, latency: 1, successors: ['b'] },
+    { id: 'b', x: 300, y: 100, latency: 1, successors: ['c'] },
+    { id: 'c', x: 600, y: 100, latency: 1, successors: [] },
+  ],
+}
+const segBranch3 = () => buildBranches(segFlow3).branches[0]
+
+test('segmentedRibbonLayout: widthFn returns the node width on each plateau', () => {
+  const branch = segBranch3()
+  const widths = { a: 20, b: 70, c: 40 }
+  const { widthFn } = segmentedRibbonLayout(branch, segFlow3, widths)
+  const total = branch.centerline.totalLength
+  // Mid-segment sample of each node sits inside its plateau (transitions are
+  // ≤ 0.225 × segLen on each side, so the centre is always plateau).
+  assert.equal(widthFn(total * (1 / 6)), 20, 'segment a plateau')
+  assert.equal(widthFn(total * (3 / 6)), 70, 'segment b plateau')
+  assert.equal(widthFn(total * (5 / 6)), 40, 'segment c plateau')
+})
+
+test('segmentedRibbonLayout: widthFn endpoints equal first/last node widths', () => {
+  const branch = segBranch3()
+  const widths = { a: 20, b: 70, c: 40 }
+  const { widthFn } = segmentedRibbonLayout(branch, segFlow3, widths)
+  assert.equal(widthFn(0), 20)
+  assert.equal(widthFn(branch.centerline.totalLength), 40)
+})
+
+test('segmentedRibbonLayout: widthFn is continuous — no abrupt step', () => {
+  const branch = segBranch3()
+  const widths = { a: 20, b: 70, c: 40 }
+  const { widthFn } = segmentedRibbonLayout(branch, segFlow3, widths)
+  const total = branch.centerline.totalLength
+  const STEPS = 600
+  let prev = widthFn(0)
+  let maxJump = 0
+  for (let i = 1; i <= STEPS; i++) {
+    const w = widthFn((i / STEPS) * total)
+    maxJump = Math.max(maxJump, Math.abs(w - prev))
+    prev = w
+  }
+  // A raw step function jumps 50 units between samples. A smooth profile over
+  // 600 samples must move only a small fraction per sample.
+  assert.ok(maxJump < 3, `expected smooth profile, saw a ${maxJump.toFixed(2)}-unit jump`)
+})
+
+test('segmentedRibbonLayout: transition between different widths is monotone', () => {
+  const branch = segBranch3()
+  const widths = { a: 20, b: 70, c: 40 }
+  const { widthFn, segments } = segmentedRibbonLayout(branch, segFlow3, widths)
+  // a→b boundary: segment a's rightWing should rise monotonically 20→70.
+  const wing = segments[0].rightWing
+  assert.ok(wing, 'a has a rightWing (a≠b widths)')
+  let prev = -Infinity
+  for (let i = 0; i <= 40; i++) {
+    const s = wing.sStart + (i / 40) * (wing.sEnd - wing.sStart)
+    const w = widthFn(s)
+    assert.ok(w >= prev - 1e-9, `monotone non-decreasing across a→b transition`)
+    assert.ok(w >= 20 - 1e-9 && w <= 70 + 1e-9, 'transition width stays in [20,70]')
+    prev = w
+  }
+})
+
+test('segmentedRibbonLayout: equal adjacent widths → no transition zone', () => {
+  const branch = segBranch3()
+  const widths = { a: 50, b: 50, c: 50 }
+  const { widthFn, segments } = segmentedRibbonLayout(branch, segFlow3, widths)
+  const total = branch.centerline.totalLength
+  for (let i = 0; i <= 100; i++) assert.equal(widthFn((i / 100) * total), 50)
+  for (const seg of segments) {
+    assert.equal(seg.leftWing, null)
+    assert.equal(seg.rightWing, null)
+  }
+})
+
+test('segmentedRibbonLayout: per-segment plateau ranges are ordered and non-overlapping', () => {
+  const branch = segBranch3()
+  const widths = { a: 20, b: 70, c: 40 }
+  const { segments } = segmentedRibbonLayout(branch, segFlow3, widths)
+  for (const seg of segments) {
+    assert.ok(seg.plateau.sStart < seg.plateau.sEnd, `${seg.nodeId} has a real plateau`)
+  }
+  assert.ok(segments[0].plateau.sEnd <= segments[1].plateau.sStart + 1e-6)
+  assert.ok(segments[1].plateau.sEnd <= segments[2].plateau.sStart + 1e-6)
+})
+
+test('segmentedRibbonLayout: interior node gets transition wings on both sides', () => {
+  const branch = segBranch3()
+  const widths = { a: 20, b: 70, c: 40 }
+  const { segments } = segmentedRibbonLayout(branch, segFlow3, widths)
+  // b differs from both a and c, so it has both wings; a has only a right
+  // wing, c only a left wing (the ribbon's open ends carry no transition).
+  assert.ok(segments[1].leftWing && segments[1].rightWing, 'b has both wings')
+  assert.equal(segments[0].leftWing, null, 'a — ribbon start, no left wing')
+  assert.equal(segments[2].rightWing, null, 'c — ribbon end, no right wing')
+})
+
+test('TRANSITION_FRACTION keeps both wings inside a segment (plateau survives)', () => {
+  // Two wings inside one segment consume at most TRANSITION_FRACTION of it.
+  assert.ok(TRANSITION_FRACTION < 1, 'a plateau always survives')
+  assert.equal(TRANSITION_FRACTION, 0.45)
+})
+
+test('mixHex blends per-channel; t=0 and t=1 are the endpoints', () => {
+  assert.equal(mixHex('#000000', '#ffffff', 0), '#000000')
+  assert.equal(mixHex('#000000', '#ffffff', 1), '#ffffff')
+  assert.equal(mixHex('#000000', '#ffffff', 0.5), '#808080')
+})
+
+test('RIBBON_SCHEME_COLORS_LIGHT is a lighter tone than the full scheme colour', () => {
+  // The light tone mixed toward white must be strictly brighter on every
+  // channel than the source — the curve reads lighter than the plateau.
+  const lum = (h) => {
+    const s = h.replace('#', '')
+    return parseInt(s.slice(0, 2), 16) + parseInt(s.slice(2, 4), 16) + parseInt(s.slice(4, 6), 16)
+  }
+  assert.ok(lum(RIBBON_SCHEME_COLORS_LIGHT.red)   > lum(RIBBON_SCHEME_COLORS.red))
+  assert.ok(lum(RIBBON_SCHEME_COLORS_LIGHT.green) > lum(RIBBON_SCHEME_COLORS.green))
+})

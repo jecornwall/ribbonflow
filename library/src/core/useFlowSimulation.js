@@ -11,6 +11,7 @@
 import {
   buildBranches,
   buildPinchWidthFn,
+  segmentedRibbonLayout,
   computeNodeWidths,
   DEFAULT_BAND_WIDTH,
   MIN_RIBBON_WIDTH,
@@ -270,20 +271,16 @@ export function createFlowSimulation(flow, opts = {}) {
     if (flow.pinchMode === 'constraint-only') {
       branch.widthFn = buildPinchWidthFn(branch, flow)
     } else {
-      const latencies = branch.nodeIds.map(
-        id => flow.nodes.find(n => n.id === id).latency,
-      )
-      const sumL = latencies.reduce((a, b) => a + b, 0)
-      const totalLen = branch.centerline.totalLength
-      const segLens = latencies.map(l => (l / sumL) * totalLen)
-      branch.widthFn = (s) => {
-        let acc = 0
-        for (let i = 0; i < branch.nodeIds.length; i++) {
-          if (s <= acc + segLens[i]) return widths[branch.nodeIds[i]]
-          acc += segLens[i]
-        }
-        return widths[branch.nodeIds[branch.nodeIds.length - 1]]
-      }
+      // bd ai-engineer-0sdz: the non-pinch ribbon profile is the SMOOTH
+      // segmented width function — a constant-width plateau per node with
+      // smoothstep transition curves at every interior boundary where the
+      // adjacent widths differ. This is the SAME segmentedRibbonLayout
+      // FlowGraph.vue's `branchWidthFn` uses, so the physics wall-clamp and
+      // the rendered ribbon agree by construction (the no-escape invariant
+      // cannot drift). It replaces a hard per-node STEP function; a smooth
+      // profile is strictly gentler than the step (intermediate widths, no
+      // jumps), so the clamp only ever tightens monotonically.
+      branch.widthFn = segmentedRibbonLayout(branch, flow, widths).widthFn
     }
     // Per-node SPEED step function (v1.1 §7, bd ai-engineer-06e7). The
     // segments are latency-proportioned — exactly the segmentation widthFn's
