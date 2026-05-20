@@ -152,41 +152,51 @@ function fmt(v, decimals = 2) {
         />
       </label>
 
-      <!-- ── the three v1.1 node controls ────────────────────────────────── -->
+      <!-- ── the three v1.1 node controls (sliders — bd zesj) ────────────── -->
+      <!-- Sliders drag live (`@input` mutates the reactive doc — the editor
+           canvas tracks it) and commit the preview once on release
+           (`@change` → commitEdit), mirroring the canvas drag-then-commit
+           cadence. A numeric read-out sits beside each slider. -->
       <h4>controls</h4>
 
-      <label class="row">
+      <div class="row ctl">
         <span>length</span>
         <input
-          type="number"
+          type="range" class="slider"
           :min="LENGTH_RANGE.min" :max="LENGTH_RANGE.max" step="0.05"
           :value="node.length ?? 0.8"
           title="visual segment length"
-          @change="doc.setNodeLength(node.id, +$event.target.value); doc.commitEdit()"
+          @input="doc.setNodeLength(node.id, +$event.target.value)"
+          @change="doc.commitEdit()"
         />
-      </label>
+        <code class="readout">{{ fmt(node.length ?? 0.8) }}</code>
+      </div>
 
-      <label class="row">
+      <div class="row ctl">
         <span>speed</span>
         <input
-          type="number"
+          type="range" class="slider"
           :min="SPEED_RANGE.min" :max="SPEED_RANGE.max" step="0.05"
           :value="node.speed ?? 1.0"
           title="speed particles travel through this node"
-          @change="doc.setNodeSpeed(node.id, +$event.target.value); doc.commitEdit()"
+          @input="doc.setNodeSpeed(node.id, +$event.target.value)"
+          @change="doc.commitEdit()"
         />
-      </label>
+        <code class="readout">{{ fmt(node.speed ?? 1.0) }}</code>
+      </div>
 
-      <label class="row">
+      <div class="row ctl">
         <span>width</span>
         <input
-          type="number"
+          type="range" class="slider"
           :min="WIDTH_RANGE.min" :max="WIDTH_RANGE.max" step="1"
           :value="node.width ?? 70"
           title="visual pipe width"
-          @change="doc.setNodeWidth(node.id, +$event.target.value); doc.commitEdit()"
+          @input="doc.setNodeWidth(node.id, +$event.target.value)"
+          @change="doc.commitEdit()"
         />
-      </label>
+        <code class="readout">{{ fmt(node.width ?? 70, 0) }}</code>
+      </div>
 
       <label class="row couple">
         <input
