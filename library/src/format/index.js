@@ -30,6 +30,7 @@
  */
 
 import { migrateFlow } from './migrate.js'
+import { normalizeFlow } from './model.js'
 
 /**
  * Current flow-format version. M1 = 1; M2 = 2 (multi-source nodes, first-class
@@ -126,28 +127,71 @@ export function deserializeFlow(input) {
 }
 
 /**
- * Normalize an arbitrary `flow`-shaped input into a live flow object.
+ * Detect the format version of a bare flow object (one without a `formatVersion`
+ * wrapper). Called by normalizeFlowInput when the input has no envelope.
  *
- * <FlowEmbed> accepts a flow as either a plain flow object (the shape the
- * current deck passes) or a serialized envelope (string OR parsed object).
- * This helper hides that distinction so the slide face never has to know
- * which form it was handed.
+ * Detection rules:
+ *   v1 — top-level `entryId` is the definitive v1 marker (removed by v1→v2).
+ *   v2 — nodes have `capacity` (the v2 engine field) but no `colorScheme`
+ *         (the v3 per-node colour control added in v2→v3). An already-
+ *         normalized v3 flow has both `capacity` (re-derived) and `colorScheme`,
+ *         so it correctly reads as v3.
+ *   v3 — everything else (including an empty-nodes flow).
  *
- * Detection: an envelope always has a numeric `formatVersion`; a bare flow
- * object never does.
+ * @param {object} flow — a bare flow object (no formatVersion)
+ * @returns {1|2|3}
+ */
+function detectBareFlowVersion(flow) {
+  // v1: top-level entryId is present (v1→v2 migration deletes it)
+  if (flow.entryId !== undefined) return 1
+  // v2: nodes carry the pre-v3 engine field `capacity` but lack `colorScheme`
+  const nodes = Array.isArray(flow.nodes) ? flow.nodes : []
+  if (nodes.some(n => n.capacity !== undefined && n.colorScheme === undefined)) return 2
+  return 3
+}
+
+/**
+ * Normalize an arbitrary `flow`-shaped input into a render-ready flow object.
+ *
+ * <FlowEmbed> accepts a flow as any of:
+ *   - A plain flow object (the format the current deck uses — format v1 or v3)
+ *   - A serialized JSON envelope string (from serializeFlow / designer export)
+ *   - A parsed envelope object ({ formatVersion, flow })
+ *
+ * This helper hides that distinction AND ensures the result is:
+ *   1. Migrated to the current format version (v3) if necessary.
+ *   2. Normalized (defaults filled, engine fields derived) so <FlowGraph> can
+ *      render it without any further preparation.
+ *
+ * Detection for bare objects: an envelope always has a numeric `formatVersion`;
+ * a bare flow object never does. For bare flows the version is detected via
+ * detectBareFlowVersion(), then migrateFlow() and normalizeFlow() are applied.
+ * normalizeFlow() is idempotent so a v3 flow that already carries all defaults
+ * is not degraded by a second pass.
+ *
+ * M5 fix (bd ai-engineer-n2k9): before this fix, bare flow objects were
+ * returned untouched — no migration, no normalization — causing 189 console
+ * errors (NaN SVG attributes) and a crash in pinchZoneOutlinePath when a
+ * deck v1 flow was handed directly to <FlowEmbed>.
  *
  * @param {string|object} input
- * @returns {object} a live flow object
+ * @returns {object} a normalized, render-ready v3 flow object
  */
 export function normalizeFlowInput(input) {
   if (typeof input === 'string') {
-    return deserializeFlow(input)
+    // JSON envelope string → deserialize (migrates if needed) → normalize
+    return normalizeFlow(deserializeFlow(input))
   }
   if (input != null && typeof input === 'object') {
     if (typeof input.formatVersion === 'number') {
-      return deserializeFlow(input)
+      // Parsed envelope → deserialize (migrates if needed) → normalize
+      return normalizeFlow(deserializeFlow(input))
     }
-    return input
+    // Bare flow object — detect its format version, migrate forward, then
+    // normalize. An already-normalized v3 flow passes through harmlessly.
+    const version = detectBareFlowVersion(input)
+    const v3 = version < FLOW_FORMAT_VERSION ? migrateFlow(input, version) : input
+    return normalizeFlow(v3)
   }
   throw new TypeError('normalizeFlowInput: expected a flow object or serialized flow')
 }
