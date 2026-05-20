@@ -13,8 +13,13 @@
  * docs/superpowers/specs/2026-05-20-flow-v1.1-node-controls-design.md) reworks
  * the node model to three authored knobs — LENGTH / SPEED / WIDTH — drops the
  * `constraint` node type for a per-node colour scheme, and bumps the format to
- * version 3. capacity / latency are no longer authored: normalizeFlow() derives
- * them as engine inputs so the simulation engine and renderer run unchanged.
+ * version 3. `latency` is no longer authored: normalizeFlow() derives it from
+ * `length`. `capacity` is an OPTIONAL authored override (bd ai-engineer-v9mj):
+ * when a node sets it that integer is used directly; when omitted it is derived
+ * from `width`. Authored capacity is the v3 model's hook for the capacity-
+ * limited crisp queue — a `capacity: 1` constraint forms a tight one-at-a-time
+ * pile at its entrance, and a high-capacity immediate-upstream node acts as the
+ * reservoir that pile sits in. See M2 spec §4.2.
  */
 
 /** Default emit rate (particles/sec) for a source node that sets none. */
@@ -63,7 +68,13 @@ export function widthFromSpeed(speed) {
 /**
  * Engine capacity derived from a node's visual width (spec §4.2). A narrow
  * node holds fewer agents, so it visibly queues — the constraint reads in the
- * simulation with no engine edit. capacity is no longer an authored field.
+ * simulation with no engine edit.
+ *
+ * This is the DEFAULT only — a node may author an explicit `capacity` to
+ * override it (bd ai-engineer-v9mj). The width-derived value couples capacity
+ * to width too tightly to express the deck's crisp queue optic: that needs a
+ * `capacity: 1` constraint (a hard one-at-a-time gate) sitting downstream of a
+ * deliberately high-capacity reservoir node. Width alone cannot say both.
  */
 export function capacityFromWidth(width) {
   return Math.max(1, Math.round(width / 16))
@@ -103,10 +114,10 @@ function deepClone(value) {
  * the authored flow is what is written to disk.
  *
  * Engine derivation: the simulation engine + renderer still consume
- * `latency` / `capacity` / `widthMode`. Those are no longer authored, so they
- * are derived here — `latency` from `length`, `capacity` from `width`, and
+ * `latency` / `capacity` / `widthMode`. `latency` is derived from `length` and
  * `widthMode: 'manual'` so `computeNodeWidths` honours the explicit per-node
- * `width`.
+ * `width`. `capacity` is honoured if the node authored one (the v9mj crisp-
+ * queue override); otherwise it is derived from `width` via capacityFromWidth.
  *
  * @param {object} flow — a v3 flow object (possibly partial)
  * @returns {object} a normalized, engine-ready deep copy
@@ -137,7 +148,9 @@ export function normalizeFlow(flow) {
     if (n.kind === 'source' && n.rate === undefined) n.rate = DEFAULT_SOURCE_RATE
     // Engine inputs derived from the v1.1 controls (spec §4.2).
     n.latency = n.length
-    n.capacity = capacityFromWidth(n.width)
+    // capacity: an authored integer wins; otherwise derive from width.
+    // The authored override is the crisp-queue hook (bd ai-engineer-v9mj).
+    if (typeof n.capacity !== 'number') n.capacity = capacityFromWidth(n.width)
     return n
   })
 
@@ -239,6 +252,13 @@ export function validateFlow(flow) {
   for (const node of nodes) {
     if (node.colorScheme !== undefined && !COLOR_SCHEMES.includes(node.colorScheme)) {
       warnings.push(`node "${node.id}" has an unknown colorScheme "${node.colorScheme}"`)
+    }
+    if (node.capacity !== undefined
+        && !(Number.isInteger(node.capacity) && node.capacity >= 1)) {
+      warnings.push(
+        `node "${node.id}" has an invalid capacity (${node.capacity}) — `
+        + 'expected a positive integer',
+      )
     }
     if (node.kind === 'constraint') {
       warnings.push(

@@ -132,10 +132,12 @@ export function deserializeFlow(input) {
  *
  * Detection rules:
  *   v1 — top-level `entryId` is the definitive v1 marker (removed by v1→v2).
- *   v2 — nodes have `capacity` (the v2 engine field) but no `colorScheme`
- *         (the v3 per-node colour control added in v2→v3). An already-
- *         normalized v3 flow has both `capacity` (re-derived) and `colorScheme`,
- *         so it correctly reads as v3.
+ *   v2 — nodes have `capacity` (the v2 engine field) but neither `length` nor
+ *         `colorScheme` (both v3-only node controls). A v3 node always authors
+ *         `length`; a v3 node MAY author `capacity` (the crisp-queue override,
+ *         bd ai-engineer-v9mj), so the `length` check is what keeps such a
+ *         flow from being misread as v2. An already-normalized v3 flow has
+ *         `capacity` (re-derived) plus `length`/`colorScheme`, so it reads v3.
  *   v3 — everything else (including an empty-nodes flow).
  *
  * @param {object} flow — a bare flow object (no formatVersion)
@@ -144,9 +146,13 @@ export function deserializeFlow(input) {
 function detectBareFlowVersion(flow) {
   // v1: top-level entryId is present (v1→v2 migration deletes it)
   if (flow.entryId !== undefined) return 1
-  // v2: nodes carry the pre-v3 engine field `capacity` but lack `colorScheme`
+  // v2: nodes carry `capacity` but neither v3 node control (`length` /
+  // `colorScheme`). A v3 flow may author `capacity`, so `length` is the
+  // discriminator — a genuine v2 node has `latency`, not `length`.
   const nodes = Array.isArray(flow.nodes) ? flow.nodes : []
-  if (nodes.some(n => n.capacity !== undefined && n.colorScheme === undefined)) return 2
+  if (nodes.some(n =>
+    n.capacity !== undefined && n.length === undefined && n.colorScheme === undefined,
+  )) return 2
   return 3
 }
 

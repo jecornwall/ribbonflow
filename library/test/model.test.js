@@ -85,6 +85,33 @@ test('normalizeFlow derives engine fields: latency←length, capacity←width', 
   assert.equal(n.capacity, capacityFromWidth(30), 'capacity derives from width')
 })
 
+test('normalizeFlow honours an authored capacity over the width default', () => {
+  // bd ai-engineer-v9mj: capacity is an optional authored override. A
+  // capacity:1 constraint must NOT be overwritten by capacityFromWidth.
+  const out = normalizeFlow({
+    nodes: [
+      { id: 'constraint', x: 0, y: 0, length: 1, width: 30, capacity: 1 },
+      { id: 'reservoir', x: 1, y: 0, length: 1, width: 70, capacity: 50 },
+      { id: 'derived', x: 2, y: 0, length: 1, width: 30 },
+    ],
+  })
+  const [c, r, d] = out.nodes
+  assert.equal(c.capacity, 1, 'authored capacity:1 wins over width default')
+  assert.equal(r.capacity, 50, 'authored reservoir capacity wins')
+  assert.equal(d.capacity, capacityFromWidth(30), 'omitted capacity derives from width')
+})
+
+test('validateFlow warns on a non-positive-integer capacity', () => {
+  const bad = validateFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, capacity: 0 }],
+  })
+  assert.ok(bad.warnings.some(w => w.includes('invalid capacity')))
+  const ok = validateFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, kind: 'source', capacity: 3 }],
+  })
+  assert.ok(!ok.warnings.some(w => w.includes('invalid capacity')))
+})
+
 test('normalizeFlow sets widthMode:manual so explicit widths are honoured', () => {
   const out = normalizeFlow({ nodes: [] })
   assert.equal(out.widthMode, 'manual')

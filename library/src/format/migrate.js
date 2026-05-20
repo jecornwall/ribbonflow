@@ -21,7 +21,12 @@
  *   - per node: length ← latency ; width ← width ?? (constraint?30:70) ;
  *     speed ← speedFromWidth(width) ; coupleSpeedWidth ← true ;
  *     colorScheme ← kind==='constraint' ? 'red' : 'neutral' ;
- *     kind:'constraint' → 'normal' ; drop capacity/latency/constraintKind.
+ *     kind:'constraint' → 'normal' ; drop latency/constraintKind.
+ *   - `capacity` is PRESERVED (bd ai-engineer-v9mj): v3 re-admitted it as an
+ *     optional authored node field (the crisp-queue override), so a v1/v2
+ *     flow's authored capacity now forward-ports losslessly instead of being
+ *     dropped. A v2 node that authored none simply has no capacity in v3 and
+ *     normalizeFlow() derives it from width as before.
  *   - flow: drop widthMode / pinchPreset / pinchMode / ribbonColor / bandWidth /
  *     constraintWidth / constraintPlateauWidth / pinchFillColor /
  *     constraintFillColor.
@@ -140,7 +145,8 @@ function migrateV2toV3(v2) {
       // The constraint type is removed.
       if (wasConstraint) n.kind = 'normal'
 
-      delete n.capacity
+      // capacity is PRESERVED (v9mj) — v3 re-admitted it as an optional
+      // authored field. latency / constraintKind are still dropped.
       delete n.latency
       delete n.constraintKind
       return n

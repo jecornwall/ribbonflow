@@ -8,7 +8,9 @@
  * v2→v3 (v1.1, beads ai-engineer-t0c8 / wec5 — see
  *   docs/superpowers/specs/2026-05-20-flow-v1.1-node-controls-design.md §4.3):
  *   the Length/Speed/Width node controls, per-node colour scheme, the
- *   `constraint` type dropped, capacity/latency/pinch-register removed.
+ *   `constraint` type dropped, latency/pinch-register removed. `capacity` is
+ *   PRESERVED (bd ai-engineer-v9mj) — v3 re-admitted it as an optional
+ *   authored node field, so it now forward-ports losslessly.
  *
  * migrateFlow() applies the whole chain — a v1 flow lifts straight to v3.
  */
@@ -84,7 +86,8 @@ test('every v1-migrated node carries the v3 node controls', () => {
     assert.equal(typeof n.width, 'number', `${n.id} has width`)
     assert.equal(typeof n.colorScheme, 'string', `${n.id} has colorScheme`)
     assert.equal(n.coupleSpeedWidth, true)
-    assert.equal(n.capacity, undefined, `${n.id} dropped capacity`)
+    // capacity is preserved (v9mj) — every v1 n4 node authored one.
+    assert.equal(typeof n.capacity, 'number', `${n.id} preserved capacity`)
     assert.equal(n.latency, undefined, `${n.id} dropped latency`)
     assert.notEqual(n.kind, 'constraint', `${n.id} dropped the constraint type`)
   }
@@ -101,17 +104,32 @@ test('v2→v3 maps latency→length and keeps an explicit width', () => {
   assert.equal(review.colorScheme, 'red', 'constraint node → red colour scheme')
 })
 
-test('v2→v3 drops the constraint type and the constraint-only fields', () => {
+test('v2→v3 drops the constraint type but preserves authored capacity', () => {
   const v3 = migrateFlow(m2FlowV2, 2)
   for (const n of v3.nodes) {
     assert.notEqual(n.kind, 'constraint')
-    assert.equal(n.capacity, undefined)
     assert.equal(n.latency, undefined)
     assert.equal(n.constraintKind, undefined)
+  }
+  // capacity is PRESERVED (bd ai-engineer-v9mj): every m2-coverage node
+  // authored one, and v3 re-admitted capacity as an optional node field.
+  for (const n of v3.nodes) {
+    assert.equal(typeof n.capacity, 'number', `${n.id} preserved capacity`)
   }
   // a non-constraint v2 node migrates to the neutral colour scheme
   const ship = v3.nodes.find(n => n.id === 'ship')
   assert.equal(ship.colorScheme, 'neutral')
+})
+
+test('v1→v3 preserves the constraint capacity:1 (crisp-queue override)', () => {
+  // bd ai-engineer-v9mj: the deck's crisp queue-at-the-bottleneck optic comes
+  // from a hard capacity:1 constraint. Migration must carry that authored
+  // value forward, not drop it.
+  const v3 = migrateFlow(n4FlowV1, 1)
+  const constraint = v3.nodes.find(n => n.id === 'implementation')
+  assert.equal(constraint.capacity, 1, 'constraint capacity:1 survives migration')
+  const reservoir = v3.nodes.find(n => n.id === 'solution-design')
+  assert.equal(reservoir.capacity, 30, 'reservoir capacity survives migration')
 })
 
 test('v2→v3 drops widthMode and the whole pinch register', () => {
