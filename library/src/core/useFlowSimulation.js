@@ -18,6 +18,7 @@ import {
   MIN_RIBBON_WIDTH,
   PARTICLE_RADIUS,
   WALL_MARGIN,
+  REJECTION_BAND_WIDTH,
 } from './flowCurve.js'
 
 // Maximum lateral displacement for an agent's *centre* so its circle stays
@@ -145,12 +146,20 @@ export function projectToCenterline(cl, x, y) {
 // ──────────────────────────────────────────────────────────────────────────
 
 export function selectBranch(agent, branches) {
-  let candidates = branches.filter(b =>
+  // v1.2 R2: a 'revising' agent rides a rejection branch; every other agent
+  // rides a forward branch. Partition the pool by branch.kind up front so the
+  // two never cross-select (a rejection branch and a forward branch can share
+  // both the `from` and `to` node ids).
+  const wantRejection = agent.lifecycle === 'revising'
+  const pool = branches.filter(b =>
+    wantRejection ? b.kind === 'rejection' : b.kind !== 'rejection',
+  )
+  let candidates = pool.filter(b =>
     b.nodeIds.includes(agent.currentNodeId) &&
     (agent.targetNodeId === null || b.nodeIds.includes(agent.targetNodeId)),
   )
   if (candidates.length === 0) {
-    candidates = branches.filter(b => b.nodeIds.includes(agent.currentNodeId))
+    candidates = pool.filter(b => b.nodeIds.includes(agent.currentNodeId))
   }
   if (candidates.length === 0) return null
   if (candidates.length === 1) return candidates[0]
@@ -269,6 +278,19 @@ export function createFlowSimulation(flow, opts = {}) {
     branch.anchorS = branch.anchors.map(
       a => projectToCenterline(branch.centerline, a.x, a.y).s,
     )
+    // ── Rejection branches (v1.2 R2 — spec §3.1) ────────────────────────────
+    // A thin fixed-width branch: REJECTION_BAND_WIDTH everywhere, no pinch,
+    // no per-node speed scaling. Excluded from the maxVisibleWidth /
+    // minVisibleWidth normalisation below so the forward-flow speed ramp is
+    // numerically untouched by the presence of rejection edges. segHoldBounds
+    // = [≈0, ≈totalLength] so the agent only ever holds at the `to` anchor.
+    if (branch.kind === 'rejection') {
+      branch.widthFn = () => REJECTION_BAND_WIDTH
+      branch.segBounds = [0, branch.centerline.totalLength]
+      branch.segHoldBounds = [...branch.anchorS]
+      branch.speedFn = () => 1.0
+      continue
+    }
     // Latency-distributed per-node segment boundaries (length N+1).
     // segBounds[i] is the arc-length where node i's RIBBON SEGMENT starts —
     // the upstream edge of the visible band (orange constraint band + its
@@ -496,6 +518,84 @@ export function createFlowSimulation(flow, opts = {}) {
     forkCounters[node.id] = (forkCounters[node.id] + 1) % succ.length
     return succ[i]
   }
+
+  // ── Rejection routing (v1.2 R2 — spec §3.2) ───────────────────────────────
+  // A rejection edge sends a fraction of a node's outflow BACKWARD to an
+  // earlier node, where the work is re-done. `flow.rejections[]` is keyed by
+  // `from` node here. The routing decision at a from-node exit is a
+  // DETERMINISTIC stratified picker over {forward, edge_0, edge_1, …} weighted
+  // {1−Σrate, rate_0, rate_1, …} — the same lowest-ratio scheme as
+  // nextSuccessor's fork routing and pickSourceWeighted. A deterministic
+  // picker (rather than a raw Math.random() draw) makes each edge's long-run
+  // share of from-node exits track its `rate` to within ±1 count — that is
+  // exactly the §7 frequency invariant the engine tests assert against.
+  // Decision recorded as an apply-default: spec §3.2 describes the conceptual
+  // "draw u∈[0,1)" semantics; the deterministic realisation matches the
+  // codebase idiom (fork routing is deterministic despite §2.2's probability
+  // language) and is what makes the frequency test robust.
+  const rejectionsByFrom = new Map()
+  for (const r of flow.rejections || []) {
+    if (r == null || r.from == null || r.to == null) continue
+    if (!rejectionsByFrom.has(r.from)) rejectionsByFrom.set(r.from, [])
+    rejectionsByFrom.get(r.from).push(r)
+  }
+  // nodeId → { __forward__: count, r<i>: count } — assignment tally per outcome.
+  const rejectAssign = {}
+
+  // Roll the rejection decision for an agent leaving `nodeId`. Returns the
+  // chosen rejection edge, or null to proceed forward via nextSuccessor.
+  function rollRejection(nodeId) {
+    const edges = rejectionsByFrom.get(nodeId)
+    if (!edges || edges.length === 0) return null
+    let counts = rejectAssign[nodeId]
+    if (!counts) { counts = { __forward__: 0 }; rejectAssign[nodeId] = counts }
+    const sumRate = edges.reduce((a, e) => a + (e.rate > 0 ? e.rate : 0), 0)
+    const forwardWeight = Math.max(0, 1 - sumRate)
+    // Lowest count/weight wins; ties go to the earlier candidate (forward
+    // first), matching nextSuccessor's strict-`<` comparison.
+    let bestKey = '__forward__'
+    let bestEdge = null
+    let bestScore = forwardWeight > 0
+      ? (counts.__forward__ || 0) / forwardWeight
+      : Infinity
+    edges.forEach((e, i) => {
+      const key = `r${i}`
+      const w = e.rate > 0 ? e.rate : 1e-9
+      const score = (counts[key] || 0) / w
+      if (score < bestScore) { bestScore = score; bestKey = key; bestEdge = e }
+    })
+    counts[bestKey] = (counts[bestKey] || 0) + 1
+    return bestEdge
+  }
+
+  // Decide an agent's onward route after it has entered `node`: roll the
+  // rejection edges first (spec §3.2 step 1), else advance forward (step 2).
+  // A rejected agent becomes 'revising' and targets the edge's `to` node; it
+  // keeps currentNodeId === `node` so selectBranch can seat it on the
+  // matching rejection branch, and holds `node`'s occupancy slot until it
+  // physically crosses into `to` (apply-default: extra recirculation
+  // backpressure, consistent with spec §3.4 — see the R2 milestone notes).
+  function routeAfterNode(node, agent) {
+    const rejEdge = rollRejection(node.id)
+    if (rejEdge) {
+      agent.lifecycle = 'revising'
+      agent.targetNodeId = rejEdge.to
+      traces.revisions.push({
+        t: agent.age, agentId: agent.id, from: rejEdge.from, to: rejEdge.to,
+      })
+    } else {
+      agent.targetNodeId = nextSuccessor(node)
+      agent.lifecycle = 'in-process'
+    }
+  }
+
+  // An agent is "active" — physically on a branch and subject to the
+  // wall/no-escape clamps — when it is in-process OR a revising agent that is
+  // travelling a rejection branch (currentNodeId set). The legacy off-canvas
+  // 'revising' state (reviseTo, currentNodeId === null) is NOT active.
+  const isActiveAgent = (a) =>
+    a.lifecycle === 'in-process' ||
+    (a.lifecycle === 'revising' && a.currentNodeId != null)
 
   // Primary source — the fallback used by the legacy bulk-fill seeding and
   // the escape-teleport backstop, both of which only ever apply to a single-
@@ -1418,10 +1518,13 @@ export function createFlowSimulation(flow, opts = {}) {
             agent.y = (reviseNode?.y ?? entryNode.y)
             agent.vx = 0
             agent.vy = 0
-            traces.revisions.push({ id: agent.id, from: targetNode.id, to: targetNode.reviseTo, t: agent.age })
+            traces.revisions.push({ t: agent.age, agentId: agent.id, from: targetNode.id, to: targetNode.reviseTo })
           } else {
-            agent.targetNodeId = nextSuccessor(targetNode)
-            agent.lifecycle = 'in-process'
+            // v1.2 R2: roll the rejection edges (spec §3.2) before forward
+            // routing. A rejected agent becomes 'revising' here and rides the
+            // rejection branch back to its `to` node; otherwise it advances
+            // forward via nextSuccessor. routeAfterNode handles both.
+            routeAfterNode(targetNode, agent)
           }
           // Post-gate Euclidean clamp: the capacity gate fires ENTRY_DIST units
           // before the physical node, so the agent's physical position may be
@@ -1707,7 +1810,9 @@ export function createFlowSimulation(flow, opts = {}) {
   // ──────────────────────────────────────────────────────────────────────
   function enforceRibbonPolygon(dtc) {
     for (const agent of agents) {
-      if (agent.lifecycle !== 'in-process') continue
+      // v1.2 R2: revising agents ride a (thin) rejection branch and the
+      // no-escape invariant must hold on it too — include them via isActiveAgent.
+      if (!isActiveAgent(agent)) continue
       const branch = selectBranch(agent, branches)
       if (!branch) continue
       const cl = branch.centerline

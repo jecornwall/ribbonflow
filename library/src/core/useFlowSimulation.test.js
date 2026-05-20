@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createFlowSimulation, projectToCenterline, selectBranch } from './useFlowSimulation.js'
-import { computeNodeWidths, MIN_RIBBON_WIDTH, PARTICLE_RADIUS } from './flowCurve.js'
+import { computeNodeWidths, MIN_RIBBON_WIDTH, PARTICLE_RADIUS, REJECTION_BAND_WIDTH } from './flowCurve.js'
 import n4Flow from '../../test/fixtures/flows/n4-toc-baseline.js'
 import n4FlowA from '../../test/fixtures/flows/n4-flow-a.js'
 import n4FlowB from '../../test/fixtures/flows/n4-flow-b.js'
@@ -1481,4 +1481,119 @@ test('a high-SPEED node moves agents faster than a low-SPEED node downstream', (
   // Fast segment near the start, slow segment near the end.
   assert.equal(branch.speedFn(L * 0.1), 1.6)
   assert.equal(branch.speedFn(L * 0.9), 0.4)
+})
+
+// ──────────────────────────────────────────────────────────────────────────
+// v1.2 R2 — rejection edges: engine routing + thin rejection branches.
+// Spec docs/superpowers/specs/2026-05-20-flow-v1.2-rejection-edges-design.md
+// §3 (engine integration) + §7 item 4 (engine test plan).
+// ──────────────────────────────────────────────────────────────────────────
+
+// A linear pipeline with a review step that rejects work back to TWO earlier
+// nodes. Generous capacities so the routing test is not masked by queueing
+// backpressure. kind:'source' → rate-limited multi-source mode.
+const rejectionFlow = {
+  viewBox: { w: 1800, h: 900 },
+  baseSpeed: 200,
+  rejections: [
+    { from: 'review', to: 'design', rate: 0.25, bow: { side: 'below', depth: 90 } },
+    { from: 'review', to: 'build',  rate: 0.10, bow: { side: 'above', depth: 70 } },
+  ],
+  nodes: [
+    { id: 'intake', x: 200,  y: 450, kind: 'source', rate: 1.5, capacity: 4, latency: 0.3, successors: ['design'] },
+    { id: 'design', x: 600,  y: 450, capacity: 4, latency: 0.5, successors: ['build'] },
+    { id: 'build',  x: 1000, y: 450, capacity: 4, latency: 0.5, successors: ['review'] },
+    { id: 'review', x: 1350, y: 450, capacity: 4, latency: 0.5, successors: ['ship'] },
+    { id: 'ship',   x: 1650, y: 450, capacity: 4, latency: 0.3, successors: [] },
+  ],
+}
+
+test('v1.2 R2: rejection frequency on each edge tracks its rate (±5%)', () => {
+  const sim = createFlowSimulation(rejectionFlow)
+  for (let i = 0; i < 1800; i++) sim.step(1 / 60)  // 30s headless
+  // Every entry into 'review' triggers exactly one rejection roll, so the
+  // per-edge revision count over the review-entry count IS the realised rate.
+  const reviewEntries = sim.traces.entries.filter(e => e.nodeId === 'review').length
+  assert.ok(reviewEntries > 20, `need a stable sample of review entries (got ${reviewEntries})`)
+  const toDesign = sim.traces.revisions.filter(r => r.from === 'review' && r.to === 'design').length
+  const toBuild  = sim.traces.revisions.filter(r => r.from === 'review' && r.to === 'build').length
+  const fDesign = toDesign / reviewEntries
+  const fBuild  = toBuild / reviewEntries
+  assert.ok(Math.abs(fDesign - 0.25) <= 0.05,
+    `design-edge rejection freq ${fDesign.toFixed(3)} should be ≈ 0.25`)
+  assert.ok(Math.abs(fBuild - 0.10) <= 0.05,
+    `build-edge rejection freq ${fBuild.toFixed(3)} should be ≈ 0.10`)
+})
+
+test('v1.2 R2: a rejected agent re-enters its `to` node and reaches a leaf', () => {
+  const sim = createFlowSimulation(rejectionFlow)
+  for (let i = 0; i < 1800; i++) sim.step(1 / 60)
+  assert.ok(sim.traces.revisions.length > 0, 'some rejections occurred over 30s')
+  // For at least one rejection, the same agent later ENTERS the edge's `to`.
+  const reentered = sim.traces.revisions.some(rev =>
+    sim.traces.entries.some(e =>
+      e.id === rev.agentId && e.nodeId === rev.to && e.t > rev.t))
+  assert.ok(reentered, 'a revised agent re-entered its rejection edge `to` node')
+  // A revised agent goes on to complete the leaf node.
+  const revisedReachedLeaf = sim.traces.revisions.some(rev =>
+    sim.traces.exits.some(e => e.id === rev.agentId && e.nodeId === 'ship'))
+  assert.ok(revisedReachedLeaf, 'a revised agent re-flowed forward and reached the leaf')
+})
+
+test('v1.2 R2: recirculation keeps the population below MAX_AGENTS', () => {
+  const sim = createFlowSimulation(rejectionFlow)
+  let maxPop = 0
+  for (let i = 0; i < 1800; i++) {
+    sim.step(1 / 60)
+    if (sim.agents.length > maxPop) maxPop = sim.agents.length
+  }
+  // MAX_AGENTS defaults to 200; recirculation is self-bounding (spec §3.4).
+  assert.ok(maxPop < 200, `population peaked at ${maxPop}, must stay < MAX_AGENTS=200`)
+})
+
+test('v1.2 R2: no-escape invariant holds on the thin rejection branch', () => {
+  const sim = createFlowSimulation(rejectionFlow)
+  const rejBranches = sim.branches.filter(b => b.kind === 'rejection')
+  assert.equal(rejBranches.length, 2, 'two rejection branches built')
+  let sawRevising = false
+  let maxCentreDist = 0
+  for (let i = 0; i < 1800; i++) {
+    sim.step(1 / 60)
+    for (const a of sim.agents) {
+      if (a.lifecycle !== 'revising' || a.currentNodeId == null) continue
+      sawRevising = true
+      const b = rejBranches.find(rb =>
+        rb.nodeIds[0] === a.currentNodeId && rb.nodeIds[1] === a.targetNodeId)
+      assert.ok(b, 'revising agent is seated on a rejection branch')
+      const proj = projectToCenterline(b.centerline, a.x, a.y)
+      const d = Math.sqrt(proj.distance2)
+      if (d > maxCentreDist) maxCentreDist = d
+      // The radius-3 particle must stay fully inside REJECTION_BAND_WIDTH=14.
+      assert.ok(d + PARTICLE_RADIUS <= REJECTION_BAND_WIDTH / 2 + 0.5,
+        `revising agent escaped: centre ${d.toFixed(2)} from rejection centerline`)
+    }
+  }
+  assert.ok(sawRevising, 'revising agents actually rode the rejection branches')
+  assert.ok(maxCentreDist > 0, 'revising agents moved along the branch')
+})
+
+test('v1.2 R2: traces.revisions records {t, agentId, from, to} on each rejection', () => {
+  const sim = createFlowSimulation(rejectionFlow)
+  for (let i = 0; i < 600; i++) sim.step(1 / 60)
+  assert.ok(sim.traces.revisions.length > 0, 'rejections were recorded')
+  for (const rev of sim.traces.revisions) {
+    assert.equal(typeof rev.t, 'number', 'revision has a numeric timestamp')
+    assert.ok(rev.agentId != null, 'revision carries the agent id')
+    assert.equal(rev.from, 'review', 'revision from = the review node')
+    assert.ok(rev.to === 'design' || rev.to === 'build', 'revision to = an upstream node')
+  }
+})
+
+test('v1.2 R2: a flow with no rejection edges is byte-for-byte unchanged', () => {
+  // linearFlow has no rejections — buildBranches must emit no rejection
+  // branches and routing degrades exactly to nextSuccessor.
+  const sim = createFlowSimulation(linearFlow, { initialAgents: 6 })
+  assert.equal(sim.branches.filter(b => b.kind === 'rejection').length, 0)
+  for (let i = 0; i < 600; i++) sim.step(1 / 60)
+  assert.equal(sim.traces.revisions.length, 0, 'no revisions without rejection edges')
 })

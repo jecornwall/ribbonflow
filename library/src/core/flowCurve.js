@@ -65,47 +65,17 @@ export function catmullRomPoint(p0, p1, p2, p3, t) {
 // ---- Centerline through anchors -------------------------------------------
 
 /**
- * Build a centerline that passes through every anchor in order using
- * centripetal Catmull-Rom segments. Endpoints are clamped by reflecting
- * neighbour anchors (so the start and end points are exactly the first
- * and last anchors).
+ * Build an arc-length-parameterised centerline object from a dense, ordered
+ * list of sample points. Shared by buildCenterline (Catmull-Rom forward
+ * branches) and buildRejectionCenterline (quadratic-Bézier rejection
+ * branches), so both expose the IDENTICAL sampling interface the engine and
+ * renderer consume — { totalLength, sample, pointAtArcLength, tangentAtArcLength }.
  *
- * Returns an object with:
- *   - anchors: the original anchor array
- *   - sample(t): t ∈ [0,1] → { x, y } point along the centerline
- *   - segmentCount: number of CR segments (anchors.length - 1)
+ * `extra` is shallow-merged onto the result (e.g. { anchors, segmentCount }).
  */
-export function buildCenterline(anchors) {
-  if (!Array.isArray(anchors) || anchors.length < 2) {
-    throw new Error('buildCenterline: need at least 2 anchors')
-  }
-
-  // Reflect endpoints so first segment starts at anchors[0] and last ends
-  // at anchors[N-1].
-  const n = anchors.length
-  const padded = [
-    { x: 2 * anchors[0].x - anchors[1].x, y: 2 * anchors[0].y - anchors[1].y },
-    ...anchors,
-    { x: 2 * anchors[n - 1].x - anchors[n - 2].x, y: 2 * anchors[n - 1].y - anchors[n - 2].y },
-  ]
-
-  const segmentCount = n - 1
-
-  // Build arc-length sample table.
-  const SAMPLES_PER_SEGMENT = 50
-  const totalSamples = segmentCount * SAMPLES_PER_SEGMENT
-  const points = []     // { x, y } per sample
-  const cumLength = []  // cumulative arc length up to each sample (length = totalSamples + 1)
-
-  for (let i = 0; i <= totalSamples; i++) {
-    const t = i / totalSamples
-    const total = t * segmentCount
-    let seg = Math.floor(total)
-    if (seg >= segmentCount) seg = segmentCount - 1
-    const u = total - seg
-    points.push(catmullRomPoint(padded[seg], padded[seg + 1], padded[seg + 2], padded[seg + 3], u))
-  }
-  cumLength.push(0)
+function arcLengthCenterline(points, extra = {}) {
+  const totalSamples = points.length - 1
+  const cumLength = [0]
   for (let i = 1; i < points.length; i++) {
     const dx = points[i].x - points[i - 1].x
     const dy = points[i].y - points[i - 1].y
@@ -114,8 +84,7 @@ export function buildCenterline(anchors) {
   const totalLength = cumLength[cumLength.length - 1]
 
   return {
-    anchors,
-    segmentCount,
+    ...extra,
     totalLength,
 
     sample(t) {
@@ -162,6 +131,129 @@ export function buildCenterline(anchors) {
       return { x: dx / mag, y: dy / mag }
     },
   }
+}
+
+/**
+ * Build a centerline that passes through every anchor in order using
+ * centripetal Catmull-Rom segments. Endpoints are clamped by reflecting
+ * neighbour anchors (so the start and end points are exactly the first
+ * and last anchors).
+ *
+ * Returns an object with:
+ *   - anchors: the original anchor array
+ *   - sample(t): t ∈ [0,1] → { x, y } point along the centerline
+ *   - segmentCount: number of CR segments (anchors.length - 1)
+ */
+export function buildCenterline(anchors) {
+  if (!Array.isArray(anchors) || anchors.length < 2) {
+    throw new Error('buildCenterline: need at least 2 anchors')
+  }
+
+  // Reflect endpoints so first segment starts at anchors[0] and last ends
+  // at anchors[N-1].
+  const n = anchors.length
+  const padded = [
+    { x: 2 * anchors[0].x - anchors[1].x, y: 2 * anchors[0].y - anchors[1].y },
+    ...anchors,
+    { x: 2 * anchors[n - 1].x - anchors[n - 2].x, y: 2 * anchors[n - 1].y - anchors[n - 2].y },
+  ]
+
+  const segmentCount = n - 1
+
+  // Build the dense sample-point list from the Catmull-Rom segments, then
+  // hand it to arcLengthCenterline for the shared arc-length machinery.
+  const SAMPLES_PER_SEGMENT = 50
+  const totalSamples = segmentCount * SAMPLES_PER_SEGMENT
+  const points = []     // { x, y } per sample
+
+  for (let i = 0; i <= totalSamples; i++) {
+    const t = i / totalSamples
+    const total = t * segmentCount
+    let seg = Math.floor(total)
+    if (seg >= segmentCount) seg = segmentCount - 1
+    const u = total - seg
+    points.push(catmullRomPoint(padded[seg], padded[seg + 1], padded[seg + 2], padded[seg + 3], u))
+  }
+
+  return arcLengthCenterline(points, { anchors, segmentCount })
+}
+
+// ---- Rejection-edge geometry (v1.2 R2 — spec §3.1 / §4) -------------------
+//
+// A rejection edge renders + simulates as a thin bowed arc carrying
+// "failed-review" work backward to an earlier node. The SAME quadratic-Bézier
+// curve feeds both the engine centerline (here) and the R3 rendered path, so
+// physics and visuals agree by construction (spec §4).
+
+/**
+ * Fixed band width for a rejection branch — wide enough for one small particle
+ * (radius PARTICLE_RADIUS) plus wall margin. NOT width/rate coupled (spec §3.1).
+ */
+export const REJECTION_BAND_WIDTH = 14
+
+/**
+ * Fallback bow depth (viewBox units) when a rejection edge omits `bow.depth`.
+ * Mirrors format/model.js's DEFAULT_REJECTION_BOW_DEPTH — inlined here
+ * (module-private) so the curve layer carries no format-layer dependency,
+ * exactly as DEFAULT_SOURCE_RATE is inlined for effectiveNodeRates.
+ */
+const REJECTION_BOW_DEPTH_FALLBACK = 80
+
+/** Evaluate a quadratic Bézier with control points p0, c, p1 at t ∈ [0,1]. */
+export function quadBezierPoint(p0, c, p1, t) {
+  const u = 1 - t
+  return {
+    x: u * u * p0.x + 2 * u * t * c.x + t * t * p1.x,
+    y: u * u * p0.y + 2 * u * t * c.y + t * t * p1.y,
+  }
+}
+
+/**
+ * The rejection bow curve (spec §4): a quadratic Bézier from `fromPt` to
+ * `toPt`. The control point is the chord midpoint displaced perpendicular to
+ * the chord by `bow.depth`, on the side given by `bow.side` ('above'|'below').
+ *
+ * 'above' displaces the control point toward smaller y (screen-up), 'below'
+ * toward larger y. For a (degenerate) vertical chord the perpendicular is
+ * horizontal and the side is honoured as authored without a y-based flip.
+ *
+ * Returns { p0, ctrl, p1 } — the three control points. SHARED by the engine
+ * centerline (buildRejectionCenterline) and the R3 rendered path.
+ */
+export function rejectionBowCurve(fromPt, toPt, bow) {
+  const side  = bow && bow.side === 'above' ? 'above' : 'below'
+  const depth = bow && typeof bow.depth === 'number'
+    ? bow.depth
+    : REJECTION_BOW_DEPTH_FALLBACK
+  const mid = { x: (fromPt.x + toPt.x) / 2, y: (fromPt.y + toPt.y) / 2 }
+  const dx = toPt.x - fromPt.x, dy = toPt.y - fromPt.y
+  const len = Math.hypot(dx, dy) || 1
+  // Unit normal to the chord.
+  let nx = -dy / len, ny = dx / len
+  // Orient: 'above' → normal points to -y, 'below' → +y.
+  if ((side === 'above' && ny > 0) || (side === 'below' && ny < 0)) {
+    nx = -nx; ny = -ny
+  }
+  const ctrl = { x: mid.x + nx * depth, y: mid.y + ny * depth }
+  return { p0: { x: fromPt.x, y: fromPt.y }, ctrl, p1: { x: toPt.x, y: toPt.y } }
+}
+
+/**
+ * Build an arc-length-parameterised centerline for a rejection edge — the
+ * §4 bow curve sampled densely. Exposes the same interface as buildCenterline,
+ * so the engine treats a rejection branch like any other branch.
+ */
+export function buildRejectionCenterline(fromPt, toPt, bow) {
+  const { p0, ctrl, p1 } = rejectionBowCurve(fromPt, toPt, bow)
+  const SAMPLES = 100
+  const points = []
+  for (let i = 0; i <= SAMPLES; i++) {
+    points.push(quadBezierPoint(p0, ctrl, p1, i / SAMPLES))
+  }
+  return arcLengthCenterline(points, {
+    anchors: [{ x: fromPt.x, y: fromPt.y }, { x: toPt.x, y: toPt.y }],
+    segmentCount: 1,
+  })
 }
 
 // ---- Branch builder -------------------------------------------------------
@@ -259,6 +351,28 @@ export function buildBranches(flow) {
       nodeIds,
       anchors,
       centerline: buildCenterline(anchors),
+    })
+  }
+
+  // ── Rejection branches (v1.2 R2 — spec §3.1) ──────────────────────────────
+  // Each rejection edge becomes a THIN branch: a quadratic-Bézier bow
+  // centerline from `from`'s anchor to `to`'s anchor. Tagged kind:'rejection'
+  // so selectBranch + the renderer treat them distinctly from forward
+  // ribbons. Fixed-width (REJECTION_BAND_WIDTH) — NOT width/rate coupled.
+  // A dangling `from`/`to` reference is skipped here (validateFlow flags it).
+  for (const rej of flow.rejections || []) {
+    if (rej == null) continue
+    const fromNode = nodeById.get(rej.from)
+    const toNode = nodeById.get(rej.to)
+    if (!fromNode || !toNode) continue
+    const fromPt = { x: fromNode.x, y: fromNode.y }
+    const toPt = { x: toNode.x, y: toNode.y }
+    branches.push({
+      kind: 'rejection',
+      rejection: rej,
+      nodeIds: [rej.from, rej.to],
+      anchors: [fromPt, toPt],
+      centerline: buildRejectionCenterline(fromPt, toPt, rej.bow),
     })
   }
 

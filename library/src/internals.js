@@ -30,6 +30,13 @@ export {
   buildCenterline,
   buildBranches,
   ribbonOutlinePath,
+  // v1.2 rejection-edge geometry — the SHARED bow curve (R3 imports
+  // rejectionBowCurve for the rendered arc; the engine uses it for the
+  // rejection-branch centerline, so physics + visuals agree by construction).
+  quadBezierPoint,
+  rejectionBowCurve,
+  buildRejectionCenterline,
+  REJECTION_BAND_WIDTH,
   // width model
   computeNodeWidths,
   effectiveNodeRates,

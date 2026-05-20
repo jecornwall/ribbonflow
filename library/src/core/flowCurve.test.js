@@ -11,6 +11,11 @@ import {
   pinchZoneOutlinePath,
   DEFAULT_BAND_WIDTH,
   DEFAULT_CONSTRAINT_WIDTH,
+  // v1.2 R2 — rejection-edge geometry
+  quadBezierPoint,
+  rejectionBowCurve,
+  buildRejectionCenterline,
+  REJECTION_BAND_WIDTH,
 } from './flowCurve.js'
 
 test('constants — MIN_RIBBON_WIDTH = 2 × (radius + margin)', () => {
@@ -979,4 +984,106 @@ test('n9-multilane: post-merge branch (change-board) is entirely within the view
   for (const anchor of postMerge.anchors) {
     assert.ok(anchor.x >= vbLeft, `post-merge anchor x=${anchor.x} is within viewBox`)
   }
+})
+
+// ──────────────────────────────────────────────────────────────────────────
+// v1.2 R2 — rejection-edge geometry (spec §3.1 / §4).
+// ──────────────────────────────────────────────────────────────────────────
+
+test('quadBezierPoint returns the endpoints at t=0 and t=1', () => {
+  const p0 = { x: 0, y: 0 }, c = { x: 50, y: 100 }, p1 = { x: 100, y: 0 }
+  const a = quadBezierPoint(p0, c, p1, 0)
+  const b = quadBezierPoint(p0, c, p1, 1)
+  assert.ok(Math.hypot(a.x - p0.x, a.y - p0.y) < 1e-9, 't=0 → p0')
+  assert.ok(Math.hypot(b.x - p1.x, b.y - p1.y) < 1e-9, 't=1 → p1')
+})
+
+test('quadBezierPoint at t=0.5 is the average of chord-mid and control', () => {
+  const p0 = { x: 0, y: 0 }, c = { x: 40, y: 200 }, p1 = { x: 80, y: 0 }
+  const m = quadBezierPoint(p0, c, p1, 0.5)
+  // 0.25·p0 + 0.5·c + 0.25·p1
+  assert.ok(Math.abs(m.x - 40) < 1e-9, `apex x=${m.x}`)
+  assert.ok(Math.abs(m.y - 100) < 1e-9, `apex y=${m.y}`)
+})
+
+test('rejectionBowCurve keeps the endpoints and bows the control point', () => {
+  const from = { x: 200, y: 500 }, to = { x: 1000, y: 500 }
+  const below = rejectionBowCurve(from, to, { side: 'below', depth: 90 })
+  assert.deepEqual(below.p0, { x: 200, y: 500 })
+  assert.deepEqual(below.p1, { x: 1000, y: 500 })
+  // Horizontal chord, 'below' → control point at larger y, mid-x.
+  assert.ok(Math.abs(below.ctrl.x - 600) < 1e-9, `ctrl.x=${below.ctrl.x}`)
+  assert.ok(Math.abs(below.ctrl.y - (500 + 90)) < 1e-9, `ctrl.y=${below.ctrl.y}`)
+  // 'above' → smaller y.
+  const above = rejectionBowCurve(from, to, { side: 'above', depth: 90 })
+  assert.ok(Math.abs(above.ctrl.y - (500 - 90)) < 1e-9, `ctrl.y=${above.ctrl.y}`)
+})
+
+test('rejectionBowCurve falls back to a default depth when bow omits it', () => {
+  const from = { x: 0, y: 0 }, to = { x: 100, y: 0 }
+  const c = rejectionBowCurve(from, to, { side: 'below' })
+  // Some positive default displacement applied.
+  assert.ok(c.ctrl.y > 0, `expected default bow depth, ctrl.y=${c.ctrl.y}`)
+})
+
+test('buildRejectionCenterline endpoints match from/to and it bows off-chord', () => {
+  const from = { x: 200, y: 500 }, to = { x: 1000, y: 500 }
+  const cl = buildRejectionCenterline(from, to, { side: 'below', depth: 100 })
+  const start = cl.pointAtArcLength(0)
+  const end = cl.pointAtArcLength(cl.totalLength)
+  assert.ok(Math.hypot(start.x - 200, start.y - 500) < 1e-6, 'starts at from')
+  assert.ok(Math.hypot(end.x - 1000, end.y - 500) < 1e-6, 'ends at to')
+  // A bowed curve is longer than the straight chord (800 units).
+  assert.ok(cl.totalLength > 800, `bowed length ${cl.totalLength} > chord 800`)
+  // Apex (t≈0.5 by arc length) sits below the chord (larger y).
+  const apex = cl.pointAtArcLength(cl.totalLength / 2)
+  assert.ok(apex.y > 520, `apex y=${apex.y} should be well below the chord`)
+})
+
+test('buildBranches emits a kind:rejection branch per rejection edge', () => {
+  const flow = {
+    nodes: [
+      { id: 'a', x: 200, y: 500, successors: ['b'] },
+      { id: 'b', x: 600, y: 500, successors: ['c'] },
+      { id: 'c', x: 1000, y: 500, successors: [] },
+    ],
+    rejections: [
+      { from: 'c', to: 'a', rate: 0.2, bow: { side: 'below', depth: 80 } },
+    ],
+  }
+  const { branches } = buildBranches(flow)
+  const rejection = branches.filter(b => b.kind === 'rejection')
+  const forward = branches.filter(b => b.kind !== 'rejection')
+  assert.equal(rejection.length, 1, 'one rejection branch')
+  assert.deepEqual(rejection[0].nodeIds, ['c', 'a'])
+  assert.equal(rejection[0].rejection.rate, 0.2)
+  assert.ok(forward.length >= 1, 'forward branches still built')
+})
+
+test('buildBranches builds no rejection branches when flow has none', () => {
+  const flow = {
+    nodes: [
+      { id: 'a', x: 200, y: 500, successors: ['b'] },
+      { id: 'b', x: 1000, y: 500, successors: [] },
+    ],
+  }
+  const { branches } = buildBranches(flow)
+  assert.equal(branches.filter(b => b.kind === 'rejection').length, 0)
+})
+
+test('buildBranches skips a rejection edge with a dangling node reference', () => {
+  const flow = {
+    nodes: [
+      { id: 'a', x: 200, y: 500, successors: ['b'] },
+      { id: 'b', x: 1000, y: 500, successors: [] },
+    ],
+    rejections: [{ from: 'b', to: 'ghost', rate: 0.2 }],
+  }
+  const { branches } = buildBranches(flow)
+  assert.equal(branches.filter(b => b.kind === 'rejection').length, 0)
+})
+
+test('REJECTION_BAND_WIDTH is wide enough for a particle plus wall margin', () => {
+  assert.ok(REJECTION_BAND_WIDTH >= 2 * (PARTICLE_RADIUS + WALL_MARGIN),
+    `REJECTION_BAND_WIDTH=${REJECTION_BAND_WIDTH} must hold one clamped particle`)
 })
