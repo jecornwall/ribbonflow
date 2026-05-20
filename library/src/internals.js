@@ -81,6 +81,26 @@ export {
   REJECTION_ARROW_HALF_WIDTH,
 } from './core/flowRejectionArc.js'
 
+// ── Large-particle render geometry (v1.3 L4 — spec §4) ──────────────────────
+// The pure render half of v1.3: the per-agent render radius (a large particle
+// renders at 3× a small one) and the split / combine node glyph geometry. The
+// designer's L5 canvas draws transform-node badges from transformGlyphsFor and
+// sizes preview particles via renderRadiusForAgent.
+export {
+  RENDER_RADIUS_SMALL,
+  renderRadiusForSize,
+  renderRadiusForAgent,
+} from './core/agentRender.js'
+export {
+  SPLIT_GLYPH_PATH,
+  COMBINE_GLYPH_PATH,
+  TRANSFORM_GLYPH_STROKE,
+  TRANSFORM_GLYPH_STROKE_WIDTH,
+  TRANSFORM_GLYPH_OPACITY,
+  transformGlyphFor,
+  transformGlyphsFor,
+} from './core/transformGlyph.js'
+
 // ── Render components ───────────────────────────────────────────────────────
 // The raw renderer and its parts. The designer drives FlowGraph directly for
 // live preview; FlowRibbon / FlowAgent / FlowSegmentMarker are exposed for

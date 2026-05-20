@@ -3,13 +3,17 @@
 
   Props:
     x, y     — position in viewBox units
-    radius   — defaults to 3.5 (matches PARTICLE_RADIUS=3 in flowCurve.js, with
-               half a unit of visual padding so the cream circle reads
-               clearly at the rendered projection scale — spec §237 calls
-               for "circles of radius 3, so they read clearly inside the
-               ink ribbon"; r=3 is just below the legibility floor when
-               the deck is scaled down for review captures, so we render
-               at r=3.5 while keeping the physics radius at 3 unchanged)
+    radius   — RENDER radius in viewBox units, defaults to 3.5 (= the small
+               particle's render radius, RENDER_RADIUS_SMALL). The default
+               matches PARTICLE_RADIUS=3 in flowCurve.js with half a unit of
+               visual padding so the cream circle reads clearly at the
+               rendered projection scale — r=3 is just below the legibility
+               floor when the deck is scaled down for review captures, so we
+               render at r=3.5 while keeping the physics radius at 3 unchanged.
+               v1.3 L4: FlowGraph passes a per-agent render radius derived from
+               the agent's size (agentRender.renderRadiusForAgent) — a LARGE
+               particle renders at exactly 3× this (r=10.5). Same colour for
+               both sizes; size alone carries the meaning (Jason, spec §4).
     color    — defaults to '#F4F2ED' (cream, for contrast against ink ribbon)
 
   Stateless: the parent supplies position from the simulation.

@@ -313,6 +313,29 @@
       </g>
     </g>
 
+    <!-- Transform-node glyphs (v1.3 L4 — spec §4). A `transform: 'split'` or
+         `'combine'` node carries a small, subtle hairline glyph centred on its
+         anchor so author and audience can see which nodes change particle
+         size. Split = a fork (1 → N); combine = a merge (N → 1). Drawn AFTER
+         the ribbon/marker chrome but BEFORE the agents, so transiting
+         particles pass over the glyph — it reads as node chrome, not paint.
+         Inert for flows with no transform nodes (transformGlyphs is empty).
+         Geometry comes from the pure transformGlyph.js helper. -->
+    <g v-if="transformGlyphs.length" class="transform-glyphs">
+      <path
+        v-for="g in transformGlyphs"
+        :key="`xform-${g.id}`"
+        :d="g.d"
+        :transform="`translate(${g.x} ${g.y})`"
+        fill="none"
+        :stroke="TRANSFORM_GLYPH_STROKE"
+        :stroke-width="TRANSFORM_GLYPH_STROKE_WIDTH"
+        :opacity="TRANSFORM_GLYPH_OPACITY"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </g>
+
     <!-- agents (rendered last so they sit ON TOP of the ribbon AND the
          rejection arcs). A 'revising' agent — one riding a rejection branch
          (v1.2 R2 lifecycle) — renders as the normal particle dot tinted
@@ -325,6 +348,7 @@
       :agent-id="agent.id"
       :x="agent.x"
       :y="agent.y"
+      :radius="agent.radius"
       :color="agent.lifecycle === 'revising' ? REJECTION_PARTICLE_COLOR : undefined"
     />
 
@@ -386,6 +410,13 @@ import {
   RIBBON_SCHEME_COLORS_LIGHT,
   REJECTION_PARTICLE_COLOR,
 } from './flowCurve.js'
+import {
+  transformGlyphsFor,
+  TRANSFORM_GLYPH_STROKE,
+  TRANSFORM_GLYPH_STROKE_WIDTH,
+  TRANSFORM_GLYPH_OPACITY,
+} from './transformGlyph.js'
+import { renderRadiusForAgent } from './agentRender.js'
 import FlowRibbon from './FlowRibbon.vue'
 import FlowSegmentMarker from './FlowSegmentMarker.vue'
 import FlowAgent from './FlowAgent.vue'
@@ -478,10 +509,16 @@ const legendRatioLabel = (legendConstraintNode && legendWidestNode)
 // "not yet started" — they pile up at a single off-canvas anchor and would
 // otherwise render as a smudge near the entry. The simulation core still
 // tracks them (and promotes them when entry frees); we just don't draw them.
+// `radius` (v1.3 L4): the per-agent RENDER radius, derived from the agent's
+// size — a large particle renders at 3× a small one (agentRender.js). Carried
+// on the view object so the FlowAgent binding stays a plain prop read.
 const agentsView = ref(
   sim.agents
     .filter(a => a.lifecycle !== 'pending')
-    .map(a => ({ id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle })),
+    .map(a => ({
+      id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle,
+      radius: renderRadiusForAgent(a),
+    })),
 )
 
 /**
@@ -752,6 +789,13 @@ const rejectionEdges = computed(() => {
   return out
 })
 
+// Transform-node glyphs (v1.3 L4 — spec §4). One descriptor per `split` /
+// `combine` node — kind + local glyph path + node anchor. A computed() so the
+// glyphs re-derive when the `flow` prop changes (the before/after click-toggle
+// idiom — see rejectionEdges / junctionDiscs / pinchZones). Empty for flows
+// with no transform nodes, so a pre-v1.3 flow renders unchanged.
+const transformGlyphs = computed(() => transformGlyphsFor(props.flow))
+
 // ── Fork / Merge first-class primitives (bd ai-engineer-gv8u) ───────────────
 // A flow may declare optional `forks: [{from, branches}]` and
 // `merges: [{to, branches}]` arrays. These do NOT change ribbon geometry —
@@ -992,7 +1036,10 @@ function syncAgentsView() {
   // Filter pending agents out of the render list — see agentsView above.
   agentsView.value = sim.agents
     .filter(a => a.lifecycle !== 'pending')
-    .map(a => ({ id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle }))
+    .map(a => ({
+      id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle,
+      radius: renderRadiusForAgent(a),
+    }))
 }
 
 function frame(t) {
