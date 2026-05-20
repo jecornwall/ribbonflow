@@ -209,35 +209,35 @@ test('Smoke (N4): sim spawns 8 agents and at least one is in-process at t=0', ()
 })
 
 test('Smoke (N4): the sim physically advances over 30 simulated seconds', () => {
-  // Note: agents recycle (exit → respawn at entry), so comparing snapshot
-  // positions at t=0 and t=30 misses motion. Integrate path length per agent
-  // and assert total path > 1000 units (one full N4 pass is roughly 1100
-  // arc-units). This is the smoke check the v1 visual review was looking
-  // for: "is the sim running, or is it paused?" — a single agent making a
-  // full lap suffices to prove the sim isn't stalled.
+  // Note: comparing snapshot positions at t=0 and t=30 misses motion (agents
+  // come and go). Integrate path length per agent and assert total path >
+  // 1000 units (one full N4 pass is roughly 1100 arc-units). This is the
+  // smoke check the v1 visual review was looking for: "is the sim running,
+  // or is it paused?" — a single agent making a full lap suffices.
   //
-  // NOTE: the v1 simulation has a known limitation where pending agents
-  // (those that don't fit at spawn time) are not promoted when the entry
-  // node clears. That is a separate bug (out of scope for this dispatch);
-  // here we only certify that the in-process agents are advancing.
+  // Tracked by agent id, not array index: under the true-emitter model
+  // (bd ai-engineer-2igc) the source creates new agents and completed agents
+  // are reaped, so the agents array changes length and identity over the run.
   const sim = createFlowSimulation(n4Flow, { initialAgents: 8 })
-  const lastPos = sim.agents.map(a => ({ x: a.x, y: a.y }))
-  const pathLength = sim.agents.map(() => 0)
+  const lastPos = new Map(sim.agents.map(a => [a.id, { x: a.x, y: a.y }]))
+  const pathLength = new Map(sim.agents.map(a => [a.id, 0]))
   for (let i = 0; i < 1800; i++) {
     sim.step(1 / 60)
-    for (let k = 0; k < sim.agents.length; k++) {
-      const a = sim.agents[k]
-      const dx = a.x - lastPos[k].x, dy = a.y - lastPos[k].y
-      const step = Math.hypot(dx, dy)
-      // Ignore the discontinuous teleport when an agent respawns at entry.
-      if (step < 50) pathLength[k] += step
-      lastPos[k] = { x: a.x, y: a.y }
+    for (const a of sim.agents) {
+      const prev = lastPos.get(a.id)
+      if (prev) {
+        const step = Math.hypot(a.x - prev.x, a.y - prev.y)
+        // Ignore any discontinuous teleport (e.g. escape-backstop reseat).
+        if (step < 50) pathLength.set(a.id, (pathLength.get(a.id) ?? 0) + step)
+      } else {
+        pathLength.set(a.id, 0)  // newly created agent
+      }
+      lastPos.set(a.id, { x: a.x, y: a.y })
     }
   }
-  const totalPath = pathLength.reduce((a, b) => a + b, 0)
+  const totalPath = [...pathLength.values()].reduce((a, b) => a + b, 0)
   assert.ok(totalPath > 1000,
-    `expected total path > 1000 units (sim running); got ${totalPath.toFixed(0)}` +
-    ` (paths: ${pathLength.map(p => p.toFixed(0)).join(',')})`)
+    `expected total path > 1000 units (sim running); got ${totalPath.toFixed(0)}`)
 })
 
 test('Smoke (N4): at least 2 agents complete a full pass in 30s', () => {
@@ -821,13 +821,13 @@ test('Source rate-limit (N4): over 30s yields entries gated by constraint throug
   // Nominal rate: 1.5/s × 30s = 45. ACTUAL throughput is gated by the
   // back-pressure rope: when the constraint blocks (cap=1, latency=1.6s),
   // anticipatory deceleration propagates the queue all the way back to
-  // problem-definition, which then sits at cap=4 most of the run. Spawn
-  // tokens accumulate while problem-definition is full but cannot be
-  // consumed — so the effective spawn rate equals the constraint's
-  // throughput (~0.6/s × 30s ≈ 18, recycling adds a few). This is
-  // Goldratt's "rope" made physical: the visible release rate self-
-  // throttles to match the drum. Floor at ≥18 documents that the rate-
-  // limit gate is doing its job AND the cap=1 constraint is genuinely
+  // problem-definition, which then sits at cap=4 most of the run. Under the
+  // true-emitter model (bd ai-engineer-2igc) the source can only create a new
+  // agent while its node has room — so once back-pressure fills the source
+  // the effective release rate equals the constraint's throughput (~0.6/s ×
+  // 30s ≈ 18). This is Goldratt's "rope" made physical: the visible release
+  // rate self-throttles to match the drum. Floor at ≥18 documents that the
+  // rate-limit gate is doing its job AND the cap=1 constraint is genuinely
   // back-pressuring all the way to the source.
   assert.ok(entryEntries >= 18,
     `expected ≥18 entry promotions over 30s (constraint-throttled); got ${entryEntries}`)
@@ -1074,17 +1074,27 @@ test('§Frame-rate independence (N4): 1/1440s rAF-emulated stepping advances for
 // Two real sources feeding a shared merge → sink. src-fast emits at 2×
 // src-slow. Downstream capacity is generous so the sources run near their
 // nominal rate (no constraint back-pressure throttling the test).
+//
+// Capacities are deliberately large (40). The inter-node bands are ~600 units
+// long and agents traverse at baseSpeed 200 (~3 s/band), so a node's real
+// throughput is capacity / traversal ≈ cap / 3. The original cap-8 nodes
+// throttled at ~2.7/s — BELOW the 3/s nominal inflow — so the shared `merge`
+// silently back-pressured and equalised the two feeders. The old recycle
+// engine masked this (rate-weighted recycle reassignment kept the 2:1 split);
+// the true-emitter engine (bd ai-engineer-2igc) correctly surfaces it. cap 40
+// gives ~13/s throughput, well clear of 3/s, so the sources genuinely run
+// unthrottled and the per-source rate ratio is what the test measures.
 const multiSourceFlow = {
   viewBox: { w: 1600, h: 900 },
   baseSpeed: 200,
   widthMode: 'manual',
   nodes: [
     { id: 'src-fast', x: 200, y: 300, kind: 'source', rate: 2.0,
-      capacity: 8, latency: 0.4, successors: ['merge'] },
+      capacity: 40, latency: 0.4, successors: ['merge'] },
     { id: 'src-slow', x: 200, y: 700, kind: 'source', rate: 1.0,
-      capacity: 8, latency: 0.4, successors: ['merge'] },
-    { id: 'merge', x: 800, y: 500, capacity: 8, latency: 0.4, successors: ['sink'] },
-    { id: 'sink',  x: 1400, y: 500, capacity: 8, latency: 0.4, successors: [] },
+      capacity: 40, latency: 0.4, successors: ['merge'] },
+    { id: 'merge', x: 800, y: 500, capacity: 40, latency: 0.4, successors: ['sink'] },
+    { id: 'sink',  x: 1400, y: 500, capacity: 40, latency: 0.4, successors: [] },
   ],
 }
 
@@ -1155,6 +1165,89 @@ test('Multi-source (M2): the real v2 m2-coverage fixture runs through the engine
   // The teleport backstop must never fire — agents stay inside the ribbon.
   assert.equal(sim.traces.escapes.length, 0,
     `m2-coverage: teleport backstop fired ${sim.traces.escapes.length}×`)
+})
+
+// ──────────────────────────────────────────────────────────────────────────
+// True-emitter source model (bd ai-engineer-2igc).
+//
+// A rate-limited source is a genuine particle TAP: it CREATES new agents at
+// its `rate`, and agents that finish the flow LEAVE the system (no recycle).
+// Jason flagged the old recycle model's symptom — "the particle flow from the
+// intake ... seem to stop at some point" — which was the conserved-pool
+// behaviour: emission was clamped to the recycle return rate, surplus agents
+// parked off-canvas, and a 0-initial-agent flow was permanently dead.
+//
+// These tests pin the true-emitter contract: continuous emission past 90s,
+// a flow that runs from 0 initial agents, and a self-bounding population.
+// ──────────────────────────────────────────────────────────────────────────
+
+// Single source → wide node → slow narrow constraint → leaf. The constraint
+// (cap 2, latency 1.4) throttles throughput well below the 1.0/s source rate.
+const constraintEmitterFlow = {
+  viewBox: { w: 1600, h: 900 },
+  baseSpeed: 200,
+  widthMode: 'manual',
+  nodes: [
+    { id: 'intake', x: 240,  y: 450, kind: 'source', rate: 1.0,
+      capacity: 4, latency: 0.8, successors: ['mid'] },
+    { id: 'mid',    x: 620,  y: 450, capacity: 4, latency: 1.0, successors: ['constraint'] },
+    { id: 'constraint', x: 1000, y: 450, capacity: 2, latency: 1.4, successors: ['leaf'] },
+    { id: 'leaf',   x: 1360, y: 450, capacity: 4, latency: 0.8, successors: [] },
+  ],
+}
+
+test('True emitter (2igc): source keeps emitting in every 10s window across 120s', () => {
+  // The core regression: the intake must NOT go silent. Past the recycle
+  // model's ~50-100s mark the conserved pool would synchronise and the source
+  // would visibly stall. The true emitter creates agents indefinitely.
+  const sim = createFlowSimulation(constraintEmitterFlow, { initialAgents: 6 })
+  const intakeEntryTimesByWindow = Array(12).fill(0)
+  for (let i = 0; i < 120 * 60; i++) {
+    const before = sim.traces.entries.length
+    sim.step(1 / 60)
+    for (let k = before; k < sim.traces.entries.length; k++) {
+      if (sim.traces.entries[k].nodeId === 'intake') {
+        intakeEntryTimesByWindow[Math.min(11, Math.floor(i / 60 / 10))]++
+      }
+    }
+  }
+  const zeroWindows = intakeEntryTimesByWindow
+    .map((c, w) => (c === 0 ? `${w * 10}-${(w + 1) * 10}s` : null))
+    .filter(Boolean)
+  assert.equal(zeroWindows.length, 0,
+    `intake emitted nothing in 10s windows [${zeroWindows.join(', ')}]; ` +
+    `per-window counts: ${intakeEntryTimesByWindow.join(',')}`)
+})
+
+test('True emitter (2igc): a flow seeded with 0 initial agents still runs', () => {
+  // Under the recycle model, initialAgents:0 meant an empty conserved pool —
+  // the sim was permanently dead. The true emitter creates from nothing.
+  const sim = createFlowSimulation(constraintEmitterFlow, { initialAgents: 0 })
+  assert.equal(sim.agents.length, 0, 'expected an empty sim at t=0')
+  for (let i = 0; i < 60 * 60; i++) sim.step(1 / 60)
+  assert.ok(sim.agents.length > 0,
+    `expected the source to have created agents from an empty start; got ${sim.agents.length}`)
+  assert.ok(sim.traces.exits.length >= 2,
+    `expected agents to complete the flow; got ${sim.traces.exits.length} exits`)
+})
+
+test('True emitter (2igc): population is self-bounding under backpressure', () => {
+  // Completed agents are reaped; backpressure stops creation when the pipe is
+  // full. Population must settle — never grow unbounded — even if seeded high.
+  const sim = createFlowSimulation(constraintEmitterFlow, { initialAgents: 30 })
+  const pop = []
+  for (let i = 0; i < 120 * 60; i++) {
+    sim.step(1 / 60)
+    if ((i + 1) % 600 === 0) pop.push(sim.agents.length)
+  }
+  // After warmup the population must be stable: the last four 10s samples
+  // span ≤ a small band (no monotonic growth).
+  const tail = pop.slice(-4)
+  const spread = Math.max(...tail) - Math.min(...tail)
+  assert.ok(spread <= 6,
+    `population should settle, not drift; tail samples ${tail.join(',')} (spread ${spread})`)
+  assert.ok(Math.max(...pop) < 200,
+    `population must stay well under MAX_AGENTS; peaked at ${Math.max(...pop)}`)
 })
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -508,6 +508,17 @@ export function createFlowSimulation(flow, opts = {}) {
   // M2: one accumulator per source (was a single scalar in v1).
   const spawnAccumulators = Object.fromEntries(sources.map(s => [s.id, 0]))
 
+  // Hard population ceiling for the true-emitter model (bd ai-engineer-2igc).
+  //
+  // A rate-limited source is a genuine emitter: it creates NEW agents at its
+  // `rate` and agents that finish the flow LEAVE the system (they are not
+  // recycled). Population is normally self-bounding — backpressure from a
+  // constraint stops creation once the pipe is physically full — but a flow
+  // with no constraint (fast drain everywhere) would otherwise let the array
+  // grow unbounded. MAX_AGENTS is the backstop: creation pauses here. The
+  // default is generous; any real flow settles far below it via backpressure.
+  const MAX_AGENTS = opts.maxAgents ?? 200
+
   // FIFO pending counter (bead ai-engineer-a1m).
   //
   // The original promotion loop iterated agents in array order, which
@@ -624,8 +635,13 @@ export function createFlowSimulation(flow, opts = {}) {
       const nodesWithExitsThisStep = new Set()
 
       // Rate-limited source: accrue spawn tokens PER SOURCE at that source's
-      // rate. The pending-promotion pass at the end of step() decrements one
-      // token from a source per successful promotion into it (bd y70; M2 §5.1).
+      // rate. The promotion pass and the true-emitter creation pass at the end
+      // of step() each decrement one token per agent placed into a source
+      // (bd y70; M2 §5.1). The accumulator is NOT clamped: a source backed up
+      // behind a constraint banks tokens, but the per-step occupancy gate on
+      // both promotion and creation serialises consumption to the source
+      // node's drain rate — so banked credit can never produce a burst faster
+      // than the pipe physically accepts (bd ai-engineer-2igc).
       if (rateLimited) {
         for (const s of sources) spawnAccumulators[s.id] += dtc * s.rate
       }
@@ -1359,18 +1375,25 @@ export function createFlowSimulation(flow, opts = {}) {
             nodesWithExitsThisStep.add(currentNode.id)
             traces.exits.push({ id: agent.id, nodeId: currentNode.id, t: agent.age })
             if (rateLimited) {
-              // Rate-limited mode: completed agents ALWAYS go pending; the
-              // shared promotion pass below gates re-entry behind the source's
-              // spawn accumulator. This keeps source cadence honest after a
-              // long run. M2 §5.1: the recycled agent is reassigned to a
-              // source by rate proportion (single-source v1 → that source).
-              const src = pickSourceWeighted()
+              // True-emitter model (bd ai-engineer-2igc): a completed agent
+              // LEAVES the system. It is marked 'done' and spliced from the
+              // agents array at the end of step(). It is NOT recycled into a
+              // pending pool.
+              //
+              // Why: under the old recycle model the total agent count was
+              // conserved, so source emission was structurally clamped to the
+              // recycle return rate — the intake could never run at its own
+              // `rate`, surplus agents parked off-canvas invisibly, and a flow
+              // seeded with 0 initial agents was permanently dead. Jason
+              // flagged the visible symptom: "the particle flow from the
+              // intake ... seem to stop." With completion = removal, the
+              // source-creation pass at the end of step() is free to keep
+              // emitting NEW particles at the configured `rate`, so the intake
+              // is a genuine, continuous tap (M2 §5.1, revised).
+              agent.lifecycle = 'done'
               agent.currentNodeId = null
-              agent.targetNodeId = src.id
-              agent.lifecycle = 'pending'
-              agent.x = src.x - 100; agent.y = src.y
+              agent.targetNodeId = null
               agent.vx = 0; agent.vy = 0
-              markPending(agent)  // FIFO stamp (bead a1m)
             } else if (occupancy[entryNode.id] < entryNode.capacity) {
               // Legacy mode: respawn at entry if there's room.
               occupancy[entryNode.id]++
@@ -1674,6 +1697,52 @@ export function createFlowSimulation(flow, opts = {}) {
       }
 
       // ────────────────────────────────────────────────────────────────────
+      // True-emitter source creation (bd ai-engineer-2igc; M2 §5.1 revised).
+      //
+      // A rate-limited source is a genuine particle TAP, not a recycler. The
+      // promotion pass above first places any waiting agents (the initial
+      // seed's pending pool). AFTER that, every source still holding a spawn
+      // token (accumulator ≥ 1) and with physical room (occupancy < capacity)
+      // CREATES a brand-new agent. This is what makes the intake emit
+      // "constant according to the speed set" — its output rate is its own
+      // `rate`, independent of how many agents are downstream.
+      //
+      // Backpressure is preserved and is the natural population bound: when a
+      // constraint backs the queue up to the source, occupancy[source] sits at
+      // capacity and creation simply waits. The accumulator is clamped at
+      // SPAWN_ACCUMULATOR_CAP, so no burst fires when the queue clears. The
+      // population settles at what the pipe physically holds; MAX_AGENTS is a
+      // hard backstop for constraint-free flows.
+      //
+      // Per step a source either promotes ONE pending agent (above) or creates
+      // ONE new agent (here) — never both — because the accumulator is capped
+      // at 1.0 and the promotion pass consumes the token first.
+      if (rateLimited) {
+        for (const s of sources) {
+          if (agents.length >= MAX_AGENTS) break
+          if (spawnAccumulators[s.id] < 1) continue
+          const srcNode = s.node
+          if (occupancy[s.id] >= srcNode.capacity) continue
+          spawnAccumulators[s.id] -= 1
+          occupancy[s.id]++
+          const nextTarget = nextSuccessor(srcNode)
+          const pos = spawnPosition(srcNode, nextTarget)
+          const a = {
+            id: freshAgentId(),
+            x: pos.x, y: pos.y,
+            vx: 0, vy: 0,
+            currentNodeId: s.id,
+            targetNodeId: nextTarget,
+            lifecycle: 'in-process',
+            age: 0,
+            _enteredAt: 0,
+          }
+          agents.push(a)
+          traces.entries.push({ id: a.id, nodeId: s.id, t: a.age })
+        }
+      }
+
+      // ────────────────────────────────────────────────────────────────────
       // Queue-vacancy wake (bd ai-engineer-5kk).
       //
       // Any node whose occupancy DROPPED during this step (an agent exited
@@ -1710,6 +1779,15 @@ export function createFlowSimulation(flow, opts = {}) {
             a._frozenDuration = 0
           }
         }
+      }
+
+      // Reap completed agents (true-emitter model, bd ai-engineer-2igc).
+      // Agents that finished a leaf node this step were marked 'done' in the
+      // completion check; splice them out now, after every pass that iterates
+      // `agents` for the step has run. Iterate back-to-front so splices do not
+      // disturb unvisited indices.
+      for (let i = agents.length - 1; i >= 0; i--) {
+        if (agents[i].lifecycle === 'done') agents.splice(i, 1)
       }
     },
   }
