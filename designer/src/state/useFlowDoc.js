@@ -24,7 +24,8 @@ import {
   widthFromSpeed,
 } from '@flow-designer/library/internals'
 import { makeSampleFlow } from './sampleFlow.js'
-import { GRID_SIZE } from '../lib/constants.js'
+import { GRID_SIZE, NODE_RADIUS } from '../lib/constants.js'
+import { slideFrame, outOfBoundsNodeIds, clampToFrame } from '../lib/slideFrame.js'
 import * as M from './flowMutations.js'
 import { useFlowStore } from './flowStore.js'
 import { slugify, uniqueSlug } from '../../server/indexBuilder.js'
@@ -79,6 +80,16 @@ const normalized = computed(() => {
  * Preview-only: export still serialises the authored `state.flow`, never this.
  */
 const previewFlow = computed(() => M.withNodeAnchoredLabels(normalized.value))
+
+/**
+ * Ids of nodes positioned (even partly) outside the slide frame
+ * (bd ai-engineer-oxcq). The node-handle radius insets the test, so a node
+ * whose handle pokes past the slide edge counts. Surfaced on the canvas as a
+ * warning ring and in the status strip with a bring-in-bounds action.
+ */
+const outOfBoundsIds = computed(() =>
+  outOfBoundsNodeIds(state.flow, slideFrame(state.flow), NODE_RADIUS),
+)
 
 /** Advisory structural validation, surfaced in the status strip. */
 const validation = computed(() => {
@@ -256,6 +267,26 @@ function deleteSelection() {
   }
 }
 
+/**
+ * Clamp every node sitting outside the slide frame back inside it
+ * (bd ai-engineer-oxcq). Each out-of-bounds node's position is pulled in so
+ * its whole handle lands within the frame; edges follow for free. Structural
+ * no-op when nothing is out of bounds.
+ */
+function bringInBounds() {
+  const frame = slideFrame(state.flow)
+  let moved = 0
+  for (const id of outOfBoundsIds.value) {
+    const n = M.findNode(state.flow, id)
+    if (!n) continue
+    const p = clampToFrame(n.x, n.y, frame, NODE_RADIUS)
+    M.moveNode(state.flow, id, p.x, p.y)
+    moved++
+  }
+  if (moved) bumpPreview()
+  return moved
+}
+
 // ── document lifecycle / format ──────────────────────────────────────────────
 function findNode(id) {
   return M.findNode(state.flow, id)
@@ -398,6 +429,8 @@ const api = {
   normalized,
   previewFlow,
   validation,
+  outOfBoundsIds,
+  bringInBounds,
   select,
   selectEdge,
   setTool,

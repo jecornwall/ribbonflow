@@ -6,9 +6,11 @@
   invalid (a half-drawn edge, no source yet) while you work.
 -->
 <script setup>
+import { computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 
 const doc = useFlowDoc()
+const oobCount = computed(() => doc.outOfBoundsIds.value.length)
 </script>
 
 <template>
@@ -31,6 +33,17 @@ const doc = useFlowDoc()
       v-if="doc.validation.value.ok && !doc.validation.value.warnings.length"
       class="ss-msg muted"
     >no issues</span>
+
+    <!-- out-of-bounds content: nodes sitting outside the 16:9 slide frame
+         (bd ai-engineer-oxcq). The button clamps them all back in bounds. -->
+    <button
+      v-if="oobCount"
+      class="ss-oob"
+      :title="'bring every off-slide node back inside the frame'"
+      @click="doc.bringInBounds()"
+    >
+      ⚠ {{ oobCount }} node{{ oobCount === 1 ? '' : 's' }} off-slide — bring in bounds
+    </button>
   </div>
 </template>
 
@@ -65,5 +78,18 @@ const doc = useFlowDoc()
 }
 .ss-msg.muted {
   color: #9ca3af;
+}
+.ss-oob {
+  margin-left: auto;
+  padding: 3px 10px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #fff;
+  background: #dc2626;
+  border: 1px solid #b91c1c;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ss-oob:hover {
+  background: #ef4444;
 }
 </style>

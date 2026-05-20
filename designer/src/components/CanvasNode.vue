@@ -19,6 +19,9 @@ const props = defineProps({
   node: { type: Object, required: true },
   selected: { type: Boolean, default: false },
   pending: { type: Boolean, default: false },
+  // node sits outside the slide frame — flagged with a warning ring
+  // (bd ai-engineer-oxcq)
+  outOfBounds: { type: Boolean, default: false },
 })
 const emit = defineEmits(['nodedown', 'labeldown'])
 
@@ -51,6 +54,19 @@ const labelY = computed(() => props.node.y + (props.node.labelDy || 0))
       stroke="#94a3b8"
       stroke-width="1"
       stroke-dasharray="4 4"
+    />
+    <!-- out-of-bounds warning ring: a node sitting outside the slide frame
+         (bd ai-engineer-oxcq) — pointer-transparent so it never steals a click -->
+    <circle
+      v-if="outOfBounds"
+      :cx="node.x"
+      :cy="node.y"
+      :r="NODE_RADIUS + 9"
+      fill="none"
+      stroke="#dc2626"
+      stroke-width="3"
+      stroke-dasharray="5 4"
+      pointer-events="none"
     />
     <!-- the node handle — filled by colour scheme -->
     <circle

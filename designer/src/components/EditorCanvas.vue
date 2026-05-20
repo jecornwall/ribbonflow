@@ -36,6 +36,9 @@ const ptr = ref({ x: 0, y: 0 })
 const frame = computed(() => slideFrame(state.flow))
 const inflated = computed(() => inflateRect(frame.value, GUTTER_FRAC))
 const canvasBox = computed(() => viewBoxStr(inflated.value))
+// Node ids sitting outside the slide frame — flagged with a warning ring
+// (bd ai-engineer-oxcq).
+const outOfBounds = computed(() => new Set(doc.outOfBoundsIds.value))
 
 // Derive the edge list from per-node successors (the library's topology
 // storage). Each edge carries live references to its endpoint nodes.
@@ -275,6 +278,7 @@ function onUp(e) {
         :node="node"
         :selected="isSelectedNode(node.id)"
         :pending="state.pendingEdgeFrom === node.id"
+        :out-of-bounds="outOfBounds.has(node.id)"
         @nodedown="onNodeDown"
         @labeldown="onLabelDown"
       />
