@@ -6,7 +6,8 @@
   "description": "Shared flow library — simulation engine, curve maths, renderer, and the flow format. Two faces: <FlowEmbed> (slide-facing) and /internals (designer-facing).",
   "exports": {
     ".": "./src/index.js",
-    "./internals": "./src/internals.js"
+    "./internals": "./src/internals.js",
+    "./src/*": "./src/*"
   },
   "scripts": {
     "test": "node --test src/core/*.test.js test/*.test.js"
