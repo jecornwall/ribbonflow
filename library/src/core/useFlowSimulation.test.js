@@ -204,15 +204,28 @@ test('Fork routing: both fork branches receive traffic and agents reach the leaf
 test('Fork routing (M2 §2.2): agents route in proportion to branch rateShare', () => {
   const sim = createFlowSimulation(m2Coverage, { initialAgents: 20 })
   for (let i = 0; i < 3600; i++) sim.step(1 / 60)  // 60s — a solid sample
-  const fast = sim.traces.entries.filter(e => e.nodeId === 'lane-fast').length
-  const slow = sim.traces.entries.filter(e => e.nodeId === 'lane-slow').length
+  // Assert on the routing DECISION (sim.forkAssign), not realised lane
+  // traffic (traces.entries). The earlier traffic-based assertion was flaky
+  // (bd ai-engineer-xwzc): realised lane entries are throttled by each
+  // lane's downstream capacity / backpressure, and spawn jitter
+  // (spawnPosition's Math.random) perturbs the per-run timing — so the
+  // realised fast/slow ratio swung between ~1.5 and ~3 run-to-run while the
+  // routing itself was always correct. forkAssign tallies every
+  // nextSuccessor() decision at the fork node; the lowest-ratio stratified
+  // picker is fully deterministic, so the assignment ratio tracks the
+  // declared 0.7/0.3 share to within ±1 count on any run.
+  const assigned = sim.forkAssign['intake'] || {}
+  const fast = assigned['lane-fast'] || 0
+  const slow = assigned['lane-slow'] || 0
   assert.ok(fast > 0 && slow > 0,
-    `both fork branches must receive traffic; got fast=${fast}, slow=${slow}`)
-  // Declared split 0.7 / 0.3 → expected ratio ≈ 2.33. An even round-robin
-  // would land near 1.0 — well outside this band. Lenient [1.6, 3.5] absorbs
-  // integer-count quantisation on a modest, constraint-throttled sample.
+    `both fork branches must be assigned traffic; got fast=${fast}, slow=${slow}`)
+  // Declared split 0.7 / 0.3 → ratio ≈ 2.33. The deterministic picker keeps
+  // each branch within ±1 of its exact share, so over a sample of dozens of
+  // assignments the ratio sits tightly around 2.33. [2.0, 2.8] absorbs only
+  // small-integer quantisation — an even round-robin (ratio ≈ 1.0) or any
+  // routing regression falls well outside it.
   const ratio = fast / slow
-  assert.ok(ratio >= 1.6 && ratio <= 3.5,
+  assert.ok(ratio >= 2.0 && ratio <= 2.8,
     `expected lane-fast/lane-slow ≈ 2.33 (rateShare 0.7/0.3); `
     + `got ${ratio.toFixed(2)} (fast=${fast}, slow=${slow})`)
 })

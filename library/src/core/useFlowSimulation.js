@@ -2363,6 +2363,15 @@ export function createFlowSimulation(flow, opts = {}) {
 
   return {
     flow, branches, widths, agents, occupancy, traces,
+    // forkAssign — per fork-node routing-decision tally: nodeId →
+    // { successorId: count }. Every nextSuccessor() call at a node with a
+    // declared `fork` increments this. Unlike realised lane traffic
+    // (traces.entries), the assignment tally is a DETERMINISTIC consequence
+    // of the lowest-ratio stratified picker, so it tracks each branch's
+    // rateShare to within ±1 count regardless of downstream capacity /
+    // backpressure timing. Exposed for M2 §2.2 fork-routing assertions
+    // (bd ai-engineer-xwzc — the realised-traffic assertion was flaky).
+    forkAssign,
     step(dt) {
       const dtc = Math.min(dt, 1 / 30)  // clamp to avoid integration blow-up
 
