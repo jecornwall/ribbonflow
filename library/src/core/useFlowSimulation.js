@@ -17,6 +17,7 @@ import {
   DEFAULT_BAND_WIDTH,
   MIN_RIBBON_WIDTH,
   PARTICLE_RADIUS,
+  LARGE_PARTICLE_SCALE,
   WALL_MARGIN,
   REJECTION_BAND_WIDTH,
 } from './flowCurve.js'
@@ -37,6 +38,24 @@ const DEFAULT_AGENT_RADIUS = PARTICLE_RADIUS
 export function agentRadius(agent) {
   return agent.radius ?? PARTICLE_RADIUS
 }
+
+// ── Particle size (v1.3 L3 — spec §1) ─────────────────────────────────────
+// An agent's `radius` derives from its `size`: a large particle is
+// LARGE_PARTICLE_SCALE× the small radius. radiusForSize is the single
+// derivation point; the format layer's particleSize values map straight in.
+export function radiusForSize(size) {
+  return PARTICLE_RADIUS * (size === 'large' ? LARGE_PARTICLE_SCALE : 1)
+}
+// A node's emitted particle size. A `particleSize:'large'` source emits large
+// agents; everything else emits small. Defends against an un-normalized flow
+// (the engine takes raw flow configs — see the linearFlow test fixtures).
+const particleSizeOf = (node) =>
+  node && node.particleSize === 'large' ? 'large' : 'small'
+// Transform-count defaults — inlined so the engine carries no format-layer
+// dependency (mirrors DEFAULT_SOURCE_RATE below; format/model.js owns the
+// canonical DEFAULT_SPLIT_COUNT / DEFAULT_COMBINE_COUNT).
+const DEFAULT_SPLIT_COUNT = 4
+const DEFAULT_COMBINE_COUNT = 4
 
 // Per-agent wall margin: an agent's *centre* must stay this far from the
 // ribbon wall so its circle (radius `agentRadius`) sits fully inside, with
@@ -469,9 +488,14 @@ export function createFlowSimulation(flow, opts = {}) {
   // check would teleport otherwise-valid spawns.
   // Max agent radius "in play" — the teleport backstop's BB is expanded by
   // this so a legitimately-near-the-wall agent's circle is never read as an
-  // escape (spec §3.1). v1.3 L1: only small particles exist, so this is
-  // PARTICLE_RADIUS; L3 will derive it from the sources' particle sizes.
-  const maxAgentRadius = PARTICLE_RADIUS
+  // escape (spec §3.1). v1.3 L3: large agents exist whenever a source emits
+  // large OR a combine node fires one, so the BB must admit the large radius.
+  const anyLargeInPlay = flow.nodes.some(
+    n => particleSizeOf(n) === 'large' || n.transform === 'combine',
+  )
+  const maxAgentRadius = anyLargeInPlay
+    ? radiusForSize('large')
+    : radiusForSize('small')
   const ribbonBB = (() => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const b of branches) {
@@ -758,7 +782,9 @@ export function createFlowSimulation(flow, opts = {}) {
       if (seedSource && occupancy[seedSource.id] < seedSource.capacity) {
         occupancy[seedSource.id]++
         const nextTarget = nextSuccessor(seedSource)
-        const pos = spawnPosition(seedSource, nextTarget)
+        // v1.3 L3: agent size + radius come from the emitting source.
+        const size = particleSizeOf(seedSource)
+        const pos = spawnPosition(seedSource, nextTarget, radiusForSize(size))
         agents.push({
           id: freshAgentId(),
           x: pos.x, y: pos.y,
@@ -767,11 +793,14 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: nextTarget,
           lifecycle: 'in-process',
           age: 0,
-          radius: DEFAULT_AGENT_RADIUS,
+          size,
+          radius: radiusForSize(size),
         })
       } else {
         // Pending — assigned to a source in proportion to that source's rate.
         const src = pickSourceWeighted()
+        // v1.3 L3: a pending agent's size is fixed by its assigned source.
+        const size = particleSizeOf(src)
         const a = {
           id: freshAgentId(),
           x: src.x - 100, y: src.y,
@@ -780,7 +809,8 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: src.id,
           lifecycle: 'pending',
           age: 0,
-          radius: DEFAULT_AGENT_RADIUS,
+          size,
+          radius: radiusForSize(size),
         }
         markPending(a)
         agents.push(a)
@@ -797,10 +827,12 @@ export function createFlowSimulation(flow, opts = {}) {
       const startNode = (occupancy[entryNode.id] < entryNode.capacity)
         ? entryNode
         : null  // overflow: agent stays in 'pending' lifecycle off-canvas
+      // v1.3 L3: legacy bulk-fill is single-source — size is the entry's.
+      const legacySize = particleSizeOf(entryNode)
       if (startNode) {
         occupancy[startNode.id]++
         const nextTarget = nextSuccessor(startNode)
-        const pos = spawnPosition(startNode, nextTarget)
+        const pos = spawnPosition(startNode, nextTarget, radiusForSize(legacySize))
         agents.push({
           id: freshAgentId(),
           x: pos.x, y: pos.y,
@@ -809,7 +841,8 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: nextTarget,
           lifecycle: 'in-process',
           age: 0,
-          radius: DEFAULT_AGENT_RADIUS,
+          size: legacySize,
+          radius: radiusForSize(legacySize),
         })
       } else {
         agents.push({
@@ -820,13 +853,32 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: entryNode.id,
           lifecycle: 'pending',
           age: 0,
-          radius: DEFAULT_AGENT_RADIUS,
+          size: legacySize,
+          radius: radiusForSize(legacySize),
         })
       }
     }
   }
 
-  const traces = { entries: [], exits: [], escapes: [], revisions: [] }
+  // v1.3 L3 (spec §3.5): `splits` / `combines` channels record every
+  // decomposition / composition event for the §7 conservation tests.
+  const traces = {
+    entries: [], exits: [], escapes: [], revisions: [], splits: [], combines: [],
+  }
+
+  // Deferred-spawn buffer (v1.3 L3 §6). Split children and combine-fired
+  // larges are created mid-step (inside the per-agent loop / the combine
+  // pass); buffering them and flushing AFTER the loop keeps the per-agent
+  // iteration deterministic — a new agent is never stepped in its birth
+  // frame. occupancy is updated eagerly at create time so backpressure is
+  // unaffected by the deferral.
+  const pendingSpawns = []
+  const flushPendingSpawns = () => {
+    while (pendingSpawns.length) agents.push(pendingSpawns.shift())
+  }
+  // Monotonic arrival stamp for held (combining) agents — gives the combine
+  // pass a stable FIFO order ("first N to arrive fire", spec §3.4).
+  let heldSeq = 0
 
   // ════════════════════════════════════════════════════════════════════════
   // step() decomposition (bd ai-engineer-wq6h).
@@ -841,6 +893,7 @@ export function createFlowSimulation(flow, opts = {}) {
   //
   // Per-step pass order (see step() at the bottom):
   //   accrueSpawnTokens → computeAgentFrame → stepAgent (per agent) →
+  //   flushPendingSpawns → processCombines → flushPendingSpawns →
   //   resolveRigidContacts → enforceRibbonPolygon → teleportEscapees →
   //   promoteWaitingAgents → createSourceAgents → wakeQueueVacancies →
   //   reapDoneAgents
@@ -952,7 +1005,7 @@ export function createFlowSimulation(flow, opts = {}) {
           // ~capacity agents actively being processed occupy it.
           const blockerS = branch.segHoldBounds
             ? branch.segHoldBounds[tIdx]
-            : Math.max(0, branch.anchorS[tIdx] - PARTICLE_RADIUS)
+            : Math.max(0, branch.anchorS[tIdx] - agentRadius(agent))
           const d = blockerS - bestS
           if (d < frontDist) frontDist = d
         }
@@ -965,7 +1018,9 @@ export function createFlowSimulation(flow, opts = {}) {
     // in a single frame, producing a 199.9 px/s jolt visible to the
     // bounded-acceleration test.
     if (agent.targetNodeId === null) {
-      const endS = cl.totalLength - PARTICLE_RADIUS
+      // v1.3 L3: per-agent stop-offset — a large particle (r=9) stopped only
+      // PARTICLE_RADIUS short of the terminus would overhang it by 6 units.
+      const endS = cl.totalLength - agentRadius(agent)
       const d = endS - bestS
       if (d < frontDist) frontDist = d
     }
@@ -1451,7 +1506,7 @@ export function createFlowSimulation(flow, opts = {}) {
           // (c42z) and not the node anchor.
           const limit = branch.segHoldBounds
             ? branch.segHoldBounds[tIdx]
-            : Math.max(0, branch.anchorS[tIdx] - PARTICLE_RADIUS)
+            : Math.max(0, branch.anchorS[tIdx] - agentRadius(agent))
           if (bestS > limit) {
             // Past advisory boundary. Brake forward-along-tangent
             // velocity component at ACCEL_CAP per second (ebv fix —
@@ -1531,6 +1586,19 @@ export function createFlowSimulation(flow, opts = {}) {
           ? (claimed && distToTarget < ENTRY_DIST)
           : (occupancy[targetNode.id] < targetNode.capacity)
         if (doCross) {
+          // ── Split (v1.3 L3 §3.3) ────────────────────────────────────────
+          // A LARGE agent leaving a `transform:'split'` node decomposes
+          // instead of crossing: it despawns and splitCount smalls spawn at
+          // the split node. A SMALL arrival at a split node is unaffected —
+          // it falls through to the normal cross below.
+          const exitNode = agent.currentNodeId
+            ? flow.nodes.find(n => n.id === agent.currentNodeId)
+            : null
+          if (exitNode && exitNode.transform === 'split'
+              && agent.size === 'large') {
+            performSplit(agent, exitNode, nodesWithExitsThisStep)
+            return
+          }
           // Cross the boundary.
           if (agent.currentNodeId) {
             occupancy[agent.currentNodeId]--
@@ -1567,6 +1635,14 @@ export function createFlowSimulation(flow, opts = {}) {
             agent.vx = 0
             agent.vy = 0
             traces.revisions.push({ t: agent.age, agentId: agent.id, from: targetNode.id, to: targetNode.reviseTo })
+          } else if (targetNode.transform === 'combine'
+                     && agent.size === 'small') {
+            // ── Combine (v1.3 L3 §3.4) ────────────────────────────────────
+            // A SMALL agent entering a combine node is HELD at it; the
+            // combine pass fires one large once combineCount are held. A
+            // LARGE arrival passes through unchanged (falls to the `else`).
+            holdAtCombine(agent, targetNode)
+            return
           } else {
             // v1.2 R2: roll the rejection edges (spec §3.2) before forward
             // routing. A rejected agent becomes 'revising' here and rides the
@@ -1646,7 +1722,7 @@ export function createFlowSimulation(flow, opts = {}) {
           // Legacy mode: respawn at entry if there's room.
           occupancy[entryNode.id]++
           const nextTarget = nextSuccessor(entryNode)
-          const pos = spawnPosition(entryNode, nextTarget)
+          const pos = spawnPosition(entryNode, nextTarget, agentRadius(agent))
           agent.x = pos.x; agent.y = pos.y
           agent.vx = 0; agent.vy = 0
           agent.currentNodeId = entryNode.id
@@ -1665,6 +1741,123 @@ export function createFlowSimulation(flow, opts = {}) {
     }
   }
 
+  // ── Split / combine transform mechanics (v1.3 L3 — spec §3.3 / §3.4) ──────
+  // performSplit: a LARGE agent crossing out of a `transform:'split'` node
+  // decomposes — the large despawns (its slot freed, any junction claim
+  // released), and `splitCount` small agents are spawned at the split node
+  // (deferred via pendingSpawns — spec §6), each routed via nextSuccessor so a
+  // forking split distributes its children. Called from the doCross block.
+  function performSplit(largeAgent, splitNode, nodesWithExitsThisStep) {
+    if (largeAgent.currentNodeId) {
+      occupancy[largeAgent.currentNodeId] =
+        Math.max(0, occupancy[largeAgent.currentNodeId] - 1)
+      nodesWithExitsThisStep.add(largeAgent.currentNodeId)
+    }
+    // Release any junction slot the large reserved (stage-1 cross) so the
+    // despawn cannot leak a downstream node's occupancy.
+    if (largeAgent._slotClaim) {
+      occupancy[largeAgent._slotClaim] =
+        Math.max(0, occupancy[largeAgent._slotClaim] - 1)
+      nodesWithExitsThisStep.add(largeAgent._slotClaim)
+      largeAgent._slotClaim = undefined
+    }
+    largeAgent.lifecycle = 'done'
+    largeAgent.currentNodeId = null
+    largeAgent.targetNodeId = null
+    largeAgent.vx = 0; largeAgent.vy = 0
+    const count =
+      Number.isInteger(splitNode.splitCount) && splitNode.splitCount >= 2
+        ? splitNode.splitCount : DEFAULT_SPLIT_COUNT
+    const agentIds = []
+    for (let i = 0; i < count; i++) {
+      const nextTarget = nextSuccessor(splitNode)
+      const pos = spawnPosition(splitNode, nextTarget, radiusForSize('small'))
+      const a = {
+        id: freshAgentId(),
+        x: pos.x, y: pos.y,
+        vx: 0, vy: 0,
+        currentNodeId: splitNode.id,
+        targetNodeId: nextTarget,
+        lifecycle: 'in-process',
+        age: largeAgent.age,
+        _enteredAt: largeAgent.age,
+        size: 'small',
+        radius: radiusForSize('small'),
+      }
+      occupancy[splitNode.id]++
+      pendingSpawns.push(a)
+      agentIds.push(a.id)
+      traces.entries.push({ id: a.id, nodeId: splitNode.id, t: a.age })
+    }
+    traces.splits.push({
+      t: largeAgent.age, nodeId: splitNode.id, agentIds, sourceId: largeAgent.id,
+    })
+  }
+
+  // holdAtCombine: a SMALL agent entering a `transform:'combine'` node is
+  // parked at the node anchor — lifecycle stays 'in-process', `_held` flags
+  // it, `_heldSeq` stamps arrival order. processCombines fires the large.
+  function holdAtCombine(agent, combineNode) {
+    agent._held = combineNode.id
+    agent._heldSeq = ++heldSeq
+    agent.targetNodeId = null   // no onward route while held
+    agent.vx = 0; agent.vy = 0
+    // Snap to the node anchor with lateral jitter so the pile reads as a heap.
+    const pos = spawnPosition(combineNode, null, agentRadius(agent))
+    agent.x = pos.x
+    agent.y = pos.y
+  }
+
+  // processCombines: per step, every combine node holding ≥combineCount small
+  // agents despawns the first combineCount (FIFO by _heldSeq — "first N to
+  // arrive fire", no provenance) and spawns ONE large agent at the node exit
+  // (deferred via pendingSpawns). Runs as its own pass after the agent loop.
+  function processCombines(nodesWithExitsThisStep) {
+    for (const node of flow.nodes) {
+      if (node.transform !== 'combine') continue
+      const count =
+        Number.isInteger(node.combineCount) && node.combineCount >= 2
+          ? node.combineCount : DEFAULT_COMBINE_COUNT
+      let held = agents
+        .filter(a => a._held === node.id)
+        .sort((a, b) => (a._heldSeq ?? 0) - (b._heldSeq ?? 0))
+      while (held.length >= count) {
+        const consumed = held.slice(0, count)
+        held = held.slice(count)
+        for (const a of consumed) {
+          a.lifecycle = 'done'
+          a._held = undefined
+          a.currentNodeId = null
+          a.targetNodeId = null
+          a.vx = 0; a.vy = 0
+          occupancy[node.id] = Math.max(0, occupancy[node.id] - 1)
+        }
+        nodesWithExitsThisStep.add(node.id)
+        const t = consumed[0]?.age ?? 0
+        const nextTarget = nextSuccessor(node)
+        const pos = spawnPosition(node, nextTarget, radiusForSize('large'))
+        const large = {
+          id: freshAgentId(),
+          x: pos.x, y: pos.y,
+          vx: 0, vy: 0,
+          currentNodeId: node.id,
+          targetNodeId: nextTarget,
+          lifecycle: 'in-process',
+          age: t,
+          _enteredAt: t,
+          size: 'large',
+          radius: radiusForSize('large'),
+        }
+        occupancy[node.id]++
+        pendingSpawns.push(large)
+        traces.combines.push({
+          t, nodeId: node.id,
+          agentIds: consumed.map(a => a.id), largeId: large.id,
+        })
+      }
+    }
+  }
+
   // ── Per-agent step (the main loop body) ───────────────────────────────────
   // Advance one in-process agent through the full per-agent pipeline. Reuses
   // the precomputed branch + arc-length from computeAgentFrame() when
@@ -1674,6 +1867,10 @@ export function createFlowSimulation(flow, opts = {}) {
   // escapes where a fork-parent agent was incorrectly snapped onto a sibling
   // lane.
   function stepAgent(agent, dtc, frame, nodesWithExitsThisStep) {
+    // v1.3 L3 (spec §3.4): a HELD agent is parked at a combine node — it
+    // skips physics + transitions entirely (so the leaf-completion check
+    // never fires on it), but still ages.
+    if (agent._held) { agent.age += dtc; return }
     const branch = frame.agentBranch.get(agent) ?? selectBranch(agent, branches)
     if (!branch) return
     const cl = branch.centerline
@@ -1775,9 +1972,11 @@ export function createFlowSimulation(flow, opts = {}) {
       for (let i = 0; i < agents.length; i++) {
         const a = agents[i]
         if (a.lifecycle !== 'in-process') continue
+        if (a._held) continue   // held agents are parked — never pushed (L3)
         for (let j = i + 1; j < agents.length; j++) {
           const b = agents[j]
           if (b.lifecycle !== 'in-process') continue
+          if (b._held) continue
           // Skip rigid contact between agents on opposite sides of a
           // capacity gate (same rationale as the peer-blocker fix: an
           // agent that has entered a node should not be physically pushed
@@ -1808,6 +2007,7 @@ export function createFlowSimulation(flow, opts = {}) {
       // fix note in stepAgent (bead ai-engineer-ebv).
       for (const agent of agents) {
         if (agent.lifecycle !== 'in-process') continue
+        if (agent._held) continue   // held agents are parked at the anchor (L3)
         const branch = selectBranch(agent, branches)
         if (!branch) continue
         const cl = branch.centerline
@@ -2073,7 +2273,9 @@ export function createFlowSimulation(flow, opts = {}) {
         spawnAccumulators[s.id] -= 1
         occupancy[s.id]++
         const nextTarget = nextSuccessor(srcNode)
-        const pos = spawnPosition(srcNode, nextTarget)
+        // v1.3 L3: emitted agent size + radius come from the source.
+        const size = particleSizeOf(srcNode)
+        const pos = spawnPosition(srcNode, nextTarget, radiusForSize(size))
         const a = {
           id: freshAgentId(),
           x: pos.x, y: pos.y,
@@ -2083,7 +2285,8 @@ export function createFlowSimulation(flow, opts = {}) {
           lifecycle: 'in-process',
           age: 0,
           _enteredAt: 0,
-          radius: DEFAULT_AGENT_RADIUS,
+          size,
+          radius: radiusForSize(size),
         }
         agents.push(a)
         traces.entries.push({ id: a.id, nodeId: s.id, t: a.age })
@@ -2171,6 +2374,13 @@ export function createFlowSimulation(flow, opts = {}) {
       for (const agent of agents) {
         stepAgent(agent, dtc, frame, nodesWithExitsThisStep)
       }
+
+      // v1.3 L3 (spec §6): flush split children, run the combine pass, flush
+      // the combine-fired larges — all before the geometry / lifecycle passes
+      // so the new agents are clamped + reaped consistently this step.
+      flushPendingSpawns()
+      processCombines(nodesWithExitsThisStep)
+      flushPendingSpawns()
 
       resolveRigidContacts()
 

@@ -10,6 +10,11 @@
 // ---- Physical constants ---------------------------------------------------
 
 export const PARTICLE_RADIUS = 3      // viewBox units (agents are circles of this radius)
+// v1.3 — large-particle diameter ratio (large-particle spec §3.1; L3). A large
+// agent's radius is PARTICLE_RADIUS × LARGE_PARTICLE_SCALE (small r=3 → large
+// r=9). Exported here next to PARTICLE_RADIUS so the engine (radiusForSize)
+// and L4 rendering (FlowAgent) derive the large radius from one constant.
+export const LARGE_PARTICLE_SCALE = 3
 export const WALL_MARGIN     = 2      // viewBox units — gap between agent edge and ribbon wall
 export const MIN_RIBBON_WIDTH = 2 * (PARTICLE_RADIUS + WALL_MARGIN)  // 10 units
 
