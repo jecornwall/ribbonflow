@@ -26,6 +26,7 @@ import {
   TRANSITION_DEFAULTS,
 } from '@flow-designer/library/internals'
 import { useFlowStore } from './flowStore.js'
+import { createTransitionSaver } from './transitionSaver.js'
 
 const store = useFlowStore()
 
@@ -51,21 +52,26 @@ const state = reactive({
  * `justLoaded` pattern in useFlowDoc.js.
  */
 let justLoaded = false
-let saveTimer = null
 
-/** Persist the current transition to set.json via the REST API. */
-async function saveTransition(setId, transition) {
+/** Persist a set's transition to set.json via the REST API, swallowing
+ *  failures (an authoring tool keeps editing through a transient save error).
+ *  Shape `{ transition }` matches the saveSetMeta partial-meta contract. */
+async function saveSetMetaSafely(setId, meta) {
   try {
-    await store.saveSetMeta(setId, { transition })
+    await store.saveSetMeta(setId, meta)
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('set-preview: transition save failed:', err)
   }
 }
 
+/** Debounced transition persistence — see transitionSaver.js. */
+const transitionSaver = createTransitionSaver(saveSetMetaSafely)
+
 // Watch the assembled flow-set's transition object deep. When the user moves a
-// slider or changes the easing, the v-model mutation lands here after debounce
-// and is persisted to set.json. The guard skips the first fire on load.
+// slider or changes the easing, the v-model mutation lands here and is handed
+// to the debounced saver, which persists it to set.json. The guard skips the
+// first fire on load.
 watch(
   () => state.flowSet?.transition,
   (newTransition) => {
@@ -74,12 +80,7 @@ watch(
       return
     }
     if (!state.setMeta?.id || !newTransition) return
-    if (saveTimer) clearTimeout(saveTimer)
-    // 600 ms: above slider tick rate, well below the 800 ms flow auto-save
-    // debounce in useFlowDoc.js, so saves interleave cleanly.
-    const setId = state.setMeta.id
-    const snapshot = { ...newTransition }
-    saveTimer = setTimeout(() => saveTransition(setId, snapshot), 600)
+    transitionSaver.schedule(state.setMeta.id, newTransition)
   },
   { deep: true },
 )
@@ -134,10 +135,7 @@ async function load(setEntry) {
 
 /** Clear the preview (called when leaving the set-preview view). */
 function clear() {
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
+  transitionSaver.cancel()
   state.setMeta = null
   state.flowSet = null
   state.error = null
