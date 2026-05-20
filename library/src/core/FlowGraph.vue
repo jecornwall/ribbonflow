@@ -298,6 +298,7 @@
     <FlowAgent
       v-for="agent in agentsView"
       :key="agent.id"
+      :agent-id="agent.id"
       :x="agent.x"
       :y="agent.y"
     />

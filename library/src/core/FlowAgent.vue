@@ -26,16 +26,22 @@
     :cy="y"
     :r="radius"
     :fill="color"
+    :data-agent-id="agentId"
     stroke="none"
     shape-rendering="geometricPrecision"
   />
 </template>
 
 <script setup>
+// `agentId` is stamped onto the circle as `data-agent-id` — render-inert, but
+// it lets a browser test follow an individual agent frame-to-frame (the
+// bd ai-engineer-e0cj no-teleport verification). Optional, so any non-agent
+// caller is unaffected.
 defineProps({
   x: { type: Number, required: true },
   y: { type: Number, required: true },
   radius: { type: Number, default: 3.5 },
   color: { type: String, default: '#F4F2ED' },
+  agentId: { type: [String, Number], default: undefined },
 })
 </script>

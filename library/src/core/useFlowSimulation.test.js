@@ -894,11 +894,20 @@ test('Multi-source (N9): three real source nodes each emit, healthy slide-window
   // (cap 1) becomes the only gate — the optic the slide actually wants.
   assert.equal(n9MultiLane.nodes.find(n => n.id === '_start'), undefined,
     'the off-canvas _start hack must be retired')
+  //
+  // Threshold note (bd ai-engineer-e0cj): the per-source floor was lowered
+  // from 5 → 3. The teleport fix made merge-bound agents physically traverse
+  // the cap-1 constraint's plateau instead of being snapped across it, which
+  // honestly ~halves the merge constraint's throughput (n9: ~11 → ~5 leaf
+  // exits / 30s) and so reduces how often backpressure lets each source emit
+  // (~6 → ~4 per source). The test's INTENT — every source emits, and emits
+  // INDEPENDENTLY (not one lane starving the others) — holds at ≥3; the old
+  // floor of 5 was calibrated against the teleport-inflated throughput.
   const sim = createFlowSimulation(n9MultiLane, { initialAgents: 12 })
   for (let i = 0; i < 1800; i++) sim.step(1 / 60)  // 30s slide window
   for (const id of ['discovery', 'triage', 'architecture']) {
     const emissions = sim.traces.entries.filter(e => e.nodeId === id).length
-    assert.ok(emissions >= 5,
+    assert.ok(emissions >= 3,
       `source ${id} should emit independently; got ${emissions} over 30s`)
   }
   assert.ok(sim.traces.exits.length >= 5,
@@ -972,6 +981,65 @@ for (const { name, flow } of ALL_FLOWS) {
       `First 3: ${JSON.stringify(firstViolations)}`)
     assert.equal(totalTeleports, 0,
       `${name}: teleport backstop fired ${totalTeleports}× across ${NO_ESCAPE_RERUNS} reruns`)
+  })
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// No-teleport at MERGE junctions (bd ai-engineer-e0cj — REGRESSION).
+//
+// Jason flagged particles TELEPORTING in the N17 designer flow-set. Root
+// cause: branches are split at every fork/merge, so a cap-1 MERGE node is the
+// LAST node of each inbound branch and the FIRST node of the outbound branch.
+// The blqz queue-admission gate admits an inbound agent EARLY (at the
+// curve→plateau boundary, hundreds of viewBox units upstream of the merge
+// anchor). Pre-fix, that early cross immediately re-seated the agent on the
+// outbound branch and the post-gate Euclidean clamp SNAPPED it forward to
+// the outbound branch's start — a single-frame jump of 250–600 units.
+//
+// The teleport lands the agent ON a valid ribbon, so traces.escapes stays 0
+// and the Tier-1 no-escape test above never caught it. This test catches it
+// directly: no in-process agent may move more than MAX_STEP viewBox units in
+// one 1/60s frame. A free-flowing agent moves baseSpeed/60 ≈ 3–4 units; the
+// ENTRY_DIST node-crossing snap adds at most ~30. MAX_STEP = 60 sits well
+// above honest motion and far below the 250+ teleport.
+//
+// Exercised on the three real MERGE fixtures (n4-flow-a/b: a single merge
+// at `review`; n9-multilane: three lanes converging on `cross-team-review`).
+const MERGE_FLOWS = [
+  { name: 'n4-flow-a',    flow: n4FlowA },
+  { name: 'n4-flow-b',    flow: n4FlowB },
+  { name: 'n9-multilane', flow: n9MultiLane },
+]
+for (const { name, flow } of MERGE_FLOWS) {
+  test(`No-teleport (${name}): no agent jumps >60 units in a single frame over 30s`, () => {
+    const MAX_STEP = 60
+    let worst = 0
+    let worstInfo = null
+    for (let run = 0; run < 3; run++) {
+      const sim = createFlowSimulation(flow, { initialAgents: flow.initialAgents ?? 12 })
+      const lastPos = new Map()
+      for (let i = 0; i < 1800; i++) {
+        sim.step(1 / 60)
+        for (const a of sim.agents) {
+          if (a.lifecycle !== 'in-process') { lastPos.delete(a.id); continue }
+          const prev = lastPos.get(a.id)
+          if (prev) {
+            const d = Math.hypot(a.x - prev.x, a.y - prev.y)
+            if (d > worst) {
+              worst = d
+              worstInfo = {
+                run, frame: i, dist: d.toFixed(1),
+                node: a.currentNodeId, target: a.targetNodeId,
+              }
+            }
+          }
+          lastPos.set(a.id, { x: a.x, y: a.y })
+        }
+      }
+    }
+    assert.ok(worst <= MAX_STEP,
+      `${name}: an agent teleported ${worst.toFixed(0)} units in one frame ` +
+      `(limit ${MAX_STEP}); ${JSON.stringify(worstInfo)}`)
   })
 }
 
@@ -1212,18 +1280,28 @@ test('Multi-source (M2): the real v2 m2-coverage fixture runs through the engine
   const sim = createFlowSimulation(m2Coverage, { initialAgents: m2Coverage.initialAgents ?? 20 })
   const inProcess0 = sim.agents.filter(a => a.lifecycle === 'in-process').length
   assert.equal(inProcess0, 2, `expected one in-process per source at t=0; got ${inProcess0}`)
-  const lastPos = sim.agents.map(a => ({ x: a.x, y: a.y }))
-  const pathLength = sim.agents.map(() => 0)
+  // Tracked by agent id, not array index: under the true-emitter model
+  // (bd ai-engineer-2igc) the source creates new agents and completed agents
+  // are reaped, so the agents array changes length and identity over the run
+  // — an array-index lastPos[] crashes once the population moves off its
+  // t=0 size (surfaced by the bd ai-engineer-e0cj teleport fix, which lets
+  // the population settle a few agents above the seed count).
+  const lastPos = new Map(sim.agents.map(a => [a.id, { x: a.x, y: a.y }]))
+  const pathLength = new Map(sim.agents.map(a => [a.id, 0]))
   for (let i = 0; i < 1800; i++) {
     sim.step(1 / 60)
-    for (let k = 0; k < sim.agents.length; k++) {
-      const a = sim.agents[k]
-      const d = Math.hypot(a.x - lastPos[k].x, a.y - lastPos[k].y)
-      if (d < 50) pathLength[k] += d
-      lastPos[k] = { x: a.x, y: a.y }
+    for (const a of sim.agents) {
+      const prev = lastPos.get(a.id)
+      if (prev) {
+        const d = Math.hypot(a.x - prev.x, a.y - prev.y)
+        if (d < 50) pathLength.set(a.id, (pathLength.get(a.id) ?? 0) + d)
+      } else {
+        pathLength.set(a.id, 0)  // newly created agent
+      }
+      lastPos.set(a.id, { x: a.x, y: a.y })
     }
   }
-  const totalPath = pathLength.reduce((a, b) => a + b, 0)
+  const totalPath = [...pathLength.values()].reduce((a, b) => a + b, 0)
   assert.ok(totalPath > 1000, `expected total path > 1000 (sim running); got ${totalPath.toFixed(0)}`)
   // The teleport backstop must never fire — agents stay inside the ribbon.
   assert.equal(sim.traces.escapes.length, 0,

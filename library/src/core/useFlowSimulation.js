@@ -814,10 +814,17 @@ export function createFlowSimulation(flow, opts = {}) {
         // the "boats queueing at the narrow bridge" optic.
         if (agent.targetNodeId) {
           const targetNode = flow.nodes.find(n => n.id === agent.targetNodeId)
-          const shouldGate = targetNode && (
-            occupancy[targetNode.id] >= targetNode.capacity ||
-            targetNode.capacity === 1
-          )
+          // bd ai-engineer-e0cj: an agent that has already RESERVED its
+          // target's slot (`_slotClaim`, set by the two-stage junction cross
+          // below) is no longer queued — it owns the slot and must be free to
+          // flow the last stretch to the junction anchor. Lifting the hold for
+          // a claimant is what lets a merge-bound agent physically traverse
+          // the constraint plateau instead of being teleported across it.
+          const shouldGate = targetNode &&
+            agent._slotClaim !== targetNode.id && (
+              occupancy[targetNode.id] >= targetNode.capacity ||
+              targetNode.capacity === 1
+            )
           if (shouldGate) {
             const tIdx = branch.nodeIds.indexOf(agent.targetNodeId)
             if (tIdx >= 0) {
@@ -1338,7 +1345,11 @@ export function createFlowSimulation(flow, opts = {}) {
         // the agent's geometric centre is.
         if (agent.targetNodeId) {
           const targetNode = flow.nodes.find(n => n.id === agent.targetNodeId)
-          if (occupancy[targetNode.id] >= targetNode.capacity) {
+          // bd ai-engineer-e0cj: a slot-claimant (see the two-stage junction
+          // cross below) owns the target's slot and must NOT be braked at the
+          // plateau boundary — it has to physically reach the junction anchor.
+          if (occupancy[targetNode.id] >= targetNode.capacity
+              && agent._slotClaim !== targetNode.id) {
             const tIdx = branch.nodeIds.indexOf(agent.targetNodeId)
             if (tIdx >= 0) {
               // bd ai-engineer-blqz: arrest an overshooting agent at the
@@ -1388,14 +1399,53 @@ export function createFlowSimulation(flow, opts = {}) {
           )
           const atSegmentEdge = segGated
             && bestS >= branch.segHoldBounds[gateIdx] - ENTRY_DIST
+          // ── Two-stage junction cross (bd ai-engineer-e0cj — TELEPORT FIX) ──
+          // When the cap-gated target is the LAST node of the agent's current
+          // branch, the post-cross branch is a DIFFERENT branch that meets
+          // this one only at the junction node's anchor (a merge/fan-out
+          // point). Crossing EARLY (atSegmentEdge — up to several hundred
+          // viewBox units upstream of the anchor) would re-seat the agent on
+          // that outbound branch, and the post-gate Euclidean clamp would
+          // SNAP it forward to the outbound branch's start: a visible
+          // teleport (the symptom Jason saw in the N17 set).
+          //
+          // Fix — decouple the slot reservation from the physical crossing:
+          //   Stage 1: reserve the slot early (occupancy++, `_slotClaim` set)
+          //            so queueing / backpressure is byte-for-byte unchanged,
+          //            but DON'T touch currentNodeId / targetNodeId / branch.
+          //            The hold + overshoot-brake above release a claimant so
+          //            it flows the last stretch to the anchor.
+          //   Stage 2: once the agent physically reaches the anchor
+          //            (distToTarget < ENTRY_DIST), do the real cross. The
+          //            inbound and outbound branches coincide here, so the
+          //            post-gate clamp has nothing to snap.
+          // Non-junction targets keep the legacy single-stage cross.
+          const isLastNodeOfBranch =
+            branch.nodeIds[branch.nodeIds.length - 1] === agent.targetNodeId
+          const junctionCross = isLastNodeOfBranch && segGated
           if (distToTarget < ENTRY_DIST || atSegmentEdge) {
-            if (occupancy[targetNode.id] < targetNode.capacity) {
+            // Stage 1 — junction only: reserve the slot without crossing.
+            if (junctionCross
+                && agent._slotClaim !== targetNode.id
+                && occupancy[targetNode.id] < targetNode.capacity) {
+              occupancy[targetNode.id]++
+              agent._slotClaim = targetNode.id
+            }
+            const claimed = agent._slotClaim === targetNode.id
+            // A junction agent crosses only on physical arrival at the anchor;
+            // a non-junction agent crosses as soon as the slot is free.
+            const doCross = junctionCross
+              ? (claimed && distToTarget < ENTRY_DIST)
+              : (occupancy[targetNode.id] < targetNode.capacity)
+            if (doCross) {
               // Cross the boundary.
               if (agent.currentNodeId) {
                 occupancy[agent.currentNodeId]--
                 nodesWithExitsThisStep.add(agent.currentNodeId)
               }
-              occupancy[targetNode.id]++
+              // Claimants already incremented occupancy in stage 1.
+              if (!claimed) occupancy[targetNode.id]++
+              agent._slotClaim = undefined
               agent.currentNodeId = targetNode.id
               agent._enteredAt = agent.age
               traces.entries.push({ id: agent.id, nodeId: targetNode.id, t: agent.age })
@@ -1458,10 +1508,10 @@ export function createFlowSimulation(flow, opts = {}) {
                   }
                 }
               }
-            } else {
-              // Blocked. Forward force still on; physics holds the agent at the boundary.
-              // No state change needed.
             }
+            // Not crossing this frame — either blocked (slot full) or a
+            // junction claimant still flowing toward the anchor. Either way
+            // physics holds / advances the agent; no state change needed.
           }
         }
 
@@ -1712,6 +1762,13 @@ export function createFlowSimulation(flow, opts = {}) {
           targetNodeId: agent.targetNodeId,
           t: agent.age,
         })
+        // bd ai-engineer-e0cj: release any junction slot the escapee had
+        // reserved, so a re-seated agent can't leak a constraint's occupancy.
+        if (agent._slotClaim) {
+          occupancy[agent._slotClaim] = Math.max(0, occupancy[agent._slotClaim] - 1)
+          nodesWithExitsThisStep.add(agent._slotClaim)
+          agent._slotClaim = undefined
+        }
         // Release whatever node the agent thought it occupied and re-seat at entry.
         if (agent.currentNodeId && agent.currentNodeId !== entryNode.id) {
           occupancy[agent.currentNodeId] = Math.max(0, occupancy[agent.currentNodeId] - 1)
