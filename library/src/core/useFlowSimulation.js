@@ -1834,20 +1834,34 @@ export function createFlowSimulation(flow, opts = {}) {
         }
         nodesWithExitsThisStep.add(node.id)
         const t = consumed[0]?.age ?? 0
-        const nextTarget = nextSuccessor(node)
-        const pos = spawnPosition(node, nextTarget, radiusForSize('large'))
         const large = {
           id: freshAgentId(),
-          x: pos.x, y: pos.y,
+          x: node.x, y: node.y,
           vx: 0, vy: 0,
           currentNodeId: node.id,
-          targetNodeId: nextTarget,
+          targetNodeId: null,
           lifecycle: 'in-process',
           age: t,
           _enteredAt: t,
           size: 'large',
           radius: radiusForSize('large'),
         }
+        // bd ai-engineer-zq54: the combine-fired large IS the combine node's
+        // output — so it is subject to the same rejection roll as any other
+        // agent leaving the node. routeAfterNode rolls flow.rejections keyed
+        // on the combine node: a rejected large becomes 'revising', bound for
+        // the edge's `to` node, and rides the thin rejection branch back;
+        // otherwise it advances forward via nextSuccessor (the previous
+        // hard-wired behaviour). Before this fix a designer-drawn rejection
+        // edge whose `from` is a combine node was a silent no-op — the held
+        // smalls `return` from holdAtCombine before the roll point, and the
+        // fired large was deferred-spawned past it with a fixed nextSuccessor
+        // target. Rolling on the large is the correct, complete coverage:
+        // the combine node's only exit event is the large firing, so no
+        // validateFlow warning is needed (the edge now fires).
+        routeAfterNode(node, large)
+        const pos = spawnPosition(node, large.targetNodeId, radiusForSize('large'))
+        large.x = pos.x; large.y = pos.y
         occupancy[node.id]++
         pendingSpawns.push(large)
         traces.combines.push({
