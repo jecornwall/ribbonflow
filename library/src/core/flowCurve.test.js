@@ -1165,3 +1165,65 @@ test('buildBranches — rejection centerline starts/ends on the band edge', () =
   assert.ok(Math.abs(end.y - 540) < 0.5, `end on band edge, got ${end.y}`)
   assert.ok(start.y > 500, 'start is below the centerline, not on it')
 })
+
+// ──────────────────────────────────────────────────────────────────────────
+// bd ai-engineer-i84q — label-anchor guard against rejection branches.
+//
+// FlowGraph.markerPropsFor() picks the branch a node sits on to derive its
+// node-marker / fork-merge label anchor. It must select from `renderBranches`
+// (branches with kind !== 'rejection'), NEVER the raw `branches` — a rejection
+// branch's centerline is a back-path bow and would anchor a label off it if a
+// node sits on a rejection edge. These tests pin the selection predicate the
+// SFC uses (the SFC itself is not node:test-loadable; see flowRejectionArc.js).
+// ──────────────────────────────────────────────────────────────────────────
+
+// Mirror of FlowGraph's `renderBranches` filter + markerPropsFor branch pick.
+const renderBranchesOf = (branches) => branches.filter(b => b.kind !== 'rejection')
+const labelAnchorBranch = (branches, nodeId) =>
+  renderBranchesOf(branches).find(b => b.nodeIds.includes(nodeId))
+
+test('label-anchor branch selection excludes rejection branches for a dual-membership node', () => {
+  // 'b' sits on the forward ribbon a→b→c AND is the `from` of a rejection
+  // edge b→a. The label anchor must come from the forward branch.
+  const flow = {
+    widthMode: 'manual',
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200,  y: 500, width: 80, successors: ['b'] },
+      { id: 'b', x: 700,  y: 500, width: 80, successors: ['c'] },
+      { id: 'c', x: 1200, y: 500, width: 80, successors: [] },
+    ],
+    rejections: [
+      { from: 'b', to: 'a', rate: 0.2, bow: { side: 'below', depth: 80 } },
+    ],
+  }
+  const { branches } = buildBranches(flow)
+  const picked = labelAnchorBranch(branches, 'b')
+  assert.ok(picked, 'a forward branch is selected for node b')
+  assert.notEqual(picked.kind, 'rejection', 'never anchors off a rejection branch')
+  assert.ok(picked.nodeIds.includes('c'), 'selected the forward ribbon, not the b→a bow')
+})
+
+test('label-anchor branch selection yields no branch for a rejection-only node', () => {
+  // 'x' is referenced ONLY by a rejection edge — it is on no forward ribbon.
+  // The guard must return undefined so markerPropsFor drops to the orphan
+  // path (anchor at the node's own xy), not anchor the label off the bow.
+  const flow = {
+    widthMode: 'manual',
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200,  y: 500, width: 80, successors: ['b'] },
+      { id: 'b', x: 1000, y: 500, width: 80, successors: [] },
+      { id: 'x', x: 600,  y: 800, width: 80, successors: [] },
+    ],
+    rejections: [
+      { from: 'b', to: 'x', rate: 0.2, bow: { side: 'below', depth: 80 } },
+    ],
+  }
+  const { branches } = buildBranches(flow)
+  // 'x' does appear on a rejection branch...
+  assert.ok(branches.some(b => b.kind === 'rejection' && b.nodeIds.includes('x')))
+  // ...but the label-anchor guard excludes it → orphan path.
+  assert.equal(labelAnchorBranch(branches, 'x'), undefined,
+    'rejection-only node falls through to the orphan anchor')
+})

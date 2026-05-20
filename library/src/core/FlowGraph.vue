@@ -864,7 +864,16 @@ function markerPropsFor(node) {
   // (e.g. a merge node post-merge linear continuation seeds a new branch),
   // we pick the FIRST branch — the one whose centerline best owns the node's
   // segment for labeling purposes.
-  const branch = branches.find(b => b.nodeIds.includes(node.id))
+  //
+  // bd ai-engineer-i84q: select from `renderBranches`, not the raw `branches`.
+  // A rejection branch (kind:'rejection') is a routing artefact whose
+  // centerline is a back-path bow — it must never supply a node-marker /
+  // fork-merge label anchor. If a node sits ONLY on a rejection branch (it is
+  // the `from`/`to` of a rejection edge and on no forward ribbon), the raw
+  // `branches.find` would anchor its label off that bow; filtering to
+  // renderBranches drops it to the orphan-anchor path below (anchor at the
+  // node's own xy), which is the correct, geometry-free placement.
+  const branch = renderBranches.find(b => b.nodeIds.includes(node.id))
   // Orphan-node guard (flow-designer M3): a node may legitimately be on NO
   // branch — e.g. a node the interactive designer has placed but not yet
   // connected with an edge. validateFlow() does not treat that as an error,
