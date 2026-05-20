@@ -113,8 +113,13 @@ const splitRejectFlow = {
   ],
 }
 
+// `seed` makes the run reproducible (bd ai-engineer-4ext): without it the
+// spawnPosition jitter perturbs backpressure timing, so `largeDecEntries`
+// drifts ~16–108 run to run and the realised-frequency assertion below was
+// intermittently flaky. With a fixed seed the run is bit-exact — seed 2 yields
+// a stable ~99-entry sample at freq 0.354, comfortably inside the tolerance.
 test('rejection×split: a large is rejection-rolled on entry to a split node', () => {
-  const sim = createFlowSimulation(splitRejectFlow, { initialAgents: 8, maxAgents: 400 })
+  const sim = createFlowSimulation(splitRejectFlow, { initialAgents: 8, maxAgents: 400, seed: 2 })
   run(sim, 7200)  // 120s
   const splitChildIds = new Set(sim.traces.splits.flatMap(s => s.agentIds))
   // Larges that ENTERED the split node (excludes the split children that
@@ -142,18 +147,27 @@ test('rejection×split: a large is rejection-rolled on entry to a split node', (
 })
 
 test('rejection×split: a rejected large does NOT also split', () => {
-  const sim = createFlowSimulation(splitRejectFlow, { initialAgents: 8, maxAgents: 400 })
+  // Seeded for the same reproducibility reason as the frequency test above.
+  const sim = createFlowSimulation(splitRejectFlow, { initialAgents: 8, maxAgents: 400, seed: 2 })
   run(sim, 7200)
-  // A split records its source large in `sourceId`; a revision records the
-  // revised agent in `agentId`. A given large is rejected OR split — the two
-  // outcomes are mutually exclusive at the split-node exit.
-  const splitSourceIds = new Set(sim.traces.splits.map(s => s.sourceId))
-  const revisedFromSplit = sim.traces.revisions
-    .filter(r => r.from === 'decompose')
-    .map(r => r.agentId)
-  for (const id of revisedFromSplit) {
-    assert.ok(!splitSourceIds.has(id),
-      `large ${id} was both rejected at and split by the decompose node`)
+  // A split records its source large in `sourceId` with the exit timestamp
+  // `t`; a revision records the revised agent in `agentId` with its own `t`.
+  // split / revise are mutually exclusive AT A SINGLE decompose-node exit —
+  // performSplit() returns early, before the revise roll is ever reached.
+  //
+  // The invariant is therefore per-VISIT, not per-id: a rejected large rides
+  // the rejection branch back, re-enters the flow, and may legitimately split
+  // on a LATER visit to the split node (seed 2 shows ~13 such larges — they
+  // revise at t≈3s and split at t≈30s). The earlier per-id check wrongly
+  // flagged those as a violation and was itself intermittently flaky on
+  // Math.random. Match on `agentId@t` so only a true same-event collision —
+  // a regression that let an agent both split and revise at one exit — fails.
+  const splitEvents = new Set(
+    sim.traces.splits.map(s => `${s.sourceId}@${s.t.toFixed(3)}`))
+  for (const rev of sim.traces.revisions.filter(r => r.from === 'decompose')) {
+    assert.ok(!splitEvents.has(`${rev.agentId}@${rev.t.toFixed(3)}`),
+      `large ${rev.agentId} both split and revised at the same decompose exit `
+      + `(t=${rev.t.toFixed(3)})`)
   }
 })
 

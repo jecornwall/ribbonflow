@@ -21,6 +21,7 @@ import {
   WALL_MARGIN,
   REJECTION_BAND_WIDTH,
 } from './flowCurve.js'
+import { resolveRng } from './rng.js'
 
 // ── Per-agent radius (v1.3 L1 — spec §3.1) ────────────────────────────────
 // The engine historically hard-coded a single global PARTICLE_RADIUS (3).
@@ -282,6 +283,16 @@ export function createFlowSimulation(flow, opts = {}) {
   const sourceIdSet = new Set(sources.map(s => s.id))
 
   const initialAgents = opts.initialAgents ?? 8
+
+  // Optional seeded RNG (bd ai-engineer-4ext). The engine draws random numbers
+  // at two timing-sensitive sites — spawnPosition lateral jitter and the
+  // revise-probability roll. Unseeded (`opts.seed` absent) `rand` IS
+  // `Math.random`, so production playback is byte-identical to before. Passing
+  // `{ seed: <int> }` swaps in a deterministic mulberry32 generator, making the
+  // whole run reproducible — used by probabilistic engine tests so realised
+  // rejection/split frequencies no longer drift run to run.
+  const rand = resolveRng(opts.seed)
+
   const { branches } = buildBranches(flow)
   const widths = computeNodeWidths(flow)
 
@@ -719,7 +730,7 @@ export function createFlowSimulation(flow, opts = {}) {
     const proj = projectToCenterline(branch.centerline, node.x, node.y)
     const t = branch.centerline.tangentAtArcLength(proj.s)
     const nx = -t.y, ny = t.x   // unit normal (perpendicular to tangent)
-    const k = (Math.random() - 0.5) * 2 * maxLateral
+    const k = (rand() - 0.5) * 2 * maxLateral
     return { x: node.x + nx * k, y: node.y + ny * k }
   }
 
@@ -1611,7 +1622,7 @@ export function createFlowSimulation(flow, opts = {}) {
           agent._enteredAt = agent.age
           traces.entries.push({ id: agent.id, nodeId: targetNode.id, t: agent.age })
           // Pick next target: revise OR advance.
-          const nextRev = targetNode.reviseTo && Math.random() < (targetNode.reviseProb ?? 0)
+          const nextRev = targetNode.reviseTo && rand() < (targetNode.reviseProb ?? 0)
           if (nextRev) {
             // Revise: the agent has been kicked BACK to the reviseTo node.
             // The flow graph is a DAG of forward branches — there is no
