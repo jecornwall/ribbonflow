@@ -39,6 +39,11 @@
  *     constraintFillColor.
  *   Migration is lossy w.r.t. the removed fields — a documented, deterministic
  *   forward-port (the round-trip invariant governs v3↔v3, not migration).
+ *
+ * v3 → v4 (v1.2, bd ai-engineer-086t — see
+ *           flow-v1.2-rejection-edges-design.md §6):
+ *   - add `flow.rejections = []` if absent. No other field changes; every v3
+ *     flow migrates cleanly and losslessly.
  */
 
 import {
@@ -173,15 +178,34 @@ function migrateV2toV3(v2) {
 }
 
 /**
+ * Migrate a v3 flow object to the v4 data model (v1.2 rejection edges — see
+ * docs/superpowers/specs/2026-05-20-flow-v1.2-rejection-edges-design.md §6).
+ *
+ * v4 adds a first-class top-level `flow.rejections[]` array. The migration adds
+ * an empty `rejections: []` when absent and changes no other field — every v3
+ * flow migrates cleanly. (Per-edge defaults are normalizeFlow()'s job, not the
+ * migration's; migration only ensures the array exists.)
+ *
+ * @param {object} v3 — a version-3 flow object
+ * @returns {object} a version-4 flow object
+ */
+function migrateV3toV4(v3) {
+  const flow = deepClone(v3)
+  if (!Array.isArray(flow.rejections)) flow.rejections = []
+  return flow
+}
+
+/**
  * Ordered migration registry: version N → a step producing version N+1.
  */
 const MIGRATIONS = {
   1: migrateV1toV2,
   2: migrateV2toV3,
+  3: migrateV3toV4,
 }
 
 /** The highest format version this module can migrate *to*. */
-export const LATEST_MIGRATED_VERSION = 3
+export const LATEST_MIGRATED_VERSION = 4
 
 /**
  * Migrate a flow object from `fromVersion` up to the latest version this

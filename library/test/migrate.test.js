@@ -29,9 +29,10 @@ import { speedFromWidth, DEFAULT_NODE_SPEED } from '../src/format/model.js'
 import n4FlowV1 from './fixtures/flows/n4-toc-baseline.js'
 import n9FlowV1 from './fixtures/flows/n9-multilane.v1.js'
 import m2FlowV2 from './fixtures/flows/m2-coverage.v2.js'
+import m3FlowV3 from './fixtures/flows/m3-coverage.v3.js'
 
-test('FLOW_FORMAT_VERSION is 3 after v1.1', () => {
-  assert.equal(FLOW_FORMAT_VERSION, 3)
+test('FLOW_FORMAT_VERSION is 4 after v1.2', () => {
+  assert.equal(FLOW_FORMAT_VERSION, 4)
 })
 
 // ── v1 → … → v3 (the whole chain) ────────────────────────────────────────────
@@ -178,6 +179,43 @@ test('v2→v3 preserves first-class forks / merges and source rates', () => {
   assert.deepEqual(sources.map(s => [s.id, s.rate]), [
     ['src-frontend', 0.6], ['src-backend', 0.4],
   ])
+})
+
+// ── v3 → v4 (the v1.2 rejection-edges step, bd ai-engineer-086t / R1) ─────────
+// v3→v4 adds `flow.rejections = []` if absent. No other field changes — every
+// v3 flow migrates cleanly. See flow-v1.2-rejection-edges-design.md §6.
+
+test('v3→v4 adds an empty rejections[] array to a v3 flow', () => {
+  const v4 = migrateFlow(m3FlowV3, 3)
+  assert.ok(Array.isArray(v4.rejections), 'rejections is an array')
+  assert.deepEqual(v4.rejections, [], 'rejections starts empty')
+})
+
+test('v3→v4 changes no other field of a v3 flow', () => {
+  const v4 = migrateFlow(m3FlowV3, 3)
+  // Strip the one added field; the rest must be byte-identical to the v3 input.
+  const { rejections, ...rest } = v4
+  assert.deepEqual(rest, m3FlowV3)
+})
+
+test('v3→v4 preserves an already-present rejections[] array untouched', () => {
+  const withRejections = {
+    nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 0 }],
+    rejections: [{ from: 'b', to: 'a', rate: 0.2, bow: { side: 'below', depth: 80 } }],
+  }
+  const v4 = migrateFlow(withRejections, 3)
+  assert.deepEqual(v4.rejections, withRejections.rejections)
+})
+
+test('migrateFlow lifts a v1 flow all the way forward to v4 (rejections added)', () => {
+  const v4 = migrateFlow(n4FlowV1, 1)
+  assert.ok(Array.isArray(v4.rejections), 'v1→…→v4 chain ends with rejections[]')
+})
+
+test('deserializeFlow migrates a v3 envelope to v4', () => {
+  const v3Envelope = JSON.stringify({ formatVersion: 3, flow: m3FlowV3 })
+  const flow = deserializeFlow(v3Envelope)
+  assert.ok(Array.isArray(flow.rejections), 'v3 envelope gains rejections[] on load')
 })
 
 // ── invariants ───────────────────────────────────────────────────────────────

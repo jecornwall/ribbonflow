@@ -101,6 +101,9 @@ export {
   speedFromWidth,
   widthFromSpeed,
   capacityFromWidth,
+  // v1.2 rejection-edge defaults (the designer's add-rejection tool seeds these).
+  DEFAULT_REJECTION_RATE,
+  DEFAULT_REJECTION_BOW_DEPTH,
 } from './format/model.js'
 
 export { migrateFlow } from './format/migrate.js'

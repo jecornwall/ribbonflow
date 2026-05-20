@@ -24,6 +24,7 @@ import n4Flow from './fixtures/flows/n4-toc-baseline.js'
 import n9Flow from './fixtures/flows/n9-multilane.js'
 import m2Flow from './fixtures/flows/m2-coverage.v2.js'
 import m3Flow from './fixtures/flows/m3-coverage.v3.js'
+import v12Flow from './fixtures/flows/v12-rejections.v4.js'
 
 test('FLOW_FORMAT_VERSION is a positive integer', () => {
   assert.equal(typeof FLOW_FORMAT_VERSION, 'number')
@@ -170,6 +171,41 @@ test('round-trip preserves the per-node colorScheme (red / neutral / green)', ()
 
 test('round-trip of the v3 flow is idempotent (byte-stable)', () => {
   const once = serializeFlow(m3Flow)
+  const twice = serializeFlow(deserializeFlow(once))
+  assert.equal(once, twice)
+})
+
+// ── v1.2 (bd ai-engineer-086t / R1): rejection edges ─────────────────────────
+// The v4 model adds a first-class top-level `rejections[]` array. Every nested
+// field — from / to / rate / bow.side / bow.depth — must survive serialize →
+// deserialize byte-faithfully. v12-rejections.v4.js sets every field explicitly.
+// Spec §6: "Write the round-trip test before the serializer change."
+
+test('round-trip is lossless for the full v4 rejection-edges coverage flow', () => {
+  const restored = deserializeFlow(serializeFlow(v12Flow))
+  assert.deepEqual(restored, v12Flow)
+})
+
+test('round-trip preserves the rejections[] array and every nested field', () => {
+  const restored = deserializeFlow(serializeFlow(v12Flow))
+  assert.deepEqual(restored.rejections, v12Flow.rejections)
+  assert.equal(restored.rejections.length, 2)
+  const [r0, r1] = restored.rejections
+  assert.deepEqual(r0, { from: 'review', to: 'design', rate: 0.15,
+    bow: { side: 'below', depth: 90 } })
+  assert.deepEqual(r1, { from: 'review', to: 'build', rate: 0.1,
+    bow: { side: 'above', depth: 70 } })
+})
+
+test('round-trip preserves the nested bow object (side + depth)', () => {
+  const restored = deserializeFlow(serializeFlow(v12Flow))
+  for (let i = 0; i < v12Flow.rejections.length; i++) {
+    assert.deepEqual(restored.rejections[i].bow, v12Flow.rejections[i].bow)
+  }
+})
+
+test('round-trip of the v4 rejection flow is idempotent (byte-stable)', () => {
+  const once = serializeFlow(v12Flow)
   const twice = serializeFlow(deserializeFlow(once))
   assert.equal(once, twice)
 })

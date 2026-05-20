@@ -39,6 +39,14 @@ export const DEFAULT_NODE_SPEED = 1.0
 export const WIDTH_RANGE = { min: 20, max: 120 }
 export const DEFAULT_NODE_WIDTH = 70
 
+// ── v1.2 rejection-edge defaults (spec §2.3) ─────────────────────────────────
+
+/** Default fraction of a node's outflow taken by a rejection edge. */
+export const DEFAULT_REJECTION_RATE = 0.15
+
+/** Default rejection-arc bow depth, in viewBox units. */
+export const DEFAULT_REJECTION_BOW_DEPTH = 80
+
 /** The per-node colour-scheme control (replaces the v2 `constraint` type). */
 // 'rose' is the v1 dusty-rose constraint register (PINCH_ROSE / CONSTRAINT_ROSE),
 // preserved as a selectable option per Jason's direction (2026-05-20, bd ai-engineer-0h05).
@@ -104,6 +112,20 @@ function deepClone(value) {
 }
 
 /**
+ * Auto-pick a rejection edge's bow side (spec §2.3): a rejection arc bows to
+ * the side OPPOSITE the `from` node's label, so the arc and the label do not
+ * collide. When the `from` node carries no `labelSide`, the arc bows `below`.
+ *
+ * @param {object|undefined} fromNode — the rejection edge's `from` node
+ * @returns {'above'|'below'}
+ */
+function autoRejectionBowSide(fromNode) {
+  if (fromNode && fromNode.labelSide === 'above') return 'below'
+  if (fromNode && fromNode.labelSide === 'below') return 'above'
+  return 'below'
+}
+
+/**
  * Return a normalized deep copy of a v3 flow with documented defaults applied
  * AND the engine-facing fields derived (spec §4.2).
  *
@@ -134,6 +156,7 @@ export function normalizeFlow(flow) {
   }
   if (!Array.isArray(out.forks)) out.forks = []
   if (!Array.isArray(out.merges)) out.merges = []
+  if (!Array.isArray(out.rejections)) out.rejections = []
   if (!Array.isArray(out.nodes)) out.nodes = []
   // Engine-facing: width is authored per node, so widths are 'manual'.
   out.widthMode = 'manual'
@@ -167,7 +190,49 @@ export function normalizeFlow(flow) {
     }
   })
 
+  // ── rejection-edge defaults (v1.2, spec §2.3) ─────────────────────────────
+  // rate → DEFAULT_REJECTION_RATE; bow.side → auto (opposite the `from` node's
+  // label side, else 'below'); bow.depth → DEFAULT_REJECTION_BOW_DEPTH.
+  const nodeById = new Map(out.nodes.map(n => [n.id, n]))
+  out.rejections = out.rejections.map((rej) => {
+    const r = { ...rej }
+    if (r.rate === undefined) r.rate = DEFAULT_REJECTION_RATE
+    const bow = (r.bow != null && typeof r.bow === 'object') ? { ...r.bow } : {}
+    if (bow.side === undefined) bow.side = autoRejectionBowSide(nodeById.get(r.from))
+    if (bow.depth === undefined) bow.depth = DEFAULT_REJECTION_BOW_DEPTH
+    r.bow = bow
+    return r
+  })
+
   return out
+}
+
+/**
+ * Is `targetId` upstream of `startId` in the forward graph — i.e. can `startId`
+ * be reached from `targetId` by following `successors` edges? A rejection edge
+ * is *expected* to point at an upstream node (work travels back), so this backs
+ * the §2.4 "to is not upstream" advisory warning.
+ *
+ * @param {string} targetId — the rejection edge's `to` node
+ * @param {string} startId — the rejection edge's `from` node
+ * @param {object[]} nodes — the flow's node list
+ * @returns {boolean}
+ */
+function isUpstream(targetId, startId, nodes) {
+  const successorsById = new Map(nodes.map(n => [n.id, n.successors || []]))
+  const seen = new Set([targetId])
+  const queue = [targetId]
+  while (queue.length > 0) {
+    const current = queue.shift()
+    for (const next of successorsById.get(current) || []) {
+      if (next === startId) return true
+      if (!seen.has(next)) {
+        seen.add(next)
+        queue.push(next)
+      }
+    }
+  }
+  return false
 }
 
 /**
@@ -234,6 +299,48 @@ export function validateFlow(flow) {
       if (!exists(from)) {
         errors.push(`merge "${merge.to}" references a missing source node "${from}"`)
       }
+    }
+  }
+
+  // rejection edges (v1.2, spec §2.4)
+  const rejectionRateByFrom = new Map()
+  for (const rej of flow.rejections || []) {
+    if (!exists(rej.from)) {
+      errors.push(`rejection edge references a missing "from" node "${rej.from}"`)
+    }
+    if (!exists(rej.to)) {
+      errors.push(`rejection edge references a missing "to" node "${rej.to}"`)
+    }
+    if (typeof rej.rate === 'number') {
+      if (!(rej.rate > 0 && rej.rate < 1)) {
+        errors.push(
+          `rejection edge "${rej.from}"→"${rej.to}" has rate ${rej.rate} — `
+          + 'expected a fraction strictly between 0 and 1',
+        )
+      }
+      rejectionRateByFrom.set(
+        rej.from, (rejectionRateByFrom.get(rej.from) || 0) + rej.rate,
+      )
+    }
+    if (rej.from === rej.to) {
+      warnings.push(
+        `rejection edge on "${rej.from}" returns to itself (self-rejection) — `
+        + 'a degenerate single-node loop',
+      )
+    } else if (exists(rej.from) && exists(rej.to)
+               && !isUpstream(rej.to, rej.from, nodes)) {
+      warnings.push(
+        `rejection edge "${rej.from}"→"${rej.to}": "${rej.to}" is not upstream `
+        + `of "${rej.from}" in the forward graph (probably an authoring error)`,
+      )
+    }
+  }
+  for (const [from, rateSum] of rejectionRateByFrom) {
+    if (rateSum >= 1) {
+      errors.push(
+        `node "${from}" rejection rates sum to ${rateSum.toFixed(3)} — must `
+        + 'stay below 1 (no outflow would proceed forward)',
+      )
     }
   }
 

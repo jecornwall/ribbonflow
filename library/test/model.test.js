@@ -20,9 +20,12 @@ import {
   capacityFromWidth,
   WIDTH_RANGE,
   SPEED_RANGE,
+  DEFAULT_REJECTION_RATE,
+  DEFAULT_REJECTION_BOW_DEPTH,
 } from '../src/format/model.js'
 
 import m3Flow from './fixtures/flows/m3-coverage.v3.js'
+import v12Flow from './fixtures/flows/v12-rejections.v4.js'
 
 // ── normalizeFlow — flow + node defaults ─────────────────────────────────────
 
@@ -225,4 +228,157 @@ test('validateFlow warns on the removed kind:constraint', () => {
             { id: 'c', x: 1, y: 0, kind: 'constraint', successors: [] }],
   })
   assert.ok(r.warnings.some(w => /constraint/i.test(w)))
+})
+
+// ── v1.2 (bd ai-engineer-086t / R1): rejection edges ─────────────────────────
+// normalizeFlow per-edge defaults (spec §2.3) + validateFlow rules (spec §2.4).
+
+test('normalizeFlow ensures flow.rejections is an array', () => {
+  const out = normalizeFlow({ nodes: [] })
+  assert.deepEqual(out.rejections, [])
+})
+
+test('normalizeFlow fills per-edge rejection defaults (rate / bow.depth)', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 0 }],
+    rejections: [{ from: 'b', to: 'a' }],
+  })
+  const rej = out.rejections[0]
+  assert.equal(rej.rate, DEFAULT_REJECTION_RATE)
+  assert.equal(rej.rate, 0.15)
+  assert.equal(rej.bow.depth, DEFAULT_REJECTION_BOW_DEPTH)
+  assert.equal(rej.bow.depth, 80)
+})
+
+test('normalizeFlow auto-picks bow.side opposite the from node label side', () => {
+  const out = normalizeFlow({
+    nodes: [
+      { id: 'a', x: 0, y: 0 },
+      { id: 'above', x: 1, y: 0, labelSide: 'above' },
+      { id: 'below', x: 2, y: 0, labelSide: 'below' },
+    ],
+    rejections: [
+      { from: 'above', to: 'a' },
+      { from: 'below', to: 'a' },
+    ],
+  })
+  assert.equal(out.rejections[0].bow.side, 'below', 'label above → bow below')
+  assert.equal(out.rejections[1].bow.side, 'above', 'label below → bow above')
+})
+
+test('normalizeFlow defaults bow.side to below when the from node has no label side', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 0 }],
+    rejections: [{ from: 'b', to: 'a' }],
+  })
+  assert.equal(out.rejections[0].bow.side, 'below')
+})
+
+test('normalizeFlow preserves explicit rejection-edge fields over defaults', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, labelSide: 'above' }, { id: 'b', x: 1, y: 0 }],
+    rejections: [{ from: 'b', to: 'a', rate: 0.42, bow: { side: 'above', depth: 120 } }],
+  })
+  const rej = out.rejections[0]
+  assert.equal(rej.rate, 0.42)
+  assert.equal(rej.bow.side, 'above')
+  assert.equal(rej.bow.depth, 120)
+})
+
+test('normalizeFlow does not mutate a flow with rejections', () => {
+  const input = {
+    nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 0 }],
+    rejections: [{ from: 'b', to: 'a' }],
+  }
+  const before = JSON.stringify(input)
+  normalizeFlow(input)
+  assert.equal(JSON.stringify(input), before)
+})
+
+test('validateFlow accepts the v4 rejection-edges coverage fixture', () => {
+  const r = validateFlow(v12Flow)
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.errors, [])
+})
+
+test('validateFlow errors on a rejection edge with a missing from node', () => {
+  const r = validateFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, kind: 'source', successors: [] }],
+    rejections: [{ from: 'ghost', to: 'a', rate: 0.2 }],
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.errors.some(e => /ghost/.test(e)))
+})
+
+test('validateFlow errors on a rejection edge with a missing to node', () => {
+  const r = validateFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, kind: 'source', successors: [] }],
+    rejections: [{ from: 'a', to: 'ghost', rate: 0.2 }],
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.errors.some(e => /ghost/.test(e)))
+})
+
+test('validateFlow errors when a node rejection rates sum to >= 1', () => {
+  const r = validateFlow({
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', successors: ['rev'] },
+      { id: 'rev', x: 1, y: 0, successors: [] },
+    ],
+    rejections: [
+      { from: 'rev', to: 's', rate: 0.6 },
+      { from: 'rev', to: 's', rate: 0.5 },
+    ],
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.errors.some(e => /sum/i.test(e)))
+})
+
+test('validateFlow errors on a rejection rate <= 0', () => {
+  const r = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', successors: ['r'] },
+            { id: 'r', x: 1, y: 0, successors: [] }],
+    rejections: [{ from: 'r', to: 's', rate: 0 }],
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.errors.some(e => /rate/i.test(e)))
+})
+
+test('validateFlow errors on a rejection rate >= 1', () => {
+  const r = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', successors: ['r'] },
+            { id: 'r', x: 1, y: 0, successors: [] }],
+    rejections: [{ from: 'r', to: 's', rate: 1 }],
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.errors.some(e => /rate/i.test(e)))
+})
+
+test('validateFlow warns when a rejection to is not upstream of from', () => {
+  // a → b forward; a rejection a→b points forward, not back — probably an error.
+  const r = validateFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, kind: 'source', successors: ['b'] },
+            { id: 'b', x: 1, y: 0, successors: [] }],
+    rejections: [{ from: 'a', to: 'b', rate: 0.2 }],
+  })
+  assert.equal(r.ok, true, 'a forward-pointing rejection is legal — only a warning')
+  assert.ok(r.warnings.some(w => /upstream/i.test(w)))
+})
+
+test('validateFlow does not warn when a rejection to IS upstream of from', () => {
+  const r = validateFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, kind: 'source', successors: ['b'] },
+            { id: 'b', x: 1, y: 0, successors: [] }],
+    rejections: [{ from: 'b', to: 'a', rate: 0.2 }],
+  })
+  assert.ok(!r.warnings.some(w => /upstream/i.test(w)))
+})
+
+test('validateFlow warns on a self-rejection (from === to)', () => {
+  const r = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', successors: ['r'] },
+            { id: 'r', x: 1, y: 0, successors: [] }],
+    rejections: [{ from: 'r', to: 'r', rate: 0.2 }],
+  })
+  assert.ok(r.warnings.some(w => /self/i.test(w)))
 })
