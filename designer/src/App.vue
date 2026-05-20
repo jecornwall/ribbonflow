@@ -19,6 +19,14 @@ import SetPreview from './components/SetPreview.vue'
 
 const doc = useFlowDoc()
 
+// Dev/test shortcut: ?editor bypasses the index and opens the sample flow
+// directly in the editor. Used by the Playwright smoke test so it can reach
+// the editor without driving the persistence dialogs.
+if (typeof location !== 'undefined' &&
+    new URLSearchParams(location.search).has('editor')) {
+  doc.state.view = 'editor'
+}
+
 function onKeydown(e) {
   // Keyboard editing shortcuts apply only in the editor view.
   if (doc.state.view !== 'editor') return

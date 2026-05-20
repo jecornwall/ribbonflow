@@ -60,6 +60,7 @@ const labelY = computed(() => props.node.y + (props.node.labelDy || 0))
       :fill="fill"
       :stroke="stroke"
       :stroke-width="selected || pending ? 4 : 2"
+      :data-node-id="node.id"
       class="cn-handle"
       @pointerdown="emit('nodedown', $event, node.id)"
     />
