@@ -35,7 +35,9 @@ export const WIDTH_RANGE = { min: 20, max: 120 }
 export const DEFAULT_NODE_WIDTH = 70
 
 /** The per-node colour-scheme control (replaces the v2 `constraint` type). */
-export const COLOR_SCHEMES = ['red', 'neutral', 'green']
+// 'rose' is the v1 dusty-rose constraint register (PINCH_ROSE / CONSTRAINT_ROSE),
+// preserved as a selectable option per Jason's direction (2026-05-20, bd ai-engineer-0h05).
+export const COLOR_SCHEMES = ['red', 'neutral', 'green', 'rose']
 export const DEFAULT_COLOR_SCHEME = 'neutral'
 
 function clamp01(t) {

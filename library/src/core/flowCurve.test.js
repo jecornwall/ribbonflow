@@ -737,7 +737,7 @@ test('junction disc absorbs the protruding ribbon caps at a merge', () => {
 test('RIBBON_SCHEME_COLORS maps every v1.1 colorScheme to a hex colour', async () => {
   const { RIBBON_SCHEME_COLORS, FLOW_BAND, CONSTRAINT_INK } =
     await import('./flowCurve.js')
-  for (const scheme of ['red', 'neutral', 'green']) {
+  for (const scheme of ['red', 'neutral', 'green', 'rose']) {
     assert.match(RIBBON_SCHEME_COLORS[scheme], /^#[0-9A-Fa-f]{6}$/,
       `${scheme} should map to a 6-digit hex colour`)
   }
@@ -745,6 +745,30 @@ test('RIBBON_SCHEME_COLORS maps every v1.1 colorScheme to a hex colour', async (
   assert.equal(RIBBON_SCHEME_COLORS.neutral, FLOW_BAND)
   // red matches the designer's accent exactly.
   assert.equal(RIBBON_SCHEME_COLORS.red, CONSTRAINT_INK)
+})
+
+test('rose colorScheme resolves to the v1 dusty-rose constraint register', async () => {
+  // bd ai-engineer-0h05: Jason wants rose kept "in case I change my mind".
+  // The plateau uses CONSTRAINT_ROSE (#d8a8a8); the light (wing) tone is
+  // derived by mixing toward white — must be strictly lighter (higher channel sum).
+  const { RIBBON_SCHEME_COLORS, RIBBON_SCHEME_COLORS_LIGHT, CONSTRAINT_ROSE } =
+    await import('./flowCurve.js')
+  // plateau == the deck's constraintFillColor default
+  assert.equal(RIBBON_SCHEME_COLORS.rose, CONSTRAINT_ROSE,
+    'rose plateau should equal CONSTRAINT_ROSE (#d8a8a8)')
+  assert.equal(RIBBON_SCHEME_COLORS.rose, '#d8a8a8')
+  // light tone exists and is a valid hex colour
+  assert.match(RIBBON_SCHEME_COLORS_LIGHT.rose, /^#[0-9A-Fa-f]{6}$/,
+    'rose light should be a 6-digit hex colour')
+  // light tone is lighter than the full rose (higher sum of channels)
+  const sum = (h) => {
+    const s = h.replace('#', '')
+    return parseInt(s.slice(0, 2), 16) + parseInt(s.slice(2, 4), 16) + parseInt(s.slice(4, 6), 16)
+  }
+  assert.ok(
+    sum(RIBBON_SCHEME_COLORS_LIGHT.rose) > sum(RIBBON_SCHEME_COLORS.rose),
+    'rose light tone should be brighter than the rose plateau',
+  )
 })
 
 // ── Smooth segmented width profile (bd ai-engineer-0sdz, v1.1 §8) ───────────
@@ -877,6 +901,7 @@ test('RIBBON_SCHEME_COLORS_LIGHT is a lighter tone than the full scheme colour',
   }
   assert.ok(lum(RIBBON_SCHEME_COLORS_LIGHT.red)   > lum(RIBBON_SCHEME_COLORS.red))
   assert.ok(lum(RIBBON_SCHEME_COLORS_LIGHT.green) > lum(RIBBON_SCHEME_COLORS.green))
+  assert.ok(lum(RIBBON_SCHEME_COLORS_LIGHT.rose)  > lum(RIBBON_SCHEME_COLORS.rose))
 })
 
 // ── n9-multilane viewBox clipping regression (bd ai-engineer-n2k9 blocker 3) ──

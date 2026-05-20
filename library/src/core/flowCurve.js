@@ -534,8 +534,8 @@ export const CONSTRAINT_INK  = '#E2522B'  // firebrick — the one accent
 // ---- Per-segment colour-scheme palette (v1.1 §3, bd ai-engineer-3ihf) -----
 //
 // The v1.1 node model carries a per-node `colorScheme` ('red'|'neutral'|
-// 'green') in place of the removed `constraint` node type. These are the
-// ribbon-segment fills the live preview (FlowGraph) paints:
+// 'green'|'rose') in place of the removed `constraint` node type. These are
+// the ribbon-segment fills the live preview (FlowGraph) paints:
 //   - neutral → FLOW_BAND (#e8d8b0): the warm-wheat ribbon body — the
 //     established locked-v2 ribbon colour every deck flow already sets via
 //     `ribbonColor`. v1.1 flows drop `ribbonColor`, so neutral IS that wheat
@@ -543,10 +543,15 @@ export const CONSTRAINT_INK  = '#E2522B'  // firebrick — the one accent
 //     cream agents read against wheat exactly as they do in the deck.
 //   - red → CONSTRAINT_INK (#E2522B): exactly the designer's red.
 //   - green → #3FAE6B: exactly the designer's green.
+//   - rose → CONSTRAINT_ROSE (#d8a8a8): the v1 dusty-rose constraint register
+//     (plateau fill); light tone (PINCH_ROSE-family) used for the wings.
+//     Preserved at Jason's direction (2026-05-20, bd ai-engineer-0h05) "in case
+//     I change my mind" — can be toggled per-node in the designer.
 export const RIBBON_SCHEME_COLORS = {
   neutral: FLOW_BAND,
   red:     CONSTRAINT_INK,
   green:   '#3FAE6B',
+  rose:    CONSTRAINT_ROSE,
 }
 
 /**
@@ -581,6 +586,7 @@ export const RIBBON_SCHEME_COLORS_LIGHT = {
   neutral: mixHex(RIBBON_SCHEME_COLORS.neutral, '#ffffff', RIBBON_SCHEME_COLOR_MIX),
   red:     mixHex(RIBBON_SCHEME_COLORS.red,     '#ffffff', RIBBON_SCHEME_COLOR_MIX),
   green:   mixHex(RIBBON_SCHEME_COLORS.green,   '#ffffff', RIBBON_SCHEME_COLOR_MIX),
+  rose:    mixHex(RIBBON_SCHEME_COLORS.rose,    '#ffffff', RIBBON_SCHEME_COLOR_MIX),
 }
 
 // ---- Pinch-around-constraint width function (locked-v2) -------------------

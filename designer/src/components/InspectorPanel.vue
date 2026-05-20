@@ -226,6 +226,11 @@ function fmt(v, decimals = 2) {
             :class="{ active: node.colorScheme === 'green' }"
             @click="doc.setColorScheme(node.id, 'green')"
           >green</button>
+          <button
+            class="c-rose"
+            :class="{ active: node.colorScheme === 'rose' }"
+            @click="doc.setColorScheme(node.id, 'rose')"
+          >rose</button>
         </div>
       </div>
 
@@ -380,6 +385,12 @@ h4 {
 .seg.colours button.c-green.active {
   background: #3fae6b;
   border-color: #3fae6b;
+  color: #fff;
+}
+/* rose = CONSTRAINT_ROSE (#d8a8a8) — the v1 dusty-rose register (bd ai-engineer-0h05) */
+.seg.colours button.c-rose.active {
+  background: #d8a8a8;
+  border-color: #d8a8a8;
   color: #fff;
 }
 code {
