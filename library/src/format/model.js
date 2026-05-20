@@ -503,6 +503,30 @@ export function validateFlow(flow) {
         + 'expected an integer >= 2',
       )
     }
+    // A combine node holds inbound smalls until combineCount accumulate, then
+    // fires one large. Occupancy is size-agnostic and counts held agents, so a
+    // combine node whose capacity is below combineCount deadlocks: smalls hit
+    // the capacity gate before the pile reaches combineCount and the combine
+    // never fires. Warn (not error) — transient over-capacity is otherwise
+    // legal per the large-particle spec §3.2.
+    if (node.transform === 'combine') {
+      const effCombineCount = (Number.isInteger(node.combineCount)
+        && node.combineCount >= 2)
+        ? node.combineCount
+        : DEFAULT_COMBINE_COUNT
+      const effCapacity = typeof node.capacity === 'number'
+        ? node.capacity
+        : capacityFromWidth(node.width)
+      if (Number.isInteger(effCapacity) && effCapacity >= 1
+          && effCapacity < effCombineCount) {
+        warnings.push(
+          `node "${node.id}" is a combine node with capacity ${effCapacity} `
+          + `below its combineCount ${effCombineCount} — inbound agents will `
+          + 'deadlock at the capacity gate before the combine can fire; '
+          + `raise capacity to at least ${effCombineCount}`,
+        )
+      }
+    }
   }
 
   // v1.3 L2 (spec §2.4) — large particles vs band width.

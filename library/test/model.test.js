@@ -493,6 +493,44 @@ test('validateFlow does not error on a split node that authors no splitCount', (
   assert.ok(!r.errors.some(e => /splitCount/.test(e)))
 })
 
+test('validateFlow warns when a combine node has capacity < combineCount', () => {
+  // The engine holds smalls at a combine node until combineCount accumulate.
+  // capacity < combineCount deadlocks: inbound smalls hit the capacity gate
+  // before the pile reaches combineCount, so the combine never fires.
+  const r = validateFlow({
+    nodes: [{ id: 'c', x: 0, y: 0, kind: 'source', transform: 'combine',
+              combineCount: 5, capacity: 3, successors: [] }],
+  })
+  assert.ok(r.ok, 'capacity < combineCount is a warning, not an error')
+  assert.ok(r.warnings.some(w => /capacity/.test(w) && /combineCount/.test(w)),
+    'warns about the capacity/combineCount mismatch')
+})
+
+test('validateFlow warns on capacity < DEFAULT_COMBINE_COUNT when count is unauthored', () => {
+  // A combine node authoring no combineCount uses DEFAULT_COMBINE_COUNT (4).
+  const r = validateFlow({
+    nodes: [{ id: 'c', x: 0, y: 0, kind: 'source', transform: 'combine',
+              capacity: 2, successors: [] }],
+  })
+  assert.ok(r.warnings.some(w => /capacity/.test(w) && /combineCount/.test(w)))
+})
+
+test('validateFlow does not warn when a combine node has capacity >= combineCount', () => {
+  const r = validateFlow({
+    nodes: [{ id: 'c', x: 0, y: 0, kind: 'source', transform: 'combine',
+              combineCount: 4, capacity: 6, successors: [] }],
+  })
+  assert.ok(!r.warnings.some(w => /capacity/.test(w) && /combineCount/.test(w)))
+})
+
+test('validateFlow combine-capacity check ignores non-combine nodes', () => {
+  // A plain node with a low authored capacity must not trip the combine warning.
+  const r = validateFlow({
+    nodes: [{ id: 'n', x: 0, y: 0, kind: 'source', capacity: 1, successors: [] }],
+  })
+  assert.ok(!r.warnings.some(w => /combineCount/.test(w)))
+})
+
 test('validateFlow warns on a large-particle path node too narrow to admit one', () => {
   // large source → a narrow node sitting before any split → carries large.
   const r = validateFlow({
