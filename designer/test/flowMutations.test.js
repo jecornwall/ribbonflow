@@ -40,6 +40,7 @@ import {
   setNodeTransform,
   setTransformCount,
   reconcileForks,
+  reconcileMerges,
   setForkRateShare,
   resetForkToEven,
   forkBranchesFor,
@@ -132,19 +133,22 @@ test('removeNode strips the node and every reference to it', () => {
   const c = addNode(flow, 2, 2)
   const d = addNode(flow, 3, 3)
   addEdge(flow, a, b)
+  // c has two predecessors (a and b) → a merge target
   addEdge(flow, a, c)
+  addEdge(flow, b, c)
   addEdge(flow, a, d)
-  flow.merges = [{ to: c, from: [a, b] }]
+  assert.equal(flow.merges.length, 1, 'c is a merge target before removal')
 
   removeNode(flow, b)
 
-  assert.equal(findNode(flow, b), undefined)
+  assert.equal(findNode(flow, b), undefined, 'b is gone')
   assert.deepEqual(
-    findNode(flow, a).successors,
-    [c, d],
-    'incoming edge to b gone',
+    findNode(flow, a).successors.slice().sort(),
+    [c, d].sort(),
+    'incoming edge to b gone from a.successors',
   )
-  assert.deepEqual(flow.merges[0].from, [a], 'merge source b gone')
+  // b was a predecessor of c; removing it leaves only a → c is no longer a merge
+  assert.equal(flow.merges.length, 0, 'merge entry cleaned up when predecessor removed')
 })
 
 test('setNodeKind keeps kind-specific fields coherent', () => {
@@ -609,4 +613,98 @@ test('predecessorsOf returns every node listing the id as a successor', () => {
   addEdge(flow, b, c)
   assert.deepEqual(predecessorsOf(flow, c).sort(), [a, b].sort())
   assert.deepEqual(predecessorsOf(flow, a), [], 'a has no predecessors')
+})
+
+// ── merges[] derivation: reconcileMerges (bead ai-engineer-b38t) ─────────────
+// Spec: merges[] is purely topology-derived (no authored data). A node with
+// ≥2 predecessors gets a { to, from[] } entry. reconcileMerges() wipes and
+// recomputes from scratch; it is called by addEdge / removeEdge / removeNode.
+
+test('reconcileMerges: no merges when every node has ≤1 predecessor', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, b)
+  addEdge(flow, b, c)
+  // single-predecessor chain: no merges
+  reconcileMerges(flow)
+  assert.equal(flow.merges.length, 0, 'no merge nodes → empty merges[]')
+})
+
+test('reconcileMerges: two predecessors materialises a merges[] entry', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, c)
+  addEdge(flow, b, c)
+  // addEdge calls reconcileMerges internally, but test explicitly too
+  reconcileMerges(flow)
+  assert.equal(flow.merges.length, 1, 'one merge node → one entry')
+  const m = flow.merges[0]
+  assert.equal(m.to, c, 'merge target is c')
+  assert.deepEqual(m.from.slice().sort(), [a, b].sort(), 'both predecessors listed')
+})
+
+test('reconcileMerges: three predecessors materialises one entry with all three', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  const d = addNode(flow, 3, 3)
+  addEdge(flow, a, d)
+  addEdge(flow, b, d)
+  addEdge(flow, c, d)
+  reconcileMerges(flow)
+  assert.equal(flow.merges.length, 1)
+  assert.deepEqual(flow.merges[0].from.slice().sort(), [a, b, c].sort())
+})
+
+test('addEdge auto-derives merges[] when a second predecessor is added', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, c)
+  assert.equal(flow.merges.length, 0, 'single predecessor → no merge entry')
+  addEdge(flow, b, c)
+  assert.equal(flow.merges.length, 1, 'second predecessor → merge entry materialised')
+  assert.equal(flow.merges[0].to, c)
+})
+
+test('removeEdge dropping to 1 predecessor removes the merge entry', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, c)
+  addEdge(flow, b, c)
+  assert.equal(flow.merges.length, 1)
+  removeEdge(flow, b, c)
+  assert.equal(flow.merges.length, 0, 'only one predecessor remains → entry removed')
+})
+
+test('removeNode removes the merge entry for its target', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, c)
+  addEdge(flow, b, c)
+  assert.equal(flow.merges.length, 1)
+  removeNode(flow, c) // c was the merge target
+  assert.equal(flow.merges.length, 0, 'merge target removed → entry gone')
+})
+
+test('removeNode removes the merge entry when a predecessor is removed', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, c)
+  addEdge(flow, b, c)
+  assert.equal(flow.merges.length, 1)
+  removeNode(flow, b) // b was a predecessor of c
+  assert.equal(flow.merges.length, 0, 'predecessor removed → only one remains → entry gone')
 })

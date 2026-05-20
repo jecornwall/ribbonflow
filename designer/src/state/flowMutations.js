@@ -96,11 +96,10 @@ export function removeNode(flow, id) {
   // a fork whose `from` node is gone, or that dropped below 2 successors,
   // loses its entry; a survivor re-mirrors its branches and renormalises.
   reconcileForks(flow)
-  if (Array.isArray(flow.merges)) {
-    flow.merges = flow.merges
-      .filter((m) => m.to !== id)
-      .map((m) => ({ ...m, from: (m.from || []).filter((x) => x !== id) }))
-  }
+  // merges: re-derive from the now-updated topology (replaces the old manual
+  // filter; any node that was the removed node's predecessor or the target is
+  // now correctly omitted because successors[] no longer name the removed id).
+  reconcileMerges(flow)
   // v1.2: a rejection edge naming the removed node at EITHER end goes too
   // (spec §5 — "removing a node removes any rejection edges referencing it").
   if (Array.isArray(flow.rejections)) {
@@ -124,6 +123,8 @@ export function addEdge(flow, from, to) {
   n.successors.push(to)
   // Keep any existing fork-rate entry mirrored to the new topology (§2.4).
   reconcileForks(flow)
+  // Re-derive merges[] — the new edge may have created a merge target.
+  reconcileMerges(flow)
   return true
 }
 
@@ -133,6 +134,8 @@ export function removeEdge(flow, from, to) {
   if (!n || !Array.isArray(n.successors)) return
   n.successors = n.successors.filter((s) => s !== to)
   reconcileForks(flow)
+  // Re-derive merges[] — removing this edge may have dissolved a merge target.
+  reconcileMerges(flow)
 }
 
 // ── fork authoring: forks[] ↔ successors[] sync (bead ai-engineer-kcmj) ──────
@@ -214,6 +217,25 @@ export function reconcileForks(flow) {
     next.push({ from: fork.from, branches })
   }
   flow.forks = next
+  return flow
+}
+
+/**
+ * Re-derive flow.merges[] entirely from topology. A merge is a node with ≥2
+ * predecessors (other nodes that list it in their successors[]). Unlike
+ * reconcileForks, merges carry no authored data — the entry is purely a
+ * topology read-back used by the renderer for pre-merge label anchoring.
+ * Wipes and recomputes from scratch; mutates flow.merges in place; returns flow.
+ */
+export function reconcileMerges(flow) {
+  const merges = []
+  for (const node of flow.nodes || []) {
+    const from = predecessorsOf(flow, node.id)
+    if (from.length >= 2) {
+      merges.push({ to: node.id, from })
+    }
+  }
+  flow.merges = merges
   return flow
 }
 
