@@ -1,0 +1,10 @@
+{
+  "id": "sample",
+  "title": "Sample",
+  "flows": [
+    {
+      "slug": "intake-to-ship",
+      "title": "Intake to Ship"
+    }
+  ]
+}

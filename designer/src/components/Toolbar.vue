@@ -8,11 +8,21 @@
   exports migrate forward for free). See M3 spec §2.6.
 -->
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 
 const doc = useFlowDoc()
 const fileInput = ref(null)
+
+// Save-state chip — reflects the auto-save lifecycle (bd ai-engineer-2fcm).
+const SAVE_LABEL = {
+  idle: '',
+  dirty: 'Unsaved changes',
+  saving: 'Saving…',
+  saved: 'Saved',
+  error: 'Save failed — click to retry',
+}
+const saveLabel = computed(() => SAVE_LABEL[doc.state.saveState] || '')
 
 const TOOLS = [
   { id: 'select', label: 'Select', hint: 'select / drag nodes & labels' },
@@ -54,7 +64,18 @@ async function onFileChosen(e) {
 
 <template>
   <div class="toolbar">
-    <span class="tb-brand">Flow Designer</span>
+    <button class="tb-btn" title="back to the flow index" @click="doc.goToIndex()">
+      ← Index
+    </button>
+    <span class="tb-brand">{{ doc.state.title || 'Flow Designer' }}</span>
+
+    <span
+      v-if="doc.state.currentId"
+      class="tb-save"
+      :class="doc.state.saveState"
+      :title="doc.state.currentId"
+      @click="doc.saveNow()"
+    >{{ saveLabel }}</span>
 
     <div class="tb-group">
       <button
@@ -79,9 +100,6 @@ async function onFileChosen(e) {
     <div class="tb-spacer" />
 
     <div class="tb-group">
-      <button class="tb-btn" title="reset to the sample flow" @click="doc.newFlow()">
-        New
-      </button>
       <button class="tb-btn" title="import a .flow.json file" @click="triggerImport">
         Import
       </button>
@@ -118,6 +136,26 @@ async function onFileChosen(e) {
 }
 .tb-spacer {
   flex: 1;
+}
+.tb-save {
+  font: 12px/1 ui-sans-serif, system-ui, sans-serif;
+  padding: 4px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.tb-save.saved {
+  color: #4ade80;
+}
+.tb-save.saving {
+  color: #cbd5e1;
+}
+.tb-save.dirty {
+  color: #fbbf24;
+}
+.tb-save.error {
+  color: #fff;
+  background: #b91c1c;
 }
 .tb-btn {
   padding: 5px 12px;

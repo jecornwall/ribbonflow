@@ -14,7 +14,7 @@
  * store, so the canvas, inspector, toolbar and preview all share one document.
  */
 
-import { reactive, computed } from 'vue'
+import { reactive, computed, watch } from 'vue'
 import {
   normalizeFlow,
   validateFlow,
@@ -26,6 +26,14 @@ import {
 import { makeSampleFlow } from './sampleFlow.js'
 import { GRID_SIZE } from '../lib/constants.js'
 import * as M from './flowMutations.js'
+import { useFlowStore } from './flowStore.js'
+import { slugify, uniqueSlug } from '../../server/indexBuilder.js'
+
+const store = useFlowStore()
+
+/** Debounce (ms) between the last edit and an auto-save PUT — see persistence
+ *  spec §2.5: above the canvas/inspector commit cadence, below per-keystroke. */
+const AUTOSAVE_DEBOUNCE_MS = 800
 
 const state = reactive({
   flow: makeSampleFlow(),
@@ -39,6 +47,18 @@ const state = reactive({
   snapToGrid: false,
   // bumped on STRUCTURAL edits so PreviewPane cleanly remounts the simulation
   previewKey: 0,
+  // ── persistence (bd ai-engineer-2fcm) ──────────────────────────────────────
+  // which view the app shows: the landing page, or the flow editor
+  view: 'index', // 'index' | 'editor'
+  // the flow-ID (`<set>/<flow>`) backing the open doc, or null when ephemeral
+  currentId: null,
+  // the open flow's human title (mirrors set.json), '' when ephemeral
+  title: '',
+  // auto-save lifecycle: 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
+  saveState: 'idle',
+  // internal guard: true right after a load so the auto-save watcher does not
+  // immediately re-save a flow the designer just opened
+  justLoaded: false,
 })
 
 /** The authored flow with library defaults applied (normalized v2 shape). */
@@ -252,6 +272,10 @@ function exportFlow() {
  */
 function importFlow(input) {
   const flow = deserializeFlow(input)
+  // justLoaded swallows the watcher fire from this replacement, so a manual
+  // import does not auto-save by itself; a subsequent edit will persist it
+  // into the open slot (if one is open).
+  state.justLoaded = true
   state.flow = flow
   state.selection = { kind: 'flow' }
   state.pendingEdgeFrom = null
@@ -264,6 +288,102 @@ function newFlow() {
   state.selection = { kind: 'flow' }
   state.pendingEdgeFrom = null
   bumpPreview()
+}
+
+// ── directory-of-files persistence + auto-save (bd ai-engineer-2fcm) ──────────
+// The designer's default persistence is the directory of files served by the
+// flow-store dev-server plugin. A doc opened from the index is *backed* by a
+// flow-ID; every edit then auto-saves (debounced) to its file on disk. See
+// docs/superpowers/specs/2026-05-20-flow-persistence-design.md.
+
+let saveTimer = null
+
+/** Serialize and PUT the current doc to its backing file. */
+async function doSave() {
+  if (!state.currentId) return
+  saveTimer = null
+  state.saveState = 'saving'
+  try {
+    await store.saveFlow(state.currentId, JSON.parse(serializeFlow(state.flow)), state.title)
+    state.saveState = 'saved'
+  } catch (err) {
+    state.saveState = 'error'
+    // eslint-disable-next-line no-console
+    console.error('auto-save failed:', err)
+  }
+}
+
+/** Force an immediate save, cancelling any pending debounce. */
+function saveNow() {
+  if (saveTimer) clearTimeout(saveTimer)
+  return doSave()
+}
+
+// Auto-save watcher: any deep edit to the authored flow schedules a debounced
+// save. The justLoaded guard swallows the one watcher fire caused by a load /
+// import replacing the document, so opening a flow does not re-save it.
+watch(
+  () => state.flow,
+  () => {
+    if (state.justLoaded) {
+      state.justLoaded = false
+      return
+    }
+    if (!state.currentId) return
+    state.saveState = 'dirty'
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(doSave, AUTOSAVE_DEBOUNCE_MS)
+  },
+  { deep: true },
+)
+
+/** Show the index landing page. Flushes any pending save first. */
+async function goToIndex() {
+  if (saveTimer) await saveNow()
+  state.view = 'index'
+}
+
+/**
+ * Open an existing flow from the store into the editor.
+ * @param {string} id — `<set>/<flow>`
+ * @param {string} title — the flow's human title (from the index)
+ */
+async function openFlow(id, title) {
+  const envelope = await store.loadFlow(id)
+  const flow = deserializeFlow(envelope)
+  state.justLoaded = true
+  state.flow = flow
+  state.currentId = id
+  state.title = title || id
+  state.selection = { kind: 'flow' }
+  state.pendingEdgeFrom = null
+  state.saveState = 'saved'
+  state.view = 'editor'
+  bumpPreview()
+}
+
+/**
+ * Create a fresh flow inside an existing set, persist it, and open it.
+ * The slug is derived from the title, de-duplicated against the set's flows.
+ * @param {string} setId
+ * @param {string} title
+ * @param {string[]} existingSlugs — slugs already in that set
+ */
+async function createFlow(setId, title, existingSlugs = []) {
+  const slug = uniqueSlug(slugify(title), existingSlugs)
+  const id = `${setId}/${slug}`
+  const flow = makeSampleFlow()
+  await store.saveFlow(id, JSON.parse(serializeFlow(flow)), title)
+  state.justLoaded = true
+  state.flow = flow
+  state.currentId = id
+  state.title = title || id
+  state.selection = { kind: 'flow' }
+  state.pendingEdgeFrom = null
+  state.saveState = 'saved'
+  state.view = 'editor'
+  bumpPreview()
+  return id
 }
 
 const api = {
@@ -298,6 +418,10 @@ const api = {
   exportFlow,
   importFlow,
   newFlow,
+  goToIndex,
+  openFlow,
+  createFlow,
+  saveNow,
 }
 
 export function useFlowDoc() {

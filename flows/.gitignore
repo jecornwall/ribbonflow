@@ -1,0 +1,6 @@
+# index.json is a GENERATED artifact — the flow-store dev-server plugin
+# regenerates it from a fresh scan on every write (see
+# docs/superpowers/specs/2026-05-20-flow-persistence-design.md). It is not
+# committed: it mutates (timestamps) on every dev-server GET and would create
+# constant churn. An M5 deck build regenerates it via the same buildIndex().
+index.json

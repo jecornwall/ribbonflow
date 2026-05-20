@@ -14,10 +14,13 @@ import EditorCanvas from './components/EditorCanvas.vue'
 import InspectorPanel from './components/InspectorPanel.vue'
 import PreviewPane from './components/PreviewPane.vue'
 import StatusStrip from './components/StatusStrip.vue'
+import IndexPage from './components/IndexPage.vue'
 
 const doc = useFlowDoc()
 
 function onKeydown(e) {
+  // Keyboard editing shortcuts apply only in the editor view.
+  if (doc.state.view !== 'editor') return
   // Ignore when typing into a form control.
   const tag = e.target?.tagName
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
@@ -34,7 +37,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div class="app">
+  <IndexPage v-if="doc.state.view === 'index'" />
+  <div v-else class="app">
     <Toolbar />
     <div class="app-body">
       <div class="edit-col">

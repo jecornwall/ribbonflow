@@ -1,0 +1,88 @@
+{
+  "formatVersion": 3,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 0,
+      "w": 1600,
+      "h": 900
+    },
+    "baseSpeed": 200,
+    "initialAgents": 6,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "intake",
+        "x": 240,
+        "y": 450,
+        "label": "intake",
+        "kind": "source",
+        "rate": 1,
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -70,
+        "successors": [
+          "design"
+        ]
+      },
+      {
+        "id": "design",
+        "x": 620,
+        "y": 450,
+        "label": "design",
+        "kind": "normal",
+        "length": 1,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -70,
+        "successors": [
+          "build"
+        ]
+      },
+      {
+        "id": "build",
+        "x": 1000,
+        "y": 450,
+        "label": "build",
+        "kind": "normal",
+        "length": 1.4,
+        "speed": 0.4,
+        "width": 30,
+        "coupleSpeedWidth": true,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -70,
+        "successors": [
+          "ship"
+        ]
+      },
+      {
+        "id": "ship",
+        "x": 1360,
+        "y": 450,
+        "label": "ship",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "green",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -70,
+        "successors": []
+      }
+    ]
+  }
+}
