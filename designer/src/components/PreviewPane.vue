@@ -6,9 +6,10 @@
   boundary proven in anger: "see what it looks like" is the actual library
   component a slide would use, animating, not an approximation (M3 §2.2).
 
-  It consumes `doc.normalized` — the authored flow with library defaults
-  applied — so the preview sees exactly what a normalized consumer sees.
-  `previewKey` remounts the simulation cleanly on structural edits.
+  It consumes `doc.previewFlow` — the normalized flow with each segment label
+  anchored at its node's xy (bd ai-engineer-t173), so a label tracks its
+  segment when the node is moved. `previewKey` remounts the simulation cleanly
+  on structural edits.
 -->
 <script setup>
 import { useFlowDoc } from '../state/useFlowDoc.js'
@@ -23,7 +24,7 @@ const doc = useFlowDoc()
     <div class="pp-stage">
       <FlowGraph
         :key="doc.state.previewKey"
-        :flow="doc.normalized.value"
+        :flow="doc.previewFlow.value"
       />
     </div>
   </div>

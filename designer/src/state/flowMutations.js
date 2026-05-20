@@ -166,3 +166,70 @@ export function setFlowField(flow, key, value) {
     flow[key] = value
   }
 }
+
+/**
+ * Project a flow for the LIVE PREVIEW so its segment labels anchor at each
+ * node's own xy position (bd ai-engineer-t173).
+ *
+ * Why: the library renderer (FlowGraph.markerPropsFor) places a segment label
+ * at the *latency-proportioned arc-midpoint* of the node's branch segment by
+ * default — an arc fraction that does NOT track the node's geometric anchor.
+ * So when the designer drags a node, the preview ribbon's pinch/segment moves
+ * with the node but the label stays behind at the stale arc fraction: "label
+ * does not follow its segment". The editor canvas never had this bug — it draws
+ * the label at `node.x + labelDx` directly.
+ *
+ * The library already exposes a node-anchored label path: when a node carries
+ * `labelX` / `labelY`, markerPropsFor anchors the label (and its leader) at
+ * that point instead of the arc-midpoint. This projection stamps each node's
+ * own xy as `labelX` / `labelY` so the preview label sits at exactly
+ * `node.x + labelDx, node.y + labelDy` — byte-for-byte the editor-canvas
+ * placement, and it tracks the node on every move.
+ *
+ * Preview-only: this is applied to `doc.normalized`, never to the authored
+ * `doc.flow` that `export` serialises — so the exported file stays free of
+ * derived `labelX` / `labelY` and the round-trip invariant is untouched.
+ * Returns a fresh flow with fresh node objects; the input is not mutated.
+ */
+export function withNodeAnchoredLabels(flow) {
+  return {
+    ...flow,
+    nodes: (flow.nodes || []).map((n) => ({ ...n, labelX: n.x, labelY: n.y })),
+  }
+}
+
+/**
+ * The y-coordinate of a flow's dominant horizontal line — the MEDIAN y of its
+ * existing nodes (bd ai-engineer-1dr8). A node created via the add-node tool
+ * snaps to this line so additions stay symmetric with the existing flow
+ * instead of landing wherever the cursor happened to be — "better defaults
+ * favouring symmetry". The user can still drag the node off the line after.
+ *
+ * Median (not mean) so one off-line node does not drag the default askew.
+ * Falls back to the viewBox vertical centre when the flow has no nodes yet.
+ */
+export function flowCenterlineY(flow) {
+  const ys = (flow.nodes || [])
+    .map((n) => n.y)
+    .filter((y) => Number.isFinite(y))
+    .sort((a, b) => a - b)
+  if (ys.length === 0) {
+    const v = flow.viewBox || {}
+    return Math.round((v.y ?? 0) + (v.h ?? 900) / 2)
+  }
+  const mid = Math.floor(ys.length / 2)
+  return ys.length % 2 === 1
+    ? ys[mid]
+    : Math.round((ys[mid - 1] + ys[mid]) / 2)
+}
+
+/**
+ * Snap a coordinate to the nearest multiple of `grid` (bd ai-engineer-esx8).
+ * Pure helper; the store applies it to node moves / creation only while the
+ * optional snap-to-grid mode is enabled. A zero / missing grid is a no-op.
+ */
+export function snapToGrid(value, grid) {
+  if (!grid || grid <= 0) return value
+  // `|| 0` normalises the -0 that Math.round yields for small negatives.
+  return Math.round(value / grid) * grid || 0
+}

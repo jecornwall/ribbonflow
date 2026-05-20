@@ -2,9 +2,10 @@
   Toolbar.vue — tool selection + document actions.
 
   Tools drive the editor canvas's interaction model (select / add-node /
-  add-edge). Export serialises the authored flow to a .flow.json envelope via
-  the library; import deserialises one back (v1 exports migrate forward for
-  free). See M3 spec §2.6.
+  add-edge). The Snap toggle enables the optional snap-to-grid mode (off by
+  default — bd ai-engineer-esx8). Export serialises the authored flow to a
+  .flow.json envelope via the library; import deserialises one back (v1
+  exports migrate forward for free). See M3 spec §2.6.
 -->
 <script setup>
 import { ref } from 'vue'
@@ -64,6 +65,15 @@ async function onFileChosen(e) {
         :title="t.hint"
         @click="doc.setTool(t.id)"
       >{{ t.label }}</button>
+    </div>
+
+    <div class="tb-group">
+      <button
+        class="tb-btn"
+        :class="{ active: doc.state.snapToGrid }"
+        title="snap node placement to a grid (optional, off by default)"
+        @click="doc.toggleSnap()"
+      >Snap{{ doc.state.snapToGrid ? ' ✓' : '' }}</button>
     </div>
 
     <div class="tb-spacer" />

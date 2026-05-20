@@ -2,8 +2,8 @@
   InspectorPanel.vue — context property editor.
 
   Edits whatever is selected, through the useFlowDoc actions:
-   - a node: label, label side (above/below), kind, source rate, per-node
-     width override, capacity / latency;
+   - a node: label, label side (above/below), kind, slide-along-flow
+     position, source rate, per-node width override, capacity / latency;
    - the flow: width mode, overall band width, base speed, initial agents,
      pinch preset;
    - an edge: shows from → to, with delete.
@@ -24,6 +24,26 @@ const node = computed(() =>
 const edge = computed(() =>
   state.selection.kind === 'edge' ? state.selection.edge : null,
 )
+
+/** Normalised viewBox — bounds for the slide-along-flow sliders. */
+const vb = computed(() => {
+  const v = state.flow.viewBox || {}
+  return { x: v.x ?? 0, y: v.y ?? 0, w: v.w ?? 1600, h: v.h ?? 900 }
+})
+
+/**
+ * Slide the selected node along the flow (bd ai-engineer-1dr8). `@input` moves
+ * it live — the editor canvas tracks reactively, the library preview does not
+ * remount mid-slide; `@change` (pointer release) commits, remounting the
+ * preview once. Mirrors the canvas drag-then-commit cadence.
+ */
+function slideNode(axis, value) {
+  if (!node.value) return
+  const v = Number(value)
+  if (!Number.isFinite(v)) return
+  if (axis === 'x') doc.moveNode(node.value.id, v, node.value.y)
+  else doc.moveNode(node.value.id, node.value.x, v)
+}
 
 /** Parse a number input; empty / invalid clears the field (undefined). */
 function num(value) {
@@ -87,6 +107,35 @@ function setFlowNum(key, value) {
             @click="doc.setLabelSide(node.id, 'below')"
           >below</button>
         </div>
+      </div>
+
+      <div class="row">
+        <span>slide ⇄</span>
+        <input
+          type="range"
+          class="slider"
+          :min="vb.x"
+          :max="vb.x + vb.w"
+          step="1"
+          :value="node.x"
+          title="slide this segment left / right along the flow"
+          @input="slideNode('x', $event.target.value)"
+          @change="doc.commitEdit()"
+        />
+      </div>
+      <div class="row">
+        <span>slide ↕</span>
+        <input
+          type="range"
+          class="slider"
+          :min="vb.y"
+          :max="vb.y + vb.h"
+          step="1"
+          :value="node.y"
+          title="slide this segment up / down"
+          @input="slideNode('y', $event.target.value)"
+          @change="doc.commitEdit()"
+        />
       </div>
 
       <label v-if="node.kind === 'source'" class="row">
@@ -248,6 +297,13 @@ h3 {
 .row input:disabled {
   background: #ece9e0;
   color: #9ca3af;
+}
+.row input.slider {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: ew-resize;
+  accent-color: #2563eb;
 }
 .seg {
   display: flex;

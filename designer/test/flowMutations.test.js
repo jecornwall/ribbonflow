@@ -28,6 +28,9 @@ import {
   setNodeField,
   uniqueId,
   findNode,
+  withNodeAnchoredLabels,
+  flowCenterlineY,
+  snapToGrid,
 } from '../src/state/flowMutations.js'
 
 function emptyFlow() {
@@ -133,6 +136,58 @@ test('moveLabel updates offsets and re-derives labelSide', () => {
   assert.equal(findNode(flow, id).labelDx, 10)
   assert.equal(findNode(flow, id).labelDy, 40)
   assert.equal(findNode(flow, id).labelSide, 'below')
+})
+
+test('withNodeAnchoredLabels stamps labelX/labelY = node xy for the preview', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 100, 200)
+  moveNode(flow, a, 640, 318)
+  const projected = withNodeAnchoredLabels(flow)
+  const pn = findNode(projected, a)
+  assert.equal(pn.labelX, 640, 'preview label anchors at node x')
+  assert.equal(pn.labelY, 318, 'preview label anchors at node y')
+  // The projection must NOT mutate the authored flow (export stays clean).
+  assert.equal('labelX' in findNode(flow, a), false, 'authored flow untouched')
+  assert.notEqual(projected.nodes, flow.nodes, 'fresh nodes array')
+  assert.notEqual(projected.nodes[0], flow.nodes[0], 'fresh node objects')
+})
+
+test('withNodeAnchoredLabels tolerates a flow with no nodes', () => {
+  const projected = withNodeAnchoredLabels({ viewBox: { w: 1600, h: 900 } })
+  assert.deepEqual(projected.nodes, [])
+})
+
+test('flowCenterlineY returns the median node y (symmetry default)', () => {
+  const flow = emptyFlow()
+  addNode(flow, 0, 0) // node-1
+  addNode(flow, 0, 0) // node-2
+  addNode(flow, 0, 0) // node-3
+  moveNode(flow, 'node-1', 0, 400)
+  moveNode(flow, 'node-2', 0, 450)
+  moveNode(flow, 'node-3', 0, 460)
+  assert.equal(flowCenterlineY(flow), 450, 'odd count: middle value')
+  addNode(flow, 0, 0) // node-4
+  moveNode(flow, 'node-4', 0, 470)
+  assert.equal(flowCenterlineY(flow), 455, 'even count: mean of the two middles')
+})
+
+test('flowCenterlineY falls back to the viewBox centre for an empty flow', () => {
+  assert.equal(flowCenterlineY(emptyFlow()), 450)
+  assert.equal(flowCenterlineY({ viewBox: { y: 100, h: 600 } }), 400)
+})
+
+test('snapToGrid rounds to the nearest grid multiple', () => {
+  assert.equal(snapToGrid(0, 40), 0)
+  assert.equal(snapToGrid(19, 40), 0)
+  assert.equal(snapToGrid(21, 40), 40)
+  assert.equal(snapToGrid(-19, 40), 0)
+  assert.equal(snapToGrid(-21, 40), -40)
+  assert.equal(snapToGrid(637, 40), 640)
+})
+
+test('snapToGrid is a no-op for a zero / missing grid', () => {
+  assert.equal(snapToGrid(637, 0), 637)
+  assert.equal(snapToGrid(637), 637)
 })
 
 test('setNodeField clears the field when given an empty value', () => {
