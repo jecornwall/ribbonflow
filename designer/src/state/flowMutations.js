@@ -20,6 +20,8 @@ import {
   NEW_NODE_WIDTH,
   NEW_NODE_COLOR_SCHEME,
   DEFAULT_SOURCE_RATE,
+  NEW_REJECTION_RATE,
+  NEW_REJECTION_BOW_DEPTH,
 } from '../lib/constants.js'
 
 /** Find a node by id, or undefined. */
@@ -94,6 +96,13 @@ export function removeNode(flow, id) {
       .filter((m) => m.to !== id)
       .map((m) => ({ ...m, from: (m.from || []).filter((x) => x !== id) }))
   }
+  // v1.2: a rejection edge naming the removed node at EITHER end goes too
+  // (spec §5 — "removing a node removes any rejection edges referencing it").
+  if (Array.isArray(flow.rejections)) {
+    flow.rejections = flow.rejections.filter(
+      (r) => r.from !== id && r.to !== id,
+    )
+  }
 }
 
 /**
@@ -116,6 +125,82 @@ export function removeEdge(flow, from, to) {
   const n = findNode(flow, from)
   if (!n || !Array.isArray(n.successors)) return
   n.successors = n.successors.filter((s) => s !== to)
+}
+
+// ── v1.2 rejection edges (spec §5) ───────────────────────────────────────────
+// A rejection edge models failed-review work travelling BACK to an earlier
+// node to be re-done. Stored in `flow.rejections[]` as
+// `{ from, to, rate, bow: { side, depth } }` — separate from forward
+// `successors[]` because rejection paths are backward, thin, and rendered
+// distinctly (charter §Data model; spec §2). The library owns the format and
+// fills any omitted defaults via normalizeFlow; these mutations seed concrete
+// values so a designer-created edge round-trips with explicit geometry.
+
+/** Find a rejection edge by from→to, or undefined. */
+export function findRejection(flow, from, to) {
+  return (flow.rejections || []).find((r) => r.from === from && r.to === to)
+}
+
+/**
+ * Add a rejection edge from → to. Seeds the default rate and a complete bow:
+ * the bow side is auto-picked OPPOSITE the `from` node's label side (matching
+ * the library's normalizeFlow §2.3, so the arc and the label do not collide).
+ *
+ * No duplicate (from, to) pairs; both endpoints must exist. Self-rejection
+ * (from === to) is permitted — the library flags it as a validation WARNING,
+ * not an error (spec §2.4), so the mutation layer allows it and lets
+ * validateFlow surface it. Returns true if an edge was added.
+ */
+export function addRejection(flow, from, to) {
+  const fromNode = findNode(flow, from)
+  if (!fromNode || !findNode(flow, to)) return false
+  if (!Array.isArray(flow.rejections)) flow.rejections = []
+  if (flow.rejections.some((r) => r.from === from && r.to === to)) return false
+  // autoRejectionBowSide (model.js §2.3): label 'below' → arc 'above';
+  // label 'above' or unset → arc 'below'.
+  const side = fromNode.labelSide === 'below' ? 'above' : 'below'
+  flow.rejections.push({
+    from,
+    to,
+    rate: NEW_REJECTION_RATE,
+    bow: { side, depth: NEW_REJECTION_BOW_DEPTH },
+  })
+  return true
+}
+
+/** Remove the rejection edge from → to. */
+export function removeRejection(flow, from, to) {
+  if (!Array.isArray(flow.rejections)) return
+  flow.rejections = flow.rejections.filter(
+    (r) => !(r.from === from && r.to === to),
+  )
+}
+
+/**
+ * Set a scalar field on a rejection edge (currently `rate`). An empty value
+ * deletes the field, letting normalizeFlow re-fill the documented default.
+ */
+export function setRejectionField(flow, from, to, key, value) {
+  const r = findRejection(flow, from, to)
+  if (!r) return
+  if (value === undefined || value === '' || value === null) {
+    delete r[key]
+  } else {
+    r[key] = value
+  }
+}
+
+/**
+ * Set a rejection edge's bow geometry. `side` is 'above' | 'below'; `depth` is
+ * the perpendicular arc displacement in viewBox units. Either argument may be
+ * left `undefined` to change only the other component.
+ */
+export function setRejectionBow(flow, from, to, side, depth) {
+  const r = findRejection(flow, from, to)
+  if (!r) return
+  if (r.bow == null || typeof r.bow !== 'object') r.bow = {}
+  if (side !== undefined) r.bow.side = side
+  if (depth !== undefined) r.bow.depth = depth
 }
 
 /** Set an arbitrary field on a node (label, width, rate, capacity, …). */

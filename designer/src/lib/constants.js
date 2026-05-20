@@ -28,6 +28,17 @@ export const NEW_NODE_COLOR_SCHEME = 'neutral'
 export const DEFAULT_SOURCE_RATE = 1.0
 
 /**
+ * Defaults stamped onto a rejection edge created by the add-rejection tool —
+ * mirrors the library's DEFAULT_REJECTION_RATE / DEFAULT_REJECTION_BOW_DEPTH
+ * (format/model.js §2.3); kept here so the pure mutation layer stays
+ * library-import-free for headless tests. The bow side is auto-picked per
+ * edge (opposite the `from` node's label) rather than a constant — see
+ * flowMutations.addRejection.
+ */
+export const NEW_REJECTION_RATE = 0.15
+export const NEW_REJECTION_BOW_DEPTH = 80
+
+/**
  * Grid pitch (viewBox units) for the optional snap-to-grid mode. When the
  * mode is enabled, node moves / creation snap x and y to the nearest multiple
  * of this value, keeping placements aligned (bd ai-engineer-esx8). 40 over a

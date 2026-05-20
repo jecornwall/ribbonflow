@@ -31,6 +31,11 @@ import {
   withNodeAnchoredLabels,
   flowCenterlineY,
   snapToGrid,
+  addRejection,
+  removeRejection,
+  setRejectionField,
+  setRejectionBow,
+  findRejection,
 } from '../src/state/flowMutations.js'
 
 function emptyFlow() {
@@ -200,6 +205,133 @@ test('snapToGrid rounds to the nearest grid multiple', () => {
 test('snapToGrid is a no-op for a zero / missing grid', () => {
   assert.equal(snapToGrid(637, 0), 637)
   assert.equal(snapToGrid(637), 637)
+})
+
+// ── v1.2 rejection edges (spec §5 / §7 item 5) ───────────────────────────────
+
+test('addRejection creates a rejection edge with default rate + bow', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0)
+  assert.equal(addRejection(flow, b, a), true)
+  assert.equal(flow.rejections.length, 1)
+  const r = findRejection(flow, b, a)
+  assert.equal(r.from, b)
+  assert.equal(r.to, a)
+  assert.ok(r.rate > 0 && r.rate < 1, 'has a default rate in (0,1)')
+  assert.ok(r.bow && typeof r.bow.depth === 'number', 'has a bow depth')
+  assert.ok(['above', 'below'].includes(r.bow.side), 'has a bow side')
+})
+
+test('addRejection auto-picks the bow side opposite the from node label', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0) // default labelSide 'above'
+  addRejection(flow, b, a)
+  assert.equal(findRejection(flow, b, a).bow.side, 'below', 'label above → arc below')
+
+  setLabelSide(flow, b, 'below')
+  const c = addNode(flow, 200, 0)
+  addRejection(flow, b, c)
+  assert.equal(findRejection(flow, b, c).bow.side, 'above', 'label below → arc above')
+})
+
+test('addRejection rejects duplicates and missing endpoints', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0)
+  assert.equal(addRejection(flow, b, a), true)
+  assert.equal(addRejection(flow, b, a), false, 'duplicate from→to rejected')
+  assert.equal(addRejection(flow, b, 'ghost'), false, 'missing target rejected')
+  assert.equal(addRejection(flow, 'ghost', a), false, 'missing source rejected')
+  assert.equal(flow.rejections.length, 1)
+})
+
+test('addRejection permits self-rejection (validation surfaces it, §2.4)', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  assert.equal(addRejection(flow, a, a), true, 'self-rejection is legal model-side')
+  assert.equal(flow.rejections.length, 1)
+})
+
+test('addRejection creates the rejections array when absent', () => {
+  const flow = { viewBox: { w: 1600, h: 900 }, nodes: [] }
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0)
+  addRejection(flow, b, a)
+  assert.ok(Array.isArray(flow.rejections))
+  assert.equal(flow.rejections.length, 1)
+})
+
+test('removeRejection drops just that rejection edge', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0)
+  const c = addNode(flow, 200, 0)
+  addRejection(flow, b, a)
+  addRejection(flow, c, a)
+  removeRejection(flow, b, a)
+  assert.equal(flow.rejections.length, 1)
+  assert.equal(findRejection(flow, b, a), undefined)
+  assert.ok(findRejection(flow, c, a), 'other rejection edge untouched')
+})
+
+test('setRejectionField sets rate; empty value clears it for re-defaulting', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0)
+  addRejection(flow, b, a)
+  setRejectionField(flow, b, a, 'rate', 0.4)
+  assert.equal(findRejection(flow, b, a).rate, 0.4)
+  setRejectionField(flow, b, a, 'rate', '')
+  assert.equal('rate' in findRejection(flow, b, a), false, 'empty value clears the field')
+})
+
+test('setRejectionBow updates side and/or depth independently', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0)
+  addRejection(flow, b, a)
+  setRejectionBow(flow, b, a, 'above', 120)
+  let r = findRejection(flow, b, a)
+  assert.equal(r.bow.side, 'above')
+  assert.equal(r.bow.depth, 120)
+  // a single component changes; the other is left intact
+  setRejectionBow(flow, b, a, undefined, 60)
+  r = findRejection(flow, b, a)
+  assert.equal(r.bow.side, 'above', 'side untouched when undefined')
+  assert.equal(r.bow.depth, 60)
+  setRejectionBow(flow, b, a, 'below', undefined)
+  r = findRejection(flow, b, a)
+  assert.equal(r.bow.side, 'below')
+  assert.equal(r.bow.depth, 60, 'depth untouched when undefined')
+})
+
+test('rejection mutations no-op on an unknown edge', () => {
+  const flow = emptyFlow()
+  addNode(flow, 0, 0)
+  // none of these throw for a from→to with no rejection edge
+  setRejectionField(flow, 'node-1', 'ghost', 'rate', 0.3)
+  setRejectionBow(flow, 'node-1', 'ghost', 'above', 90)
+  removeRejection(flow, 'node-1', 'ghost')
+  assert.equal((flow.rejections || []).length, 0)
+})
+
+test('removeNode cascade-removes rejection edges referencing the node', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 100, 0)
+  const c = addNode(flow, 200, 0)
+  addRejection(flow, b, a) // b is the `to`-side reference's source… from=b, to=a
+  addRejection(flow, c, b) // references b as `from`
+  addRejection(flow, c, a) // does NOT reference b
+
+  removeNode(flow, b)
+
+  assert.equal(findRejection(flow, b, a), undefined, 'rejection with from=b gone')
+  assert.equal(findRejection(flow, c, b), undefined, 'rejection with to=b gone')
+  assert.ok(findRejection(flow, c, a), 'rejection not referencing b survives')
+  assert.equal(flow.rejections.length, 1)
 })
 
 test('setNodeField clears the field when given an empty value', () => {

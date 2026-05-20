@@ -38,11 +38,12 @@ const AUTOSAVE_DEBOUNCE_MS = 800
 
 const state = reactive({
   flow: makeSampleFlow(),
-  // selection: { kind: 'node'|'edge'|'flow'|null, id?, edge?: {from,to} }
+  // selection: { kind: 'node'|'edge'|'rejection'|'flow'|null, id?, edge?: {from,to} }
   selection: { kind: 'flow' },
-  // tool: 'select' | 'add-node' | 'add-edge'
+  // tool: 'select' | 'add-node' | 'add-edge' | 'add-rejection'
   tool: 'select',
-  // when add-edge has a first endpoint chosen, its node id sits here
+  // when a two-click link tool (add-edge / add-rejection) has its first
+  // endpoint chosen, that node id sits here
   pendingEdgeFrom: null,
   // optional snap-to-grid: when true, node moves / creation snap to GRID_SIZE
   snapToGrid: false,
@@ -129,6 +130,9 @@ function select(kind, id) {
 function selectEdge(from, to) {
   state.selection = { kind: 'edge', edge: { from, to } }
 }
+function selectRejection(from, to) {
+  state.selection = { kind: 'rejection', edge: { from, to } }
+}
 
 // ── tools ────────────────────────────────────────────────────────────────────
 function setTool(tool) {
@@ -189,6 +193,41 @@ function removeEdge(from, to) {
 function setNodeField(id, key, value) {
   M.setNodeField(state.flow, id, key, value)
   bumpPreview()
+}
+
+// ── v1.2 rejection edges (spec §5) ───────────────────────────────────────────
+// The add-rejection tool picks `from` then `to`; addRejection seeds the
+// default rate/bow, selects the new edge so the inspector opens on it, and
+// remounts the preview (the library's FlowGraph renders the dotted arc).
+// The rate + bow-depth controls drag LIVE (no remount) and commit once on
+// pointer release via commitEdit() — mirroring the node-control sliders
+// (§3.3). The bow-side toggle is discrete, so it remounts immediately.
+function addRejection(from, to) {
+  if (M.addRejection(state.flow, from, to)) {
+    selectRejection(from, to)
+    bumpPreview()
+  }
+}
+function removeRejection(from, to) {
+  M.removeRejection(state.flow, from, to)
+  select(null)
+  bumpPreview()
+}
+/** Set a rejection edge's rate. Live — no bump; inspector commits on release. */
+function setRejectionRate(from, to, rate) {
+  M.setRejectionField(state.flow, from, to, 'rate', rate)
+}
+/** Set a rejection edge's bow side (discrete toggle — remounts now). */
+function setRejectionBowSide(from, to, side) {
+  M.setRejectionBow(state.flow, from, to, side, undefined)
+  bumpPreview()
+}
+/** Set a rejection edge's bow depth. Live — no bump; commit on release. */
+function setRejectionBowDepth(from, to, depth) {
+  M.setRejectionBow(state.flow, from, to, undefined, depth)
+}
+function findRejection(from, to) {
+  return M.findRejection(state.flow, from, to)
 }
 function setNodeKind(id, kind) {
   M.setNodeKind(state.flow, id, kind)
@@ -262,6 +301,10 @@ function deleteSelection() {
     bumpPreview()
   } else if (sel.kind === 'edge' && sel.edge) {
     M.removeEdge(state.flow, sel.edge.from, sel.edge.to)
+    select(null)
+    bumpPreview()
+  } else if (sel.kind === 'rejection' && sel.edge) {
+    M.removeRejection(state.flow, sel.edge.from, sel.edge.to)
     select(null)
     bumpPreview()
   }
@@ -433,6 +476,7 @@ const api = {
   bringInBounds,
   select,
   selectEdge,
+  selectRejection,
   setTool,
   setPendingEdge,
   cancelPendingEdge,
@@ -444,6 +488,12 @@ const api = {
   moveLabel,
   addEdge,
   removeEdge,
+  addRejection,
+  removeRejection,
+  setRejectionRate,
+  setRejectionBowSide,
+  setRejectionBowDepth,
+  findRejection,
   setNodeField,
   setNodeKind,
   setNodeLength,

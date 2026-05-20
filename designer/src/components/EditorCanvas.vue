@@ -12,6 +12,7 @@
 -->
 <script setup>
 import { ref, computed } from 'vue'
+import { REJECTION_COLOR } from '@flow-designer/library/internals'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { clientToSvg } from '../lib/svgCoords.js'
 import { GRID_SIZE } from '../lib/constants.js'
@@ -58,6 +59,12 @@ const pendingFromNode = computed(() =>
   state.pendingEdgeFrom ? doc.findNode(state.pendingEdgeFrom) : null,
 )
 
+// The rubber-band hints at what is being drawn: green for a forward edge,
+// the rejection red for an add-rejection link.
+const linkColor = computed(() =>
+  state.tool === 'add-rejection' ? REJECTION_COLOR : '#16a34a',
+)
+
 function svgPoint(e) {
   return clientToSvg(svgRef.value, e.clientX, e.clientY)
 }
@@ -75,12 +82,22 @@ function isSelectedEdge(edge) {
   )
 }
 
-// ── edge-creation picking ────────────────────────────────────────────────────
-function pickForEdge(id) {
+// ── two-click link tools (add-edge / add-rejection) ──────────────────────────
+// Both tools work the same way: first node click chooses the `from` endpoint
+// (held in pendingEdgeFrom, shown as a rubber-band), second click commits.
+// The active tool decides which kind of link is created.
+const linkTools = new Set(['add-edge', 'add-rejection'])
+const isLinkTool = computed(() => linkTools.has(state.tool))
+
+function pickForLink(id) {
   if (!state.pendingEdgeFrom) {
     doc.setPendingEdge(id)
   } else {
-    doc.addEdge(state.pendingEdgeFrom, id)
+    if (state.tool === 'add-rejection') {
+      doc.addRejection(state.pendingEdgeFrom, id)
+    } else {
+      doc.addEdge(state.pendingEdgeFrom, id)
+    }
     doc.cancelPendingEdge()
   }
 }
@@ -88,8 +105,8 @@ function pickForEdge(id) {
 // ── pointer handlers ─────────────────────────────────────────────────────────
 function onNodeDown(e, id) {
   e.stopPropagation()
-  if (state.tool === 'add-edge') {
-    pickForEdge(id)
+  if (isLinkTool.value) {
+    pickForLink(id)
     return
   }
   doc.select('node', id)
@@ -101,8 +118,8 @@ function onNodeDown(e, id) {
 
 function onLabelDown(e, id) {
   e.stopPropagation()
-  if (state.tool === 'add-edge') {
-    pickForEdge(id)
+  if (isLinkTool.value) {
+    pickForLink(id)
     return
   }
   doc.select('node', id)
@@ -119,7 +136,7 @@ function onLabelDown(e, id) {
 
 function onEdgeDown(e, edge) {
   e.stopPropagation()
-  if (state.tool === 'add-edge') return
+  if (isLinkTool.value) return
   doc.selectEdge(edge.fromId, edge.toId)
 }
 
@@ -128,7 +145,7 @@ function onBackgroundDown(e) {
   if (state.tool === 'add-node') {
     // y is snapped to the flow centerline for symmetry — see useFlowDoc.addNode.
     doc.addNode(p.x)
-  } else if (state.tool === 'add-edge') {
+  } else if (isLinkTool.value) {
     doc.cancelPendingEdge()
   } else {
     doc.select(null)
@@ -138,7 +155,7 @@ function onBackgroundDown(e) {
 // The dimmed gutter is OUTSIDE the slide frame — clicking it clears the
 // selection or cancels a pending edge, but never places a node off-slide.
 function onGutterDown() {
-  if (state.tool === 'add-edge') doc.cancelPendingEdge()
+  if (isLinkTool.value) doc.cancelPendingEdge()
   else doc.select(null)
 }
 
@@ -259,14 +276,14 @@ function onUp(e) {
         @edgedown="onEdgeDown($event, edge)"
       />
 
-      <!-- add-edge rubber-band -->
+      <!-- two-click link rubber-band (add-edge / add-rejection) -->
       <line
         v-if="pendingFromNode"
         :x1="pendingFromNode.x"
         :y1="pendingFromNode.y"
         :x2="ptr.x"
         :y2="ptr.y"
-        stroke="#16a34a"
+        :stroke="linkColor"
         stroke-width="2.5"
         stroke-dasharray="8 6"
       />

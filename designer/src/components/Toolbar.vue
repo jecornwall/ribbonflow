@@ -28,6 +28,11 @@ const TOOLS = [
   { id: 'select', label: 'Select', hint: 'select / drag nodes & labels' },
   { id: 'add-node', label: '+ Node', hint: 'click canvas to place a node' },
   { id: 'add-edge', label: '+ Edge', hint: 'click a source node then a target' },
+  {
+    id: 'add-rejection',
+    label: '↩ Reject',
+    hint: 'click a review node then the node rejected work returns to',
+  },
 ]
 
 function exportFlow() {

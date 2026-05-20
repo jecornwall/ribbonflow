@@ -34,6 +34,37 @@ const edge = computed(() =>
   state.selection.kind === 'edge' ? state.selection.edge : null,
 )
 
+// ── v1.2 rejection edge (spec §5) ────────────────────────────────────────────
+// The live rejection-edge object behind a 'rejection' selection, or null.
+const rejection = computed(() =>
+  state.selection.kind === 'rejection' && state.selection.edge
+    ? doc.findRejection(state.selection.edge.from, state.selection.edge.to)
+    : null,
+)
+/** Stored rate (a 0.01–0.99 fraction) shown to the author as a rejection %. */
+const ratePct = computed(() =>
+  rejection.value ? Math.round((rejection.value.rate ?? 0.15) * 100) : 0,
+)
+const bowSide = computed(() => rejection.value?.bow?.side ?? 'below')
+const bowDepth = computed(() => rejection.value?.bow?.depth ?? 80)
+
+/** Move the rejection-% slider — convert the % back to the stored fraction. */
+function setRejectionPct(pct) {
+  if (!rejection.value) return
+  const rate = Number(pct) / 100
+  if (Number.isFinite(rate)) {
+    doc.setRejectionRate(rejection.value.from, rejection.value.to, rate)
+  }
+}
+/** Move the bow-depth slider. */
+function setRejectionDepth(value) {
+  if (!rejection.value) return
+  const d = Number(value)
+  if (Number.isFinite(d)) {
+    doc.setRejectionBowDepth(rejection.value.from, rejection.value.to, d)
+  }
+}
+
 /** Normalised viewBox — bounds for the slide-along-flow sliders. */
 const vb = computed(() => {
   const v = state.flow.viewBox || {}
@@ -243,6 +274,59 @@ function fmt(v, decimals = 2) {
       <div class="row"><span>from</span><code>{{ edge.from }}</code></div>
       <div class="row"><span>to</span><code>{{ edge.to }}</code></div>
       <button class="danger" @click="doc.deleteSelection()">Delete edge</button>
+    </template>
+
+    <!-- ── rejection edge (v1.2 — spec §5) ──────────────────────────────── -->
+    <template v-else-if="rejection">
+      <h3>Rejection edge</h3>
+      <div class="row"><span>from</span><code>{{ rejection.from }}</code></div>
+      <div class="row"><span>to</span><code>{{ rejection.to }}</code></div>
+
+      <!-- rate, presented to the author as a rejection % (stored 0.01–0.99).
+           Drags live; commits the preview once on release (@change). -->
+      <div class="row ctl">
+        <span>rejection %</span>
+        <input
+          type="range" class="slider"
+          min="1" max="99" step="1"
+          :value="ratePct"
+          title="fraction of work leaving this node that is rejected back"
+          @input="setRejectionPct($event.target.value)"
+          @change="doc.commitEdit()"
+        />
+        <code class="readout">{{ ratePct }}%</code>
+      </div>
+
+      <div class="row">
+        <span>bow side</span>
+        <div class="seg">
+          <button
+            :class="{ active: bowSide === 'above' }"
+            @click="doc.setRejectionBowSide(rejection.from, rejection.to, 'above')"
+          >above</button>
+          <button
+            :class="{ active: bowSide === 'below' }"
+            @click="doc.setRejectionBowSide(rejection.from, rejection.to, 'below')"
+          >below</button>
+        </div>
+      </div>
+
+      <div class="row ctl">
+        <span>bow depth</span>
+        <input
+          type="range" class="slider"
+          min="20" max="240" step="5"
+          :value="bowDepth"
+          title="how far the rejection arc bows away from the chord"
+          @input="setRejectionDepth($event.target.value)"
+          @change="doc.commitEdit()"
+        />
+        <code class="readout">{{ bowDepth }}</code>
+      </div>
+
+      <button class="danger" @click="doc.deleteSelection()">
+        Delete rejection edge
+      </button>
     </template>
 
     <!-- ── flow ─────────────────────────────────────────────────────────── -->
