@@ -65,6 +65,46 @@ function setRejectionDepth(value) {
   }
 }
 
+// ── fork authoring (bead ai-engineer-kcmj) ───────────────────────────────────
+// When the selected node has >1 successor it is a FORK — the rate-split editor
+// shows one slider per branch. forkBranchesFor returns an even split when no
+// forks[] entry exists and the stored shares when one does; dragging a slider
+// materialises / updates the entry and rebalances the siblings (spec §3).
+const forkBranches = computed(() =>
+  node.value ? doc.forkBranchesFor(node.value.id) : [],
+)
+const isFork = computed(() => forkBranches.value.length > 1)
+/** True when the fork carries a non-even rate split (a forks[] entry exists). */
+const forkHasEntry = computed(() =>
+  node.value
+    ? (state.flow.forks || []).some((f) => f.from === node.value.id)
+    : false,
+)
+// A node with >1 predecessor is a MERGE — shown read-only (merges carry no
+// authored rate parameter; effectiveNodeRates sums inbound flow from topology).
+const mergePreds = computed(() =>
+  node.value ? doc.predecessorsOf(node.value.id) : [],
+)
+const isMerge = computed(() => mergePreds.value.length > 1)
+
+/** A node's display label (falls back to its id). */
+function nodeLabel(id) {
+  const n = doc.findNode(id)
+  return n ? n.label || n.id : id
+}
+/** A rate share (0–1 fraction) as a whole-number percentage. */
+function pct(share) {
+  return Math.round((Number(share) || 0) * 100)
+}
+/** Move a fork branch's slider — convert the % back to the stored fraction. */
+function setForkShare(branchTo, value) {
+  if (!node.value) return
+  const share = Number(value) / 100
+  if (Number.isFinite(share)) {
+    doc.setForkRateShare(node.value.id, branchTo, share)
+  }
+}
+
 /** Normalised viewBox — bounds for the slide-along-flow sliders. */
 const vb = computed(() => {
   const v = state.flow.viewBox || {}
@@ -314,6 +354,40 @@ function fmt(v, decimals = 2) {
         </div>
       </div>
 
+      <!-- ── fork rate split (bead ai-engineer-kcmj) ─────────────────────── -->
+      <!-- Shown when the node has >1 successor. One slider per branch; they
+           rebalance so the shares sum to 1. Sliders drag live (`@input`) and
+           commit the preview once on release (`@change`). -->
+      <template v-if="isFork">
+        <h4>fork — rate split</h4>
+        <div v-for="b in forkBranches" :key="b.to" class="row ctl">
+          <span class="branch" :title="nodeLabel(b.to)">→ {{ nodeLabel(b.to) }}</span>
+          <input
+            type="range" class="slider"
+            min="0" max="100" step="1"
+            :value="pct(b.rateShare)"
+            title="share of this node's flow routed down this branch"
+            @input="setForkShare(b.to, $event.target.value)"
+            @change="doc.commitEdit()"
+          />
+          <code class="readout">{{ pct(b.rateShare) }}%</code>
+        </div>
+        <button
+          v-if="forkHasEntry"
+          class="reset"
+          title="discard the custom split — branches share the flow evenly"
+          @click="doc.resetForkToEven(node.id)"
+        >Reset to even split</button>
+      </template>
+
+      <!-- ── merge (read-only — bead ai-engineer-kcmj) ───────────────────── -->
+      <!-- A node with >1 predecessor merges flow; merges carry no authored
+           rate parameter, so this is purely informational. -->
+      <div v-if="isMerge" class="row merge">
+        <span>merge</span>
+        <code>{{ mergePreds.length }} inputs: {{ mergePreds.map(nodeLabel).join(', ') }}</code>
+      </div>
+
       <button class="danger" @click="doc.deleteSelection()">Delete node</button>
     </template>
 
@@ -529,6 +603,33 @@ h4 {
 code {
   font: 12px/1 ui-monospace, Menlo, monospace;
   color: #15171a;
+}
+/* fork rate-split editor — branch label, reset button, merge read-out */
+.row.ctl .branch {
+  flex: 0 0 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.reset {
+  margin-top: 2px;
+  padding: 4px 8px;
+  border: 1px solid #cdc8ba;
+  border-radius: 4px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  font: inherit;
+  align-self: flex-start;
+}
+button.reset:hover {
+  background: #ece9e0;
+}
+.row.merge code {
+  flex: 1;
+  text-align: right;
+  color: #6b7280;
+  font-size: 11px;
 }
 button.danger {
   margin-top: 6px;

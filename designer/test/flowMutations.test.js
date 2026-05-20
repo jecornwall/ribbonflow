@@ -39,7 +39,24 @@ import {
   setSourceParticleSize,
   setNodeTransform,
   setTransformCount,
+  reconcileForks,
+  setForkRateShare,
+  resetForkToEven,
+  forkBranchesFor,
+  predecessorsOf,
 } from '../src/state/flowMutations.js'
+
+/** Assert two numbers are equal within a small epsilon. */
+function close(actual, expected, msg) {
+  assert.ok(
+    Math.abs(actual - expected) < 1e-6,
+    `${msg || 'close'}: ${actual} ≉ ${expected}`,
+  )
+}
+/** Sum of a fork entry's branch rateShares. */
+function shareSum(fork) {
+  return fork.branches.reduce((s, b) => s + b.rateShare, 0)
+}
 
 function emptyFlow() {
   return { viewBox: { w: 1600, h: 900 }, forks: [], merges: [], nodes: [] }
@@ -113,19 +130,19 @@ test('removeNode strips the node and every reference to it', () => {
   const a = addNode(flow, 0, 0)
   const b = addNode(flow, 1, 1)
   const c = addNode(flow, 2, 2)
+  const d = addNode(flow, 3, 3)
   addEdge(flow, a, b)
-  addEdge(flow, b, c)
-  flow.forks = [{ from: a, branches: [{ to: b }, { to: c }] }]
+  addEdge(flow, a, c)
+  addEdge(flow, a, d)
   flow.merges = [{ to: c, from: [a, b] }]
 
   removeNode(flow, b)
 
   assert.equal(findNode(flow, b), undefined)
-  assert.deepEqual(findNode(flow, a).successors, [], 'incoming edge to b gone')
   assert.deepEqual(
-    flow.forks[0].branches.map((x) => x.to),
-    [c],
-    'fork branch to b gone',
+    findNode(flow, a).successors,
+    [c, d],
+    'incoming edge to b gone',
   )
   assert.deepEqual(flow.merges[0].from, [a], 'merge source b gone')
 })
@@ -432,4 +449,164 @@ test('setTransformCount no-ops on a node with no transform', () => {
   const n = findNode(flow, id)
   assert.equal('splitCount' in n, false)
   assert.equal('combineCount' in n, false)
+})
+
+// ── fork authoring: forks[] ↔ successors[] sync (bead ai-engineer-kcmj) ──────
+// Spec: docs/superpowers/specs/2026-05-21-flow-fork-authoring-design.md
+
+/** Build a flow where `a` forks into the given successor ids. */
+function forkFlow(...succIds) {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  for (const want of succIds) {
+    const id = addNode(flow, 100, 0)
+    // rename so the test reads clearly
+    findNode(flow, id).id = want
+    addEdge(flow, a, want)
+  }
+  return { flow, a }
+}
+
+test('addEdge making a 2-successor node materialises NO fork entry (even split)', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, b)
+  addEdge(flow, a, c)
+  assert.equal(flow.forks.length, 0, 'an even fork carries no forks[] entry')
+})
+
+test('forkBranchesFor: even split with no entry, [] below 2 successors', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  const branches = forkBranchesFor(flow, a)
+  assert.deepEqual(branches.map((x) => x.to), ['b', 'c'])
+  close(branches[0].rateShare, 0.5, 'b even')
+  close(branches[1].rateShare, 0.5, 'c even')
+  // a node with one successor is not a fork
+  const lone = emptyFlow()
+  const x = addNode(lone, 0, 0)
+  const y = addNode(lone, 1, 1)
+  addEdge(lone, x, y)
+  assert.deepEqual(forkBranchesFor(lone, x), [])
+})
+
+test('setForkRateShare materialises an entry and rebalances siblings to sum 1', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  setForkRateShare(flow, a, 'b', 0.7)
+  assert.equal(flow.forks.length, 1, 'a non-even split materialises an entry')
+  const fork = flow.forks[0]
+  assert.equal(fork.from, a)
+  assert.deepEqual(fork.branches.map((x) => x.to), ['b', 'c'], 'branches mirror successors')
+  close(fork.branches[0].rateShare, 0.7, 'dragged branch holds its share')
+  close(fork.branches[1].rateShare, 0.3, 'sibling absorbs the remainder')
+  close(shareSum(fork), 1, 'shares sum to 1')
+})
+
+test('setForkRateShare rebalances 3-way siblings proportionally (keeps their ratio)', () => {
+  const { flow, a } = forkFlow('b', 'c', 'd')
+  setForkRateShare(flow, a, 'c', 0.5) // c half; b & d split the remainder evenly
+  const before = Object.fromEntries(
+    flow.forks[0].branches.map((x) => [x.to, x.rateShare]),
+  )
+  const ratioBefore = before.c / before.d
+  setForkRateShare(flow, a, 'b', 0.7) // pin b — c & d absorb the rest
+  const after = Object.fromEntries(
+    flow.forks[0].branches.map((x) => [x.to, x.rateShare]),
+  )
+  close(after.b, 0.7, 'b pinned')
+  close(after.c / after.d, ratioBefore, 'c:d ratio preserved through the rebalance')
+  close(shareSum(flow.forks[0]), 1, 'shares still sum to 1')
+})
+
+test('setForkRateShare landing on an even split prunes the entry', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  setForkRateShare(flow, a, 'b', 0.7)
+  assert.equal(flow.forks.length, 1)
+  setForkRateShare(flow, a, 'b', 0.5) // back to even
+  assert.equal(flow.forks.length, 0, 'an even split carries no entry')
+})
+
+test('reconcileForks: addEdge appends a branch and renormalises an existing fork', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  setForkRateShare(flow, a, 'b', 0.7) // b 0.7 / c 0.3
+  const d = addNode(flow, 200, 0)
+  findNode(flow, d).id = 'd'
+  addEdge(flow, a, 'd') // 2 → 3 successors
+  const fork = flow.forks[0]
+  assert.deepEqual(fork.branches.map((x) => x.to), ['b', 'c', 'd'])
+  close(shareSum(fork), 1, 'renormalised to sum 1')
+  const by = Object.fromEntries(fork.branches.map((x) => [x.to, x.rateShare]))
+  close(by.b / by.c, 7 / 3, 'b:c ratio preserved when the new branch makes room')
+  assert.ok(by.d > 0, 'the new branch gets a positive share')
+})
+
+test('reconcileForks: removeEdge then re-add round-trips the rate ratios', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  setForkRateShare(flow, a, 'b', 0.7) // b 0.7 / c 0.3
+  const d = addNode(flow, 200, 0)
+  findNode(flow, d).id = 'd'
+  addEdge(flow, a, 'd')
+  removeEdge(flow, a, 'd') // back to a 2-way fork
+  const fork = flow.forks[0]
+  assert.deepEqual(fork.branches.map((x) => x.to), ['b', 'c'])
+  close(fork.branches[0].rateShare, 0.7, 'b ratio restored after add+remove')
+  close(fork.branches[1].rateShare, 0.3, 'c ratio restored after add+remove')
+})
+
+test('reconcileForks: removeEdge dropping below 2 successors prunes the entry', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  setForkRateShare(flow, a, 'b', 0.7)
+  removeEdge(flow, a, 'c') // a now has one successor
+  assert.equal(flow.forks.length, 0, 'no longer a fork → entry pruned')
+})
+
+test('removeNode of a fork branch target reconciles the surviving entry', () => {
+  const { flow, a } = forkFlow('b', 'c', 'd')
+  setForkRateShare(flow, a, 'b', 0.6)
+  setForkRateShare(flow, a, 'c', 0.3) // b/c/d all distinct
+  removeNode(flow, 'c')
+  const fork = flow.forks[0]
+  assert.deepEqual(fork.branches.map((x) => x.to), ['b', 'd'], 'c branch gone')
+  close(shareSum(fork), 1, 'survivors renormalised to sum 1')
+})
+
+test('removeNode of the fork root removes the fork entry', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  setForkRateShare(flow, a, 'b', 0.7)
+  removeNode(flow, a)
+  assert.equal(flow.forks.length, 0, 'fork.from gone → entry removed')
+})
+
+test('resetForkToEven drops the entry, returning the fork to an even split', () => {
+  const { flow, a } = forkFlow('b', 'c')
+  setForkRateShare(flow, a, 'b', 0.8)
+  assert.equal(flow.forks.length, 1)
+  resetForkToEven(flow, a)
+  assert.equal(flow.forks.length, 0)
+  const branches = forkBranchesFor(flow, a)
+  close(branches[0].rateShare, 0.5, 'even again')
+})
+
+test('setForkRateShare no-ops below 2 successors or for an unknown branch', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  addEdge(flow, a, b)
+  setForkRateShare(flow, a, b, 0.7) // a has one successor — not a fork
+  assert.equal(flow.forks.length, 0)
+  const { flow: f2, a: a2 } = forkFlow('b', 'c')
+  setForkRateShare(f2, a2, 'ghost', 0.7) // unknown branch
+  assert.equal(f2.forks.length, 0)
+})
+
+test('predecessorsOf returns every node listing the id as a successor', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  const b = addNode(flow, 1, 1)
+  const c = addNode(flow, 2, 2)
+  addEdge(flow, a, c)
+  addEdge(flow, b, c)
+  assert.deepEqual(predecessorsOf(flow, c).sort(), [a, b].sort())
+  assert.deepEqual(predecessorsOf(flow, a), [], 'a has no predecessors')
 })

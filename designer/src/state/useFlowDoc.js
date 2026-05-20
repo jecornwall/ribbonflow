@@ -272,6 +272,30 @@ function setNodeKind(id, kind) {
   bumpPreview()
 }
 
+// ── fork authoring: forks[] ↔ successors[] sync (bd ai-engineer-kcmj) ─────────
+// The inspector's rate-split editor. setForkRateShare drags LIVE (no preview
+// remount — the inspector commits once on pointer release via commitEdit(),
+// mirroring the node-control / rejection-rate slider cadence). resetForkToEven
+// is a discrete action, so it remounts immediately.
+
+/** Set a fork branch's rate share. Live — no bump; inspector commits on release. */
+function setForkRateShare(fromId, branchTo, share) {
+  M.setForkRateShare(state.flow, fromId, branchTo, share)
+}
+/** Return a fork to an even split (discrete — remounts the preview now). */
+function resetForkToEven(fromId) {
+  M.resetForkToEven(state.flow, fromId)
+  bumpPreview()
+}
+/** The effective fork branches `[{to, rateShare}]` for a node (inspector read). */
+function forkBranchesFor(id) {
+  return M.forkBranchesFor(state.flow, id)
+}
+/** Predecessor node ids of `id` — backs the inspector's read-only merge row. */
+function predecessorsOf(id) {
+  return M.predecessorsOf(state.flow, id)
+}
+
 // ── v1.3 large particles (spec §5) ───────────────────────────────────────────
 // All three are STRUCTURAL — they change emission size or node behaviour, so
 // the preview simulation must rebuild. They remount immediately (discrete
@@ -624,6 +648,10 @@ const api = {
   findRejection,
   setNodeField,
   setNodeKind,
+  setForkRateShare,
+  resetForkToEven,
+  forkBranchesFor,
+  predecessorsOf,
   setSourceParticleSize,
   setNodeTransform,
   setTransformCount,

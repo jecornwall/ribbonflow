@@ -30,6 +30,8 @@ import {
 const PARTICLE_SIZE_VALUES = ['small', 'large']
 /** Legal `node.transform` values (mirrors library NODE_TRANSFORMS). */
 const NODE_TRANSFORM_VALUES = ['none', 'split', 'combine']
+/** Epsilon for "is this fork split even?" comparisons — fork sync, §2.3/§2.5. */
+const FORK_EVEN_EPS = 1e-6
 
 /** Find a node by id, or undefined. */
 export function findNode(flow, id) {
@@ -90,14 +92,10 @@ export function removeNode(flow, id) {
       n.successors = n.successors.filter((s) => s !== id)
     }
   }
-  if (Array.isArray(flow.forks)) {
-    flow.forks = flow.forks
-      .filter((f) => f.from !== id)
-      .map((f) => ({
-        ...f,
-        branches: (f.branches || []).filter((b) => b.to !== id),
-      }))
-  }
+  // forks: reconcile against the now-updated successors[] (fork sync §2.4) —
+  // a fork whose `from` node is gone, or that dropped below 2 successors,
+  // loses its entry; a survivor re-mirrors its branches and renormalises.
+  reconcileForks(flow)
   if (Array.isArray(flow.merges)) {
     flow.merges = flow.merges
       .filter((m) => m.to !== id)
@@ -124,6 +122,8 @@ export function addEdge(flow, from, to) {
   if (!Array.isArray(n.successors)) n.successors = []
   if (n.successors.includes(to)) return false
   n.successors.push(to)
+  // Keep any existing fork-rate entry mirrored to the new topology (§2.4).
+  reconcileForks(flow)
   return true
 }
 
@@ -132,6 +132,175 @@ export function removeEdge(flow, from, to) {
   const n = findNode(flow, from)
   if (!n || !Array.isArray(n.successors)) return
   n.successors = n.successors.filter((s) => s !== to)
+  reconcileForks(flow)
+}
+
+// ── fork authoring: forks[] ↔ successors[] sync (bead ai-engineer-kcmj) ──────
+// Topology lives in per-node successors[]; the per-branch RATE SPLIT lives in
+// flow.forks[].branches[].rateShare. The two must stay consistent. The sync
+// model (spec docs/superpowers/specs/2026-05-21-flow-fork-authoring-design.md):
+//
+//  - successors[] is the single source of truth for fork TOPOLOGY.
+//  - a flow.forks[] entry is MATERIALISED only for a NON-EVEN split; an
+//    even-split fork carries no entry (normalizeFlow's even-split default
+//    covers it) so an export stays free of redundant forks[].
+//  - when an entry exists its branches MIRROR successors[] (same ids, same
+//    order) and its rateShares always sum to 1, and are not all even.
+//  - reconcileForks(flow) re-establishes that invariant after any topology
+//    change; it never CREATES an entry — only setForkRateShare does.
+
+/** Predecessor node ids of `id` — every node listing `id` as a successor. */
+export function predecessorsOf(flow, id) {
+  return (flow.nodes || [])
+    .filter((n) => Array.isArray(n.successors) && n.successors.includes(id))
+    .map((n) => n.id)
+}
+
+/** True when every branch share is within EPS of an even 1/n split. */
+function sharesAreEven(branches) {
+  const n = branches.length
+  if (n === 0) return true
+  const even = 1 / n
+  return branches.every((b) => {
+    const s = typeof b.rateShare === 'number' ? b.rateShare : even
+    return Math.abs(s - even) < FORK_EVEN_EPS
+  })
+}
+
+/**
+ * Scale a branch list so its positive rateShares sum to exactly 1. Branches
+ * with a non-positive / non-numeric share are treated as 0; if every branch is
+ * 0 the result is an even split. Returns a fresh branch list.
+ */
+function normalizeShares(branches) {
+  const n = branches.length
+  const pos = (b) =>
+    typeof b.rateShare === 'number' && b.rateShare > 0 ? b.rateShare : 0
+  const total = branches.reduce((s, b) => s + pos(b), 0)
+  return branches.map((b) => ({
+    ...b,
+    rateShare: total > FORK_EVEN_EPS ? pos(b) / total : 1 / n,
+  }))
+}
+
+/**
+ * Re-establish the §2.3 forks[] invariant after a topology change. For every
+ * existing fork entry: drop it if its `from` node is gone or has < 2
+ * successors; otherwise re-mirror its branches onto the node's successors[]
+ * (a newly added successor is seeded at the even share, a removed one drops),
+ * renormalise the shares to sum 1, and drop the entry if the result is even.
+ * Never creates an entry. Mutates `flow.forks` in place; returns `flow`.
+ */
+export function reconcileForks(flow) {
+  if (!Array.isArray(flow.forks) || flow.forks.length === 0) return flow
+  const next = []
+  for (const fork of flow.forks) {
+    const node = findNode(flow, fork.from)
+    const succ = node && Array.isArray(node.successors) ? node.successors : []
+    if (succ.length < 2) continue // no longer a fork → drop the entry
+    const prev = new Map(
+      (fork.branches || []).map((b) => [b.to, b.rateShare]),
+    )
+    const n = succ.length
+    // mirror branches to successors; a NEW successor seeds at the even share.
+    const branches = normalizeShares(
+      succ.map((to) => ({
+        to,
+        rateShare:
+          typeof prev.get(to) === 'number' ? prev.get(to) : 1 / n,
+      })),
+    )
+    if (sharesAreEven(branches)) continue // back to even → drop the entry
+    next.push({ from: fork.from, branches })
+  }
+  flow.forks = next
+  return flow
+}
+
+/**
+ * Set one fork branch's `rateShare` (a 0–1 fraction) and rebalance the sibling
+ * branches proportionally so the shares still sum to 1 (§2.5). Materialises
+ * the forks[] entry on first non-even edit; prunes it when an edit lands the
+ * fork back on an even split. A no-op when `fromId` has < 2 successors or
+ * `branchTo` is not one of its successors.
+ */
+export function setForkRateShare(flow, fromId, branchTo, share) {
+  const node = findNode(flow, fromId)
+  const succ = node && Array.isArray(node.successors) ? node.successors : []
+  if (succ.length < 2 || !succ.includes(branchTo)) return
+  let s = Number(share)
+  if (!Number.isFinite(s)) return
+  s = Math.min(1, Math.max(0, s))
+
+  if (!Array.isArray(flow.forks)) flow.forks = []
+  let fork = flow.forks.find((f) => f.from === fromId)
+  if (!fork) {
+    // materialise: an even-split entry mirroring successors[].
+    fork = {
+      from: fromId,
+      branches: succ.map((to) => ({ to, rateShare: 1 / succ.length })),
+    }
+    flow.forks.push(fork)
+  } else {
+    // re-mirror to current successors before editing (defensive — the store
+    // also reconciles on topology changes).
+    const prev = new Map(fork.branches.map((b) => [b.to, b.rateShare]))
+    fork.branches = succ.map((to) => ({
+      to,
+      rateShare:
+        typeof prev.get(to) === 'number' ? prev.get(to) : 1 / succ.length,
+    }))
+  }
+
+  // Pin the dragged branch; the others absorb the remainder in proportion to
+  // their current shares (even split when they are all zero).
+  const target = fork.branches.find((b) => b.to === branchTo)
+  const others = fork.branches.filter((b) => b !== target)
+  target.rateShare = s
+  const otherSum = others.reduce(
+    (acc, b) => acc + (b.rateShare > 0 ? b.rateShare : 0),
+    0,
+  )
+  const remaining = 1 - s
+  for (const b of others) {
+    b.rateShare =
+      otherSum > FORK_EVEN_EPS
+        ? ((b.rateShare > 0 ? b.rateShare : 0) / otherSum) * remaining
+        : remaining / others.length
+  }
+
+  // An even result needs no stored entry (§2.2).
+  if (sharesAreEven(fork.branches)) {
+    flow.forks = flow.forks.filter((f) => f !== fork)
+  }
+}
+
+/** Return a fork to an even split by dropping its forks[] entry. */
+export function resetForkToEven(flow, fromId) {
+  if (!Array.isArray(flow.forks)) return
+  flow.forks = flow.forks.filter((f) => f.from !== fromId)
+}
+
+/**
+ * The effective fork branches for a node — `[{ to, rateShare }]` in
+ * successor order. When the node has a forks[] entry its stored shares are
+ * used; otherwise an even 1/n split is returned (the normalizeFlow default).
+ * Returns `[]` for a node that is not a fork (< 2 successors). This is what
+ * the inspector's rate-split editor renders.
+ */
+export function forkBranchesFor(flow, id) {
+  const node = findNode(flow, id)
+  const succ = node && Array.isArray(node.successors) ? node.successors : []
+  if (succ.length < 2) return []
+  const fork = (flow.forks || []).find((f) => f.from === id)
+  const even = 1 / succ.length
+  return succ.map((to) => {
+    const b = fork && fork.branches.find((x) => x.to === to)
+    return {
+      to,
+      rateShare: b && typeof b.rateShare === 'number' ? b.rateShare : even,
+    }
+  })
 }
 
 // ── v1.2 rejection edges (spec §5) ───────────────────────────────────────────
