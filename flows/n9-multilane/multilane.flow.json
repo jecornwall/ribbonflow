@@ -190,7 +190,7 @@
         "label": "cross-team review",
         "kind": "normal",
         "length": 2,
-        "speed": 1,
+        "speed": 1.75,
         "width": 30,
         "capacity": 1,
         "coupleSpeedWidth": false,
