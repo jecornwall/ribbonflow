@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 5,
   "flow": {
     "viewBox": {
       "x": -80,
@@ -43,7 +43,9 @@
         "labelDy": -60,
         "successors": [
           "design"
-        ]
+        ],
+        "transform": "none",
+        "particleSize": "small"
       },
       {
         "id": "design",
@@ -62,7 +64,8 @@
         "labelDy": -60,
         "successors": [
           "design-review"
-        ]
+        ],
+        "transform": "none"
       },
       {
         "id": "design-review",
@@ -81,7 +84,8 @@
         "labelDy": -60,
         "successors": [
           "build-feature"
-        ]
+        ],
+        "transform": "none"
       },
       {
         "id": "build-feature",
@@ -101,7 +105,8 @@
         "labelDy": -60,
         "successors": [
           "cross-team-review"
-        ]
+        ],
+        "transform": "none"
       },
       {
         "id": "triage",
@@ -121,7 +126,9 @@
         "labelDy": -60,
         "successors": [
           "build-bug"
-        ]
+        ],
+        "transform": "none",
+        "particleSize": "small"
       },
       {
         "id": "build-bug",
@@ -141,7 +148,8 @@
         "labelDy": -60,
         "successors": [
           "cross-team-review"
-        ]
+        ],
+        "transform": "none"
       },
       {
         "id": "architecture",
@@ -161,7 +169,9 @@
         "labelDy": 60,
         "successors": [
           "build-platform"
-        ]
+        ],
+        "transform": "none",
+        "particleSize": "small"
       },
       {
         "id": "build-platform",
@@ -181,7 +191,8 @@
         "labelDy": 60,
         "successors": [
           "cross-team-review"
-        ]
+        ],
+        "transform": "none"
       },
       {
         "id": "cross-team-review",
@@ -189,18 +200,19 @@
         "y": 450,
         "label": "cross-team review",
         "kind": "normal",
-        "length": 2,
+        "length": 0.55,
         "speed": 1.75,
         "width": 30,
         "capacity": 1,
         "coupleSpeedWidth": false,
         "colorScheme": "red",
         "labelSide": "above",
-        "labelDx": 0,
-        "labelDy": -60,
+        "labelDx": -3,
+        "labelDy": -200,
         "successors": [
           "change-board"
-        ]
+        ],
+        "transform": "none"
       },
       {
         "id": "change-board",
@@ -216,7 +228,28 @@
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -60,
-        "successors": []
+        "successors": [],
+        "transform": "none"
+      }
+    ],
+    "rejections": [
+      {
+        "from": "cross-team-review",
+        "to": "design",
+        "rate": 0.15,
+        "bow": {
+          "side": "below",
+          "depth": 80
+        }
+      },
+      {
+        "from": "cross-team-review",
+        "to": "build-bug",
+        "rate": 0.15,
+        "bow": {
+          "side": "below",
+          "depth": 80
+        }
       }
     ]
   }
