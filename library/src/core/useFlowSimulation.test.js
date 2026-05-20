@@ -935,8 +935,10 @@ test('Multi-source (N9): three real source nodes each emit, healthy slide-window
 // Strengthening over the prior test:
 //   1. 30s horizon (was 10s).
 //   2. 8 deterministic reruns (per bead acceptance criterion: 'any change
-//      that produces an escape across 8 deterministic reruns fails'). The
-//      sim uses Math.random() so each rerun is a fresh statistical sample.
+//      that produces an escape across 8 deterministic reruns fails'). Each
+//      rerun seeds the engine with a distinct mulberry32 seed (bd
+//      ai-engineer-4ext) — the reruns are reproducible statistical samples,
+//      not unseeded Math.random() draws, so a failure is exactly replayable.
 //   3. CIRCLE-EDGE invariant: dist + PARTICLE_RADIUS ≤ visible halfW.
 //      Previously the test allowed dist > halfW + PARTICLE_RADIUS — i.e.
 //      the agent's circle could be FULLY outside the wall. The new check
@@ -958,7 +960,9 @@ for (const { name, flow } of ALL_FLOWS) {
     const firstViolations = []
     let totalTeleports = 0
     for (let run = 0; run < NO_ESCAPE_RERUNS; run++) {
-      const sim = createFlowSimulation(flow, { initialAgents: flow.initialAgents ?? 12 })
+      // Distinct deterministic seed per rerun (bd ai-engineer-4ext): each
+      // rerun is a reproducible statistical sample, replayable on failure.
+      const sim = createFlowSimulation(flow, { initialAgents: flow.initialAgents ?? 12, seed: 1000 + run })
       for (let i = 0; i < 1800; i++) {
         sim.step(1 / 60)
         for (const a of sim.agents) {
@@ -1087,7 +1091,10 @@ for (const { name, flow } of MERGE_FLOWS) {
 // are now enabled.
 test('§Frame-rate independence (N4): 1/120s stepping produces ≥70% of 1/60s exits over 60s', () => {
   function runAt(dt) {
-    const sim = createFlowSimulation(n4Flow, { initialAgents: n4Flow.initialAgents ?? 24 })
+    // Seeded (bd ai-engineer-4ext): both dt runs draw from the same
+    // deterministic mulberry32 stream, so the exit-count ratio is
+    // reproducible run to run — only the dt differs between them.
+    const sim = createFlowSimulation(n4Flow, { initialAgents: n4Flow.initialAgents ?? 24, seed: 4242 })
     const T = 60
     const FRAMES = Math.floor(T / dt)
     for (let i = 0; i < FRAMES; i++) sim.step(dt)
@@ -1096,8 +1103,9 @@ test('§Frame-rate independence (N4): 1/120s stepping produces ≥70% of 1/60s e
   const exits_1_60   = runAt(1/60)
   const exits_1_120  = runAt(1/120)
   // Iter-3 design intent: physics is frame-rate independent. Allow 30%
-  // tolerance for floating-point + Math.random() seed variance + freeze-
-  // wake-window timing drift. The pre-0ld-fix ratio was 0.00 (full freeze);
+  // tolerance for floating-point accumulation + freeze-wake-window timing
+  // drift (the RNG is now seeded — bd ai-engineer-4ext — so there is no
+  // Math.random() variance left). The pre-0ld-fix ratio was 0.00 (full freeze);
   // anything ≥0.70 confirms the time-decoupling holds.
   const ratio = exits_1_120 / Math.max(1, exits_1_60)
   assert.ok(ratio >= 0.70,
@@ -1119,7 +1127,9 @@ test('§Frame-rate independence (N4): 1/120s stepping produces ≥70% of 1/60s e
 // user-visible freeze. This test guards against the headless-sim regression
 // reverting to the original "0 entries / 0 exits" failure mode.
 test('§Frame-rate independence (N4): 1/1440s rAF-emulated stepping advances for ≥30s', () => {
-  const sim = createFlowSimulation(n4Flow, { initialAgents: n4Flow.initialAgents ?? 24 })
+  // Seeded (bd ai-engineer-4ext) — the ≥6-exits / per-window-entry asserts
+  // below are now deterministic, not tolerance-banded Math.random() draws.
+  const sim = createFlowSimulation(n4Flow, { initialAgents: n4Flow.initialAgents ?? 24, seed: 1440 })
   const T = 30, dt = 1/1440
   const FRAMES = Math.floor(T / dt)
   for (let i = 0; i < FRAMES; i++) sim.step(dt)
@@ -1133,7 +1143,7 @@ test('§Frame-rate independence (N4): 1/1440s rAF-emulated stepping advances for
   // And: every 10s window should see entries — confirming the pipeline is
   // actually moving, not just front-loaded with the pre-warm spawn.
   const entryTimes = []
-  const sim2 = createFlowSimulation(n4Flow, { initialAgents: n4Flow.initialAgents ?? 24 })
+  const sim2 = createFlowSimulation(n4Flow, { initialAgents: n4Flow.initialAgents ?? 24, seed: 1441 })
   let prev = 0
   for (let i = 0; i < FRAMES; i++) {
     sim2.step(dt)
