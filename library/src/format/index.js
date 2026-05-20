@@ -132,12 +132,15 @@ export function deserializeFlow(input) {
  *
  * Detection rules:
  *   v1 — top-level `entryId` is the definitive v1 marker (removed by v1→v2).
- *   v2 — nodes have `capacity` (the v2 engine field) but neither `length` nor
- *         `colorScheme` (both v3-only node controls). A v3 node always authors
- *         `length`; a v3 node MAY author `capacity` (the crisp-queue override,
- *         bd ai-engineer-v9mj), so the `length` check is what keeps such a
- *         flow from being misread as v2. An already-normalized v3 flow has
- *         `capacity` (re-derived) plus `length`/`colorScheme`, so it reads v3.
+ *   v2 — EITHER any node still carries the retired `kind:'constraint'` type
+ *         (a definitive pre-v3 marker — v3 dropped it for a per-node colour
+ *         scheme, bd ai-engineer-bw3s), OR nodes have `capacity` (the v2
+ *         engine field) but neither `length` nor `colorScheme` (both v3-only
+ *         node controls). A v3 node always authors `length`; a v3 node MAY
+ *         author `capacity` (the crisp-queue override, bd ai-engineer-v9mj),
+ *         so the `length` check is what keeps such a flow from being misread
+ *         as v2. An already-normalized v3 flow has `capacity` (re-derived)
+ *         plus `length`/`colorScheme`, so it reads v3.
  *   v3 — everything else (including an empty-nodes flow).
  *
  * @param {object} flow — a bare flow object (no formatVersion)
@@ -146,10 +149,19 @@ export function deserializeFlow(input) {
 function detectBareFlowVersion(flow) {
   // v1: top-level entryId is present (v1→v2 migration deletes it)
   if (flow.entryId !== undefined) return 1
+  const nodes = Array.isArray(flow.nodes) ? flow.nodes : []
+  // pre-v3: a surviving `kind:'constraint'` node is a definitive pre-v3 marker
+  // (bd ai-engineer-bw3s). v3 retired the constraint type; a flow can otherwise
+  // look fully v3-shaped (nodes carrying `length` / `colorScheme`, no
+  // `capacity`) yet still carry a stray constraint node — e.g. a deck flow
+  // hand-mixed toward v3. Without forcing the migration chain, kind:'constraint'
+  // would survive to render, and both buildPinchWidthFn's constraintIdx lookup
+  // and the v3 colour register would silently miss it. Treat it as v2 so the
+  // v2→v3 step converts it (→ kind:'normal' + the 'red' colour scheme).
+  if (nodes.some(n => n && n.kind === 'constraint')) return 2
   // v2: nodes carry `capacity` but neither v3 node control (`length` /
   // `colorScheme`). A v3 flow may author `capacity`, so `length` is the
   // discriminator — a genuine v2 node has `latency`, not `length`.
-  const nodes = Array.isArray(flow.nodes) ? flow.nodes : []
   if (nodes.some(n =>
     n.capacity !== undefined && n.length === undefined && n.colorScheme === undefined,
   )) return 2

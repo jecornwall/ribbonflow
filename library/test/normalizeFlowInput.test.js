@@ -140,6 +140,34 @@ test('normalizeFlowInput: v1 envelope string migrates all the way to v3 and norm
   assert.equal(src.kind, 'source')
 })
 
+// ── bd ai-engineer-bw3s: kind:'constraint' is a definitive pre-v3 marker ─────
+
+test('normalizeFlowInput: a v3-shaped bare flow with a stray kind:constraint is migrated', () => {
+  // The v3 node model retired kind:'constraint' for a per-node colour scheme.
+  // A bare flow can otherwise look fully v3-shaped (nodes carrying `length` /
+  // `colorScheme`, no `capacity`) yet still carry a stray constraint node —
+  // e.g. a deck flow hand-mixed toward v3. If version detection misreads it as
+  // v3, no migration runs and kind:'constraint' survives to render: both
+  // buildPinchWidthFn's constraintIdx lookup and the v3 colour register
+  // silently miss it. kind:'constraint' must force the migration chain.
+  const bare = {
+    viewBox: { w: 1600, h: 900 },
+    baseSpeed: 200,
+    nodes: [
+      { id: 'src', x: 100, y: 450, kind: 'source', rate: 1.0,
+        length: 0.8, width: 70, speed: 1.0, colorScheme: 'neutral', successors: ['gate'] },
+      { id: 'gate', x: 500, y: 450,
+        kind: 'constraint', length: 0.8, width: 30, speed: 0.4, successors: ['out'] },
+      { id: 'out', x: 900, y: 450,
+        length: 0.8, width: 70, speed: 1.0, colorScheme: 'neutral', successors: [] },
+    ],
+  }
+  const result = normalizeFlowInput(bare)
+  const gate = result.nodes.find(n => n.id === 'gate')
+  assert.notEqual(gate.kind, 'constraint', 'retired kind:constraint never survives to render')
+  assert.equal(gate.colorScheme, 'red', 'constraint node → red colour scheme')
+})
+
 // ── Error cases ────────────────────────────────────────────────────────────────
 
 test('normalizeFlowInput: throws a TypeError on null', () => {
