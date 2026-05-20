@@ -19,15 +19,35 @@
     preserveAspectRatio="xMidYMid meet"
     class="flow-graph"
   >
-    <!-- defs: ink-wobble draftsman's-hand filter (locked-v2, visuals.md
+    <!-- defs: (1) per-instance clipPath — clips all diagram rendering to the
+         viewBox bounds so off-canvas nodes (e.g. n9-multilane's _start at
+         x=-700) don't bleed outside the SVG element when the library is used
+         standalone (parity harness, <FlowEmbed>) without a parent
+         overflow:hidden container. The deck provided that containment via
+         .factory-frame-large{overflow:hidden} in its CSS; the library now
+         provides it SVG-internally, making it context-independent.
+         (2) ink-wobble draftsman's-hand filter (locked-v2, visuals.md
          §3.0.3.LOCKED-V2 line-quality discipline). Opt-in via flow.inkWobble.
          baseFrequency / scale tuned for "confident pen line, not shaky". -->
-    <defs v-if="flow.inkWobble">
-      <filter :id="wobbleId" x="-2%" y="-2%" width="104%" height="104%">
+    <defs>
+      <clipPath :id="clipId">
+        <rect
+          :x="flow.viewBox.x ?? 0"
+          :y="flow.viewBox.y ?? 0"
+          :width="flow.viewBox.w"
+          :height="flow.viewBox.h"
+        />
+      </clipPath>
+      <filter v-if="flow.inkWobble" :id="wobbleId" x="-2%" y="-2%" width="104%" height="104%">
         <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" :seed="3" />
         <feDisplacementMap in="SourceGraphic" scale="1.6" />
       </filter>
     </defs>
+
+    <!-- Clip all diagram content to the viewBox bounds (bd ai-engineer-n2k9,
+         blocker 3). Prevents off-canvas node ribbons from bleeding outside the
+         SVG element in standalone / parity contexts. -->
+    <g :clip-path="`url(#${clipId})`">
 
     <!-- main ribbons (one per branch). Filter group applies the ink-wobble
          displacement to ALL flow paint inside it (ribbon body + pinch rose
@@ -318,6 +338,8 @@
         dominant-baseline="middle"
       >{{ legendRatioLabel }}</text>
     </g>
+
+    </g><!-- end clip-path group -->
   </svg>
 </template>
 
@@ -340,9 +362,10 @@ import FlowRibbon from './FlowRibbon.vue'
 import FlowSegmentMarker from './FlowSegmentMarker.vue'
 import FlowAgent from './FlowAgent.vue'
 
-// Stable per-instance id for the ink-wobble filter so multiple FlowGraph
-// instances on one page don't collide on the same filter URL.
+// Stable per-instance ids so multiple FlowGraph instances on one page don't
+// collide on the same filter / clipPath URL references.
 const wobbleId = `flow-wobble-${Math.floor(Math.random() * 1e9)}`
+const clipId   = `flow-clip-${Math.floor(Math.random() * 1e9)}`
 
 // bd ai-engineer-nnm: isometric station-box geometry, frozen against
 // Station.vue's defaults (BOX_HALF=70, skew=20). Kept here as module-
@@ -915,13 +938,14 @@ onBeforeUnmount(() => { if (rafId) cancelAnimationFrame(rafId) })
 
    overflow: visible (NOT hidden): n9-multilane.js uses an off-canvas
    `_start` node at SVG x=-300 to round-robin into three lane starts.
-   `overflow: hidden` on the SVG clips content to the element box,
-   which also crushes the flex-computed width on two-child layouts
-   (N4/N5/N6 = FlowGraph + YearReadoutChrome siblings). Clipping is
-   instead handled by the parent .factory-frame-large container via
-   `overflow: hidden` in deck/style.css — a CSS-level clip that is
-   cleaner than SVG-internal clipping and doesn't interfere with flex
-   sizing. See: bead ai-engineer-de0d (P1) + ai-engineer-gf1y (P2). */
+   `overflow: hidden` on the SVG would crush the flex-computed width on
+   two-child layouts (N4/N5/N6 = FlowGraph + YearReadoutChrome siblings).
+   Off-canvas content is clipped SVG-internally via the `<clipPath>` in
+   the template `<defs>` (bd ai-engineer-n2k9 blocker 3) — a clipPath
+   rect matching the viewBox keeps ribbons within the visible area without
+   affecting flex sizing. The deck's .factory-frame-large{overflow:hidden}
+   provides a second CSS-level containment layer on top. See: bead
+   ai-engineer-de0d (P1) + ai-engineer-gf1y (P2) + ai-engineer-n2k9. */
 .flow-graph {
   /* bd ai-engineer-b57i: SVG background is TRANSPARENT, not solid #F4F2ED.
      Jason 2026-05-18 N3 screenshot feedback: "Background should match with

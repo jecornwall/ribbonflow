@@ -878,3 +878,80 @@ test('RIBBON_SCHEME_COLORS_LIGHT is a lighter tone than the full scheme colour',
   assert.ok(lum(RIBBON_SCHEME_COLORS_LIGHT.red)   > lum(RIBBON_SCHEME_COLORS.red))
   assert.ok(lum(RIBBON_SCHEME_COLORS_LIGHT.green) > lum(RIBBON_SCHEME_COLORS.green))
 })
+
+// ── n9-multilane viewBox clipping regression (bd ai-engineer-n2k9 blocker 3) ──
+//
+// The M2 multi-root branch seeding change means buildBranches() now seeds from
+// ALL predecessor-free root nodes, including the intentionally off-canvas `_start`
+// node in n9-multilane (at x=-700, outside viewBox.x=-300). Before this test was
+// written, the library's FlowGraph.vue had `overflow: visible` on the SVG element
+// and relied on parent container CSS (`overflow: hidden` on .factory-frame-large)
+// for clipping. In standalone library use there is no such parent, so the ribbon
+// from x=-700 → x=-300 bled outside the SVG element.
+//
+// The fix (bd ai-engineer-n2k9): FlowGraph.vue adds an SVG <clipPath> matching
+// the viewBox bounds so the rendered ribbon is explicitly clipped to the viewBox
+// rectangle regardless of the parent container.
+//
+// These regression tests document the BRANCH TOPOLOGY (including the off-canvas
+// prefix) and verify the viewBox is correctly preserved through migration so the
+// clipPath can reference it. They do not test the Vue render directly — that is
+// verified by running the parity harness in Playwright.
+
+import n9FlowV1Fixture from '../../test/fixtures/flows/n9-multilane.js'
+
+// Import migration + normalization to set up the same path <FlowEmbed> uses.
+import { migrateFlow } from '../../src/format/migrate.js'
+import { normalizeFlow } from '../../src/format/model.js'
+
+const n9Migrated = (() => {
+  const v3 = migrateFlow(n9FlowV1Fixture, 1)
+  return normalizeFlow(v3)
+})()
+
+test('n9-multilane migrated flow has exactly 4 branches (3 lanes + post-merge)', () => {
+  const { branches } = buildBranches(n9Migrated)
+  assert.equal(branches.length, 4,
+    'should be 3 lane branches + 1 post-merge change-board branch')
+})
+
+test('n9-multilane: 3 lane branches include the off-canvas _start prefix', () => {
+  const { branches } = buildBranches(n9Migrated)
+  const laneBranches = branches.filter(b => b.nodeIds.includes('_start'))
+  assert.equal(laneBranches.length, 3, '3 branches fan out from _start')
+  for (const b of laneBranches) {
+    assert.equal(b.nodeIds[0], '_start', '_start is the FIRST node in each lane branch')
+  }
+})
+
+test('n9-multilane: _start anchor is outside the viewBox (off-canvas by design)', () => {
+  const { branches } = buildBranches(n9Migrated)
+  const vbLeft = n9Migrated.viewBox.x   // -300
+  for (const b of branches.filter(b => b.nodeIds.includes('_start'))) {
+    const startAnchor = b.anchors[0]
+    assert.ok(
+      startAnchor.x < vbLeft,
+      `_start anchor x=${startAnchor.x} should be left of viewBox.x=${vbLeft}`,
+    )
+  }
+})
+
+test('n9-multilane: viewBox preserved through migration and normalization', () => {
+  // The clipPath fix in FlowGraph.vue references flow.viewBox. This test
+  // ensures the viewBox survives the full migration + normalization pipeline.
+  assert.ok(n9Migrated.viewBox, 'viewBox present on migrated+normalized flow')
+  assert.equal(n9Migrated.viewBox.x, -300, 'viewBox.x preserved')
+  assert.equal(n9Migrated.viewBox.y, 0, 'viewBox.y preserved')
+  assert.equal(n9Migrated.viewBox.w, 2050, 'viewBox.w preserved')
+  assert.equal(n9Migrated.viewBox.h, 900, 'viewBox.h preserved')
+})
+
+test('n9-multilane: post-merge branch (change-board) is entirely within the viewBox', () => {
+  const { branches } = buildBranches(n9Migrated)
+  const vbLeft = n9Migrated.viewBox.x   // -300
+  const postMerge = branches.find(b => !b.nodeIds.includes('_start'))
+  assert.ok(postMerge, 'post-merge branch exists')
+  for (const anchor of postMerge.anchors) {
+    assert.ok(anchor.x >= vbLeft, `post-merge anchor x=${anchor.x} is within viewBox`)
+  }
+})
