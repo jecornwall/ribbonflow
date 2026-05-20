@@ -5,3 +5,7 @@
 packages:
   - library
   - designer
+  # M5 parity-validation harness (bd ai-engineer-h6sn). Scratch tooling that
+  # renders the deck's real flows through the new library for the swap audit;
+  # not a shipped artefact.
+  - parity
