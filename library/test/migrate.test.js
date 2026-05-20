@@ -24,7 +24,7 @@ import {
   deserializeFlow,
 } from '../src/format/index.js'
 import { migrateFlow } from '../src/format/migrate.js'
-import { speedFromWidth } from '../src/format/model.js'
+import { speedFromWidth, DEFAULT_NODE_SPEED } from '../src/format/model.js'
 
 import n4FlowV1 from './fixtures/flows/n4-toc-baseline.js'
 import n9FlowV1 from './fixtures/flows/n9-multilane.v1.js'
@@ -85,7 +85,10 @@ test('every v1-migrated node carries the v3 node controls', () => {
     assert.equal(typeof n.speed, 'number', `${n.id} has speed`)
     assert.equal(typeof n.width, 'number', `${n.id} has width`)
     assert.equal(typeof n.colorScheme, 'string', `${n.id} has colorScheme`)
-    assert.equal(n.coupleSpeedWidth, true)
+    // bd ai-engineer-gmj7: a migrated constraint is deliberately decoupled
+    // (its narrow width must not throttle speed); every other node keeps the
+    // default Speed⇄Width coupling. n4's constraint is `implementation`.
+    assert.equal(n.coupleSpeedWidth, n.id !== 'implementation')
     // capacity is preserved (v9mj) — every v1 n4 node authored one.
     assert.equal(typeof n.capacity, 'number', `${n.id} preserved capacity`)
     assert.equal(n.latency, undefined, `${n.id} dropped latency`)
@@ -100,8 +103,32 @@ test('v2→v3 maps latency→length and keeps an explicit width', () => {
   const review = v3.nodes.find(n => n.id === 'review')
   assert.equal(review.length, 2.0, 'length ← v2 latency')
   assert.equal(review.width, 22, 'explicit v2 width kept')
-  assert.equal(review.speed, speedFromWidth(22), 'speed ← coupled width')
+  // bd ai-engineer-gmj7: a migrated constraint's speed is NOT coupled to its
+  // narrow width — speedFromWidth(22)=0.4 would silently throttle throughput
+  // 2.5× vs the deck original (no speed field → engine default 1.0).
+  assert.equal(review.speed, DEFAULT_NODE_SPEED, 'constraint speed stays at engine default')
+  assert.equal(review.coupleSpeedWidth, false, 'constraint Speed⇄Width decoupled')
   assert.equal(review.colorScheme, 'red', 'constraint node → red colour scheme')
+})
+
+test('v2→v3: a non-constraint node keeps the Speed⇄Width coupling', () => {
+  const v3 = migrateFlow(m2FlowV2, 2)
+  const laneSlow = v3.nodes.find(n => n.id === 'lane-slow')
+  assert.equal(laneSlow.width, 30, 'explicit v2 width kept')
+  assert.equal(laneSlow.speed, speedFromWidth(30), 'non-constraint speed ← coupled width')
+  assert.equal(laneSlow.coupleSpeedWidth, true, 'non-constraint stays coupled')
+})
+
+test('v1→v3: a migrated narrow constraint keeps engine-default speed (bd gmj7)', () => {
+  // n4's `implementation` constraint authors no width, so it migrates to the
+  // narrow MIGRATED_CONSTRAINT_WIDTH (30). Coupling speed to that width gives
+  // 0.4 — a 2.5× throttle the deck never had. Migration must leave it at 1.0.
+  const v3 = migrateFlow(n4FlowV1, 1)
+  const constraint = v3.nodes.find(n => n.id === 'implementation')
+  assert.equal(constraint.width, 30, 'constraint migrated to the narrow width')
+  assert.equal(constraint.speed, DEFAULT_NODE_SPEED,
+    'speed NOT coupled to the narrow width — deck throughput preserved')
+  assert.equal(constraint.coupleSpeedWidth, false, 'constraint Speed⇄Width decoupled')
 })
 
 test('v2→v3 drops the constraint type but preserves authored capacity', () => {

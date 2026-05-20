@@ -19,9 +19,16 @@
  * v2 → v3 (v1.1, beads ai-engineer-t0c8 / wec5 — see
  *           flow-v1.1-node-controls-design.md §4.3):
  *   - per node: length ← latency ; width ← width ?? (constraint?30:70) ;
- *     speed ← speedFromWidth(width) ; coupleSpeedWidth ← true ;
+ *     speed/coupleSpeedWidth — see below ;
  *     colorScheme ← kind==='constraint' ? 'red' : 'neutral' ;
  *     kind:'constraint' → 'normal' ; drop latency/constraintKind.
+ *   - SPEED (bd ai-engineer-gmj7): a v2 node never authored speed — the deck
+ *     engine ran every node at the default 1.0. A non-constraint node gets
+ *     speed ← speedFromWidth(width) (a no-op for the default width 70) and
+ *     coupleSpeedWidth ← true. A constraint migrates to the narrow width 30,
+ *     where speedFromWidth(30)=0.4 would silently throttle throughput 2.5×;
+ *     so a migrated constraint is left UNCOUPLED at the engine default 1.0
+ *     (coupleSpeedWidth ← false) to preserve deck-parity throughput.
  *   - `capacity` is PRESERVED (bd ai-engineer-v9mj): v3 re-admitted it as an
  *     optional authored node field (the crisp-queue override), so a v1/v2
  *     flow's authored capacity now forward-ports losslessly instead of being
@@ -38,6 +45,7 @@ import {
   DEFAULT_SOURCE_RATE,
   DEFAULT_NODE_LENGTH,
   DEFAULT_NODE_WIDTH,
+  DEFAULT_NODE_SPEED,
   speedFromWidth,
 } from './model.js'
 
@@ -135,9 +143,15 @@ function migrateV2toV3(v2) {
       if (n.width === undefined) {
         n.width = wasConstraint ? MIGRATED_CONSTRAINT_WIDTH : DEFAULT_NODE_WIDTH
       }
-      // SPEED — coupled to WIDTH via the linear map.
-      if (n.speed === undefined) n.speed = speedFromWidth(n.width)
-      if (n.coupleSpeedWidth === undefined) n.coupleSpeedWidth = true
+      // SPEED (bd ai-engineer-gmj7) — a non-constraint node couples speed to
+      // width via the linear map (a no-op at the default width 70). A migrated
+      // constraint is left UNCOUPLED at the engine default: coupling its narrow
+      // MIGRATED_CONSTRAINT_WIDTH (30) would give speed 0.4 — a 2.5× throughput
+      // throttle the deck original (no speed field → engine default) never had.
+      if (n.speed === undefined) {
+        n.speed = wasConstraint ? DEFAULT_NODE_SPEED : speedFromWidth(n.width)
+      }
+      if (n.coupleSpeedWidth === undefined) n.coupleSpeedWidth = !wasConstraint
       // COLOUR — the dropped constraint type becomes the 'red' colour scheme.
       if (n.colorScheme === undefined) {
         n.colorScheme = wasConstraint ? 'red' : 'neutral'
