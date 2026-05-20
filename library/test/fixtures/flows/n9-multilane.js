@@ -189,7 +189,13 @@ export default {
     // already separated, no visible origin. Combined with FlowGraph's new
     // empty-label-skip (also bd-lofq), no fence-post marker renders here.
     { id: '_start', x: -700, y: 450, label: '',
-      capacity: 3, latency: 0.01,
+      // capacity 3 → 5: ported from deck commit d189387 (bd-lclu, 2026-05-20).
+      // _start sits at x=-700, so an agent occupies its slot for ~4.7s of
+      // transit; with capacity 3 the effective throughput (~0.64/s) throttled
+      // below the configured spawnRate=1.0 — the round-robin test landed at 19
+      // _start entries/30s, not the expected ~30. capacity 5 restores the
+      // spawn accumulator as the binding gate (min(1.0, 5/4.7) = 1.0).
+      capacity: 5, latency: 0.01,
       successors: ['discovery', 'triage', 'architecture'] },
 
     // ── Top lane (y=180) ──────────────────────────────────────────────────
