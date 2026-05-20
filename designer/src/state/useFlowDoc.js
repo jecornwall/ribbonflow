@@ -1,7 +1,7 @@
 /**
  * useFlowDoc.js — the designer's single reactive flow document.
  *
- * Holds ONE authored v2 flow (un-normalized — exactly what export writes),
+ * Holds ONE authored v5 flow (un-normalized — exactly what export writes),
  * the current selection, and the active canvas tool. All edits go through the
  * named actions below; centralising mutation keeps the editing model auditable
  * and is the seam a later undo/redo would hook. See M3 spec §2.3 / §3.1.
@@ -64,7 +64,7 @@ const state = reactive({
   justLoaded: false,
 })
 
-/** The authored flow with library defaults applied (normalized v2 shape). */
+/** The authored flow with library defaults applied (normalized v5 shape). */
 const normalized = computed(() => {
   try {
     return normalizeFlow(state.flow)
@@ -356,7 +356,7 @@ function findNode(id) {
   return M.findNode(state.flow, id)
 }
 
-/** Serialize the authored flow to the library's v2 JSON envelope. */
+/** Serialize the authored flow to the library's v5 JSON envelope. */
 function exportFlow() {
   return serializeFlow(state.flow)
 }
