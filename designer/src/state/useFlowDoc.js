@@ -48,8 +48,9 @@ const state = reactive({
   // bumped on STRUCTURAL edits so PreviewPane cleanly remounts the simulation
   previewKey: 0,
   // ── persistence (bd ai-engineer-2fcm) ──────────────────────────────────────
-  // which view the app shows: the landing page, or the flow editor
-  view: 'index', // 'index' | 'editor'
+  // which view the app shows: the landing page, the flow editor, or the
+  // flow-set animated-transition preview (M4, bd ai-engineer-nawa)
+  view: 'index', // 'index' | 'editor' | 'set-preview'
   // the flow-ID (`<set>/<flow>`) backing the open doc, or null when ephemeral
   currentId: null,
   // the open flow's human title (mirrors set.json), '' when ephemeral
@@ -343,6 +344,12 @@ async function goToIndex() {
   state.view = 'index'
 }
 
+/** Switch to the flow-set animated-transition preview (M4). The preview's set
+ *  data is loaded separately by useFlowSetPreview — this only flips the view. */
+function goToSetPreview() {
+  state.view = 'set-preview'
+}
+
 /**
  * Open an existing flow from the store into the editor.
  * @param {string} id — `<set>/<flow>`
@@ -419,6 +426,7 @@ const api = {
   importFlow,
   newFlow,
   goToIndex,
+  goToSetPreview,
   openFlow,
   createFlow,
   saveNow,

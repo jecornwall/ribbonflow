@@ -81,7 +81,9 @@ test('buildIndex assembles the machine-readable index with per-flow metadata', (
   assert.equal(flow.updatedAt, '2026-05-20T10:00:00.000Z')
 })
 
-test('buildIndex sorts sets by id and flows by slug — a deterministic index', () => {
+test('buildIndex sorts sets by id but PRESERVES authored flow order', () => {
+  // A flow-set is an ordered list of states (M4) — buildIndex must not
+  // re-sort flows; it keeps the order the scan (set.json) supplied.
   const idx = buildIndex(
     {
       sets: [
@@ -89,8 +91,8 @@ test('buildIndex sorts sets by id and flows by slug — a deterministic index', 
           id: 'zeta',
           title: 'Zeta',
           flows: [
-            { slug: 'b', title: 'B', envelope: envelope(1), updatedAt: 't' },
-            { slug: 'a', title: 'A', envelope: envelope(1), updatedAt: 't' },
+            { slug: 'before', title: 'Before', envelope: envelope(1), updatedAt: 't' },
+            { slug: 'after', title: 'After', envelope: envelope(1), updatedAt: 't' },
           ],
         },
         { id: 'alpha', title: 'Alpha', flows: [] },
@@ -99,7 +101,8 @@ test('buildIndex sorts sets by id and flows by slug — a deterministic index', 
     { generatedAt: 't' },
   )
   assert.deepEqual(idx.sets.map((s) => s.id), ['alpha', 'zeta'])
-  assert.deepEqual(idx.sets[1].flows.map((f) => f.slug), ['a', 'b'])
+  // 'before' then 'after' — authored order, NOT alphabetical.
+  assert.deepEqual(idx.sets[1].flows.map((f) => f.slug), ['before', 'after'])
 })
 
 test('buildIndex tolerates a missing / malformed envelope', () => {

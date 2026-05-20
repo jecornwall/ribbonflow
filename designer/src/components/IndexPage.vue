@@ -10,9 +10,11 @@
 import { onMounted } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { useFlowStore } from '../state/flowStore.js'
+import { useFlowSetPreview } from '../state/useFlowSetPreview.js'
 
 const doc = useFlowDoc()
 const store = useFlowStore()
+const preview = useFlowSetPreview()
 const { state } = store
 
 onMounted(() => store.refreshIndex())
@@ -43,6 +45,16 @@ async function open(flow) {
     await doc.openFlow(flow.id, flow.title)
   } catch (err) {
     window.alert(`Could not open flow: ${err.message || err}`)
+  }
+}
+
+/** Open the M4 animated-transition preview for a whole flow-set. */
+async function previewSet(set) {
+  doc.goToSetPreview()
+  try {
+    await preview.load(set)
+  } catch (err) {
+    window.alert(`Could not preview set: ${err.message || err}`)
   }
 }
 
@@ -85,6 +97,11 @@ async function removeFlow(flow) {
       <div class="ix-set-head">
         <h2>{{ set.title }}</h2>
         <span class="ix-slug">{{ set.id }}</span>
+        <button
+          v-if="set.flows.length"
+          class="ix-btn ix-preview"
+          @click="previewSet(set)"
+        >▶ Preview</button>
         <button class="ix-btn" @click="newFlow(set)">+ New flow</button>
       </div>
       <p v-if="set.flows.length === 0" class="ix-empty">No flows in this set yet.</p>
@@ -219,8 +236,18 @@ async function removeFlow(flow) {
   background: #16a34a;
   border-color: #16a34a;
 }
-.ix-set-head .ix-btn {
+.ix-set-head .ix-btn:first-of-type {
   margin-left: auto;
+}
+.ix-set-head .ix-btn + .ix-btn {
+  margin-left: 6px;
+}
+.ix-preview {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+.ix-preview:hover {
+  background: #2563eb;
 }
 code {
   font: 11px/1 ui-monospace, monospace;

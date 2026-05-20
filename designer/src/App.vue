@@ -15,6 +15,7 @@ import InspectorPanel from './components/InspectorPanel.vue'
 import PreviewPane from './components/PreviewPane.vue'
 import StatusStrip from './components/StatusStrip.vue'
 import IndexPage from './components/IndexPage.vue'
+import SetPreview from './components/SetPreview.vue'
 
 const doc = useFlowDoc()
 
@@ -38,6 +39,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <IndexPage v-if="doc.state.view === 'index'" />
+  <SetPreview v-else-if="doc.state.view === 'set-preview'" />
   <div v-else class="app">
     <Toolbar />
     <div class="app-body">

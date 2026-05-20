@@ -56,9 +56,11 @@ export function uniqueSlug(base, existing) {
 /**
  * Assemble the machine-readable index from a scan of the persistence root.
  *
- * Sets are sorted by `id` and flows by `slug`, so the output is
- * byte-deterministic regardless of the order the filesystem listed entries —
- * a stable `index.json` that diffs cleanly and a build can rely on.
+ * Sets are sorted by `id`. Flows, however, are kept in the order the scan
+ * supplied them — which is the authored `set.json` `flows[]` order (see
+ * flowStorePlugin.js#scanStore). A flow-set is an *ordered* list of states
+ * (M4), so the index must preserve that order rather than re-sort by slug;
+ * the scan is itself deterministic, so the index still diffs cleanly.
  *
  * @param {{sets: Array<{id,title,flows: Array<{slug,title,envelope,updatedAt}>}>}} scan
  * @param {{generatedAt: string}} opts — ISO timestamp, injected for testability
@@ -71,7 +73,6 @@ export function buildIndex(scan, { generatedAt }) {
       id: set.id,
       title: set.title ?? set.id,
       flows: [...(set.flows ?? [])]
-        .sort((a, b) => String(a.slug).localeCompare(String(b.slug)))
         .map((flow) => ({
           id: `${set.id}/${flow.slug}`,
           slug: flow.slug,

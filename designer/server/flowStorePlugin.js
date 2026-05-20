@@ -110,13 +110,24 @@ function makeStore(root) {
     for (const setSlug of slugs) {
       const meta = await readSetMeta(setSlug)
       const dir = path.join(root, setSlug)
-      const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.flow.json'))
       const titleBySlug = new Map(meta.flows.map((f) => [f.slug, f.title]))
+      // Flow files actually on disk.
+      const diskSlugs = (await fs.readdir(dir))
+        .filter((f) => f.endsWith('.flow.json'))
+        .map((f) => f.replace(/\.flow\.json$/, ''))
+        .filter((s) => SLUG_RE.test(s))
+      const diskSet = new Set(diskSlugs)
+      const metaSlugs = new Set(meta.flows.map((f) => f.slug))
+      // Order: the authored set.json order first (a flow-set is an ORDERED
+      // list of states — M4), then any orphan files not yet in set.json,
+      // sorted, so the scan stays deterministic.
+      const orderedSlugs = [
+        ...meta.flows.map((f) => f.slug).filter((s) => diskSet.has(s)),
+        ...diskSlugs.filter((s) => !metaSlugs.has(s)).sort(),
+      ]
       const flows = []
-      for (const file of files) {
-        const flowSlug = file.replace(/\.flow\.json$/, '')
-        if (!SLUG_RE.test(flowSlug)) continue
-        const full = path.join(dir, file)
+      for (const flowSlug of orderedSlugs) {
+        const full = path.join(dir, `${flowSlug}.flow.json`)
         let envelope = null
         try {
           envelope = JSON.parse(await fs.readFile(full, 'utf8'))
