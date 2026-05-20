@@ -6,10 +6,10 @@
   face, M3 §2.4). Live transition controls tune the running preview; play /
   pause / step drive the player's exposed timeline methods.
 
-  v1 transition controls are LIVE-ONLY — they are mutated in place on the
-  reactive flow-set so the player picks them up without a timeline reset;
-  persisting transition metadata into set.json is a tracked follow-up
-  (M4 spec §2.6 / §7).
+  Transition controls mutate `state.flowSet.transition` in place via v-model so
+  the player picks up duration / hold / easing changes without a timeline reset.
+  Transition persistence (save to set.json across sessions) landed in bd
+  ai-engineer-qwtp — the debounced watcher in useFlowSetPreview.js handles it.
 -->
 <script setup>
 import { ref, computed } from 'vue'
