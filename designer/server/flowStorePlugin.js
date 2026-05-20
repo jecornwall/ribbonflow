@@ -24,6 +24,7 @@
  *   DELETE /__flows/file/<set>/<flow>      → delete flow + update set.json + regen
  *   POST   /__flows/set                   → create a set dir + set.json + regen
  *   PUT    /__flows/set/<set>             → update set metadata (title, transition) + regen
+ *   POST   /__flows/rename               → rename a flow's display title (slug unchanged)
  */
 
 import { promises as fs } from 'node:fs'
@@ -35,6 +36,7 @@ import {
   buildIndex,
   insertFlowAfter,
   reorderFlows,
+  renameFlowInSet,
   SLUG_RE,
 } from './indexBuilder.js'
 
@@ -260,6 +262,22 @@ function makeStore(root) {
     return { id: `${setSlug}/${newSlug}`, slug: newSlug, title: newTitle }
   }
 
+  /**
+   * Rename a flow's display title within its set (bd ai-engineer-h507).
+   *
+   * Only the `title` field in the set.json flows entry is updated — the slug
+   * and the flow file name are the stable references and are never touched by
+   * a rename. Throws when the flow is not found in the set's set.json.
+   */
+  async function renameFlow(setSlug, flowSlug, newTitle) {
+    const meta = await readSetMeta(setSlug)
+    if (!meta.flows.some((f) => f.slug === flowSlug)) {
+      throw new Error(`flow ${flowSlug} not found in set ${setSlug}`)
+    }
+    meta.flows = renameFlowInSet(meta.flows, flowSlug, newTitle)
+    await writeSetMeta(setSlug, meta)
+  }
+
   /** Create a new set directory with a unique slug derived from `title`. */
   async function createSet(title) {
     const existing = await listSetSlugs()
@@ -276,6 +294,7 @@ function makeStore(root) {
     writeFlow,
     deleteFlow,
     duplicateFlow,
+    renameFlow,
     createSet,
     updateSet,
     listSetSlugs,
@@ -330,6 +349,26 @@ export function flowStorePlugin(opts = {}) {
               return sendJson(res, 201, { ok: true, ...dup, index })
             } catch {
               return sendJson(res, 404, { error: 'source flow not found' })
+            }
+          }
+
+          // POST /__flows/rename  body { id: '<set>/<flow>', title: '...' }
+          if (req.method === 'POST' && parts[0] === 'rename' && parts.length === 1) {
+            const body = await readBody(req)
+            const segs = String(body.id || '').split('/').filter(Boolean)
+            if (segs.length !== 2 || !SLUG_RE.test(segs[0]) || !SLUG_RE.test(segs[1])) {
+              return sendJson(res, 400, { error: 'rename needs an `id` of <set>/<flow>' })
+            }
+            const newTitle = typeof body.title === 'string' ? body.title.trim() : ''
+            if (!newTitle) {
+              return sendJson(res, 400, { error: 'rename needs a non-empty `title`' })
+            }
+            try {
+              await store.renameFlow(segs[0], segs[1], newTitle)
+              const index = await store.regenIndex()
+              return sendJson(res, 200, { ok: true, id: body.id, title: newTitle, index })
+            } catch {
+              return sendJson(res, 404, { error: 'flow not found' })
             }
           }
 

@@ -116,6 +116,26 @@ export function insertFlowAfter(flows, afterSlug, entry) {
 }
 
 /**
+ * Return a new flows array with the title of the entry matching `slug` updated
+ * to `newTitle`. Entries whose slug doesn't match are returned as-is (shallow
+ * copy of those objects). Pure — the input array is not mutated.
+ *
+ * Used by the designer's rename-a-flow action (bd ai-engineer-h507): only the
+ * display title changes; the slug / filename is the stable set-reference key
+ * and is never touched by a rename.
+ *
+ * @param {Array<{slug:string,title?:string}>} flows
+ * @param {string} slug
+ * @param {string} newTitle
+ * @returns {Array}
+ */
+export function renameFlowInSet(flows, slug, newTitle) {
+  return (flows ?? []).map((f) =>
+    f.slug === slug ? { ...f, title: newTitle } : f,
+  )
+}
+
+/**
  * Reorder a set's `set.json` flows array to match `orderedSlugs`.
  *
  * A flow-set is an ordered list of states (M4) — the order is the animation

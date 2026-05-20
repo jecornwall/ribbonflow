@@ -77,6 +77,21 @@ async function duplicateFlow(id) {
   return request('POST', `${API}/duplicate`, { id })
 }
 
+/**
+ * Rename a flow's display title (bd ai-engineer-h507). Only the title shown on
+ * the index card and in the set's set.json changes — the slug and the file path
+ * on disk are the stable references and are never touched by a rename. Returns
+ * `{ ok, id, title, index }`.
+ *
+ * Design call: title-only rename (not slug-rename) because the slug is the ID
+ * used in set.json flows[], index.json, and as the filename; renaming it would
+ * require cascading file-system and reference updates with no safety net. The
+ * display title is purely cosmetic and safe to change at any time.
+ */
+async function renameFlow(id, title) {
+  return request('POST', `${API}/rename`, { id, title })
+}
+
 /** Create a new flow-set directory; returns `{ id, title }`. */
 async function createSet(title) {
   return request('POST', `${API}/set`, { title })
@@ -104,6 +119,7 @@ export function useFlowStore() {
     saveFlow,
     deleteFlow,
     duplicateFlow,
+    renameFlow,
     createSet,
     saveSetMeta,
   }

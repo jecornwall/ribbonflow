@@ -18,6 +18,7 @@ import {
   buildIndex,
   insertFlowAfter,
   reorderFlows,
+  renameFlowInSet,
 } from '../server/indexBuilder.js'
 
 // ── slugify ──────────────────────────────────────────────────────────────────
@@ -250,4 +251,78 @@ test('reorderFlows tolerates a missing flows / order array', () => {
     reorderFlows([{ slug: 'a' }], undefined).map((f) => f.slug),
     ['a'],
   )
+})
+
+// ── renameFlowInSet (bd ai-engineer-h507) ─────────────────────────────────────
+
+test('renameFlowInSet updates the title of the named slug only', () => {
+  const flows = [
+    { slug: 'before', title: 'Before' },
+    { slug: 'after', title: 'After' },
+  ]
+  const out = renameFlowInSet(flows, 'before', 'New Before')
+  assert.deepEqual(out, [
+    { slug: 'before', title: 'New Before' },
+    { slug: 'after', title: 'After' },
+  ])
+})
+
+test('renameFlowInSet preserves all extra fields on the renamed entry', () => {
+  const flows = [{ slug: 'a', title: 'A', extra: 42 }]
+  const out = renameFlowInSet(flows, 'a', 'B')
+  assert.deepEqual(out[0], { slug: 'a', title: 'B', extra: 42 })
+})
+
+test('renameFlowInSet does not mutate the input array or its entries', () => {
+  const orig = { slug: 'a', title: 'A' }
+  const flows = [orig]
+  const out = renameFlowInSet(flows, 'a', 'B')
+  assert.equal(orig.title, 'A', 'input entry untouched')
+  assert.equal(flows.length, 1, 'input array untouched')
+  assert.equal(out[0].title, 'B')
+  assert.notEqual(out[0], orig, 'new object returned for renamed entry')
+})
+
+test('renameFlowInSet is a no-op for an unknown slug', () => {
+  const flows = [{ slug: 'a', title: 'A' }]
+  const out = renameFlowInSet(flows, 'ghost', 'X')
+  assert.deepEqual(out, flows)
+})
+
+test('renameFlowInSet tolerates a missing flows array', () => {
+  assert.deepEqual(renameFlowInSet(undefined, 'a', 'X'), [])
+})
+
+test('rename round-trip: renamed title appears in buildIndex output', () => {
+  // Simulates the server flow: rename in set.json → buildIndex reads updated
+  // flows → index carries the new title; slug stays unchanged.
+  const flows = [
+    { slug: 'before', title: 'Before' },
+    { slug: 'after', title: 'After' },
+  ]
+  const renamedFlows = renameFlowInSet(flows, 'before', 'Start State')
+  const idx = buildIndex(
+    {
+      sets: [
+        {
+          id: 'my-set',
+          title: 'My Set',
+          flows: renamedFlows.map((f) => ({
+            ...f,
+            envelope: { formatVersion: 3, flow: { nodes: [] } },
+            updatedAt: 't',
+          })),
+        },
+      ],
+    },
+    { generatedAt: 't' },
+  )
+  const [beforeEntry, afterEntry] = idx.sets[0].flows
+  // Title updated, slug unchanged.
+  assert.equal(beforeEntry.title, 'Start State')
+  assert.equal(beforeEntry.slug, 'before', 'slug unchanged after rename')
+  assert.equal(beforeEntry.id, 'my-set/before', 'id unchanged after rename')
+  // Sibling entry untouched.
+  assert.equal(afterEntry.title, 'After')
+  assert.equal(afterEntry.slug, 'after')
 })

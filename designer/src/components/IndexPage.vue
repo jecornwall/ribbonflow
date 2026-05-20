@@ -98,6 +98,22 @@ async function previewSet(set) {
   }
 }
 
+/**
+ * Rename a flow's display title in-place (bd ai-engineer-h507).
+ * Only the title changes — slug and file path stay intact so set references
+ * are never broken. Uses a plain prompt, mirroring the newSet / newFlow UX.
+ */
+async function renameFlow(flow) {
+  const newTitle = window.prompt('Rename flow:', flow.title)
+  if (!newTitle || newTitle.trim() === flow.title) return
+  try {
+    await store.renameFlow(flow.id, newTitle.trim())
+    await store.refreshIndex()
+  } catch (err) {
+    window.alert(`Could not rename flow: ${err.message || err}`)
+  }
+}
+
 /** Duplicate a flow within its set — a one-click fork while authoring
  *  (bd ai-engineer-ih7q). The copy lands right after the source in the set. */
 async function duplicate(flow) {
@@ -187,6 +203,11 @@ async function removeFlow(flow) {
             title="duplicate flow"
             @click="duplicate(flow)"
           >⧉</button>
+          <button
+            class="ix-flow-act"
+            title="rename flow"
+            @click="renameFlow(flow)"
+          >✎</button>
           <button class="ix-flow-del" title="delete flow" @click="removeFlow(flow)">
             ✕
           </button>
