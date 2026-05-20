@@ -409,6 +409,7 @@ import {
   RIBBON_SCHEME_COLORS,
   RIBBON_SCHEME_COLORS_LIGHT,
   REJECTION_PARTICLE_COLOR,
+  rejectionEdgeAnchors,
 } from './flowCurve.js'
 import {
   transformGlyphsFor,
@@ -784,15 +785,22 @@ const junctionDiscs = computed(() => {
 const rejectionEdges = computed(() => {
   const byId = new Map(props.flow.nodes.map(n => [n.id, n]))
   const out = []
-  ;(props.flow.rejections || []).forEach((rej, i) => {
+  const rejList = props.flow.rejections || []
+  // bd ai-engineer-91ds: anchor the arc on the band EDGE, not the node
+  // centerline — so the dotted arc peels off the SIDE of the ribbon. The
+  // per-node half-width comes from computeNodeWidths (re-derived here so the
+  // arcs stay correct across a before/after `flow`-prop swap).
+  const rejWidths = rejList.length ? computeNodeWidths(props.flow) : null
+  rejList.forEach((rej, i) => {
     if (rej == null) return
     const f = byId.get(rej.from)
     const t = byId.get(rej.to)
     if (!f || !t) return
+    const { fromPt, toPt } = rejectionEdgeAnchors(f, t, rej.bow, rejWidths)
     out.push({
       key: `rej-${i}`,
-      from: { x: f.x, y: f.y },
-      to: { x: t.x, y: t.y },
+      from: fromPt,
+      to: toPt,
       bow: rej.bow,
     })
   })

@@ -38,8 +38,24 @@ export const DEFAULT_SOURCE_RATE = 1.0
 export const LENGTH_RANGE = { min: 0.3, max: 2.0 }
 export const DEFAULT_NODE_LENGTH = 0.8
 
-/** SPEED — particle speed through the node. Coupled to WIDTH by default. */
+/**
+ * SPEED — particle speed through the node.
+ *
+ * `SPEED_RANGE` is the Speed⇄Width COUPLING range: speedFromWidth /
+ * widthFromSpeed map this linearly onto WIDTH_RANGE, and the two are sized so
+ * the defaults align (width 70 ⇄ speed 1.0, each its own range's midpoint).
+ * Do not widen it — that would shift the coupled default off 1.0.
+ *
+ * `SPEED_CONTROL_RANGE` is the wider range the designer's SPEED slider exposes
+ * (bd ai-engineer-gez3). A heavily-converged node — several inbound paths
+ * merging into one — needs throughput far above a single-path node's, so the
+ * authored `speed` knob (a pure engine multiplier — useFlowSimulation applies
+ * it as `localNodeSpeed`, no upper clamp) must be drivable well past the 1.75
+ * coupling ceiling. 6.0 covers a ~4–5× converged node with headroom. In
+ * coupled mode a speed past 1.75 simply pegs width at WIDTH_RANGE.max.
+ */
 export const SPEED_RANGE = { min: 0.25, max: 1.75 }
+export const SPEED_CONTROL_RANGE = { min: 0.25, max: 6.0 }
 export const DEFAULT_NODE_SPEED = 1.0
 
 /** WIDTH — visual pipe width (viewBox units). Coupled to SPEED by default. */

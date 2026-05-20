@@ -26,6 +26,7 @@ import {
   rejectionArcPath,
   rejectionArrowPointsAttr,
   rejectionArcCurve,
+  rejectionEdgeAnchors,
   quadBezierPoint,
   REJECTION_COLOR,
 } from '@flow-designer/library/internals'
@@ -36,14 +37,20 @@ const props = defineProps({
   to: { type: Object, required: true },
   // { side: 'above'|'below', depth: number }; rejectionArcCurve fills defaults
   bow: { type: Object, default: () => ({}) },
+  // per-node ribbon widths (computeNodeWidths) — feeds the band-edge anchor
+  widths: { type: Object, default: () => ({}) },
   selected: { type: Boolean, default: false },
 })
 const emit = defineEmits(['edgedown', 'apexdown'])
 
-// Node centres are the bow anchors — matching the library renderer, which
-// feeds rejectionBowCurve the raw node xy (see FlowGraph rejectionEdges).
-const fromPt = computed(() => ({ x: props.from.x, y: props.from.y }))
-const toPt = computed(() => ({ x: props.to.x, y: props.to.y }))
+// bd ai-engineer-91ds: the bow anchors sit on the band EDGE (top/bottom of the
+// ribbon at the node's x), not the node centre — so the dotted arc peels off
+// the SIDE of the flow, matching the library renderer (FlowGraph rejectionEdges).
+const anchors = computed(() =>
+  rejectionEdgeAnchors(props.from, props.to, props.bow, props.widths),
+)
+const fromPt = computed(() => anchors.value.fromPt)
+const toPt = computed(() => anchors.value.toPt)
 
 const arcPath = computed(() => rejectionArcPath(fromPt.value, toPt.value, props.bow))
 const arrowPoints = computed(() =>

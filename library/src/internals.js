@@ -36,6 +36,9 @@ export {
   quadBezierPoint,
   rejectionBowCurve,
   buildRejectionCenterline,
+  // bd ai-engineer-91ds — band-edge anchors so a rejection arc peels off the
+  // SIDE of the flow ribbon, not its centerline.
+  rejectionEdgeAnchors,
   REJECTION_BAND_WIDTH,
   // width model
   computeNodeWidths,
@@ -140,6 +143,9 @@ export {
   // v1.1 node controls — ranges, defaults, the Speed⇄Width coupling maps.
   LENGTH_RANGE,
   SPEED_RANGE,
+  // bd ai-engineer-gez3 — the wider SPEED-slider range (a converged node needs
+  // throughput well past the 1.75 coupling ceiling).
+  SPEED_CONTROL_RANGE,
   WIDTH_RANGE,
   DEFAULT_NODE_LENGTH,
   DEFAULT_NODE_SPEED,

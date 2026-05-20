@@ -272,6 +272,38 @@ export function buildRejectionCenterline(fromPt, toPt, bow) {
   })
 }
 
+/**
+ * Band-edge anchor points for a rejection edge (bd ai-engineer-91ds).
+ *
+ * Jason direction (2026-05-21): a rejection arc must peel off the SIDE of the
+ * flow band — the top or bottom edge of the ribbon at the node's x — not the
+ * node centerline (the middle of the ribbon). Both anchors sit on the edge
+ * given by `bow.side`: 'below' → the bottom edge (node.y + half-width),
+ * 'above' → the top edge (node.y − half-width). The dotted arc then leaves
+ * the edge of the flow, naturally continuing onto the bow.
+ *
+ * The per-node half-width comes from the `widths` map (computeNodeWidths). A
+ * node missing from the map falls back to MIN_RIBBON_WIDTH — the renderer
+ * must not crash on a transient mid-edit designer state.
+ *
+ * @param {{id:string,x:number,y:number}} fromNode — the edge's source node
+ * @param {{id:string,x:number,y:number}} toNode   — the edge's target node
+ * @param {{side?:'above'|'below',depth?:number}} bow — bow descriptor
+ * @param {{[id:string]:number}} widths — per-node ribbon widths
+ * @returns {{ fromPt:{x:number,y:number}, toPt:{x:number,y:number} }}
+ */
+export function rejectionEdgeAnchors(fromNode, toNode, bow, widths) {
+  const side = bow && bow.side === 'above' ? 'above' : 'below'
+  const sign = side === 'below' ? 1 : -1
+  const w = widths || {}
+  const halfOf = (id) =>
+    (typeof w[id] === 'number' ? w[id] : MIN_RIBBON_WIDTH) / 2
+  return {
+    fromPt: { x: fromNode.x, y: fromNode.y + sign * halfOf(fromNode.id) },
+    toPt:   { x: toNode.x,   y: toNode.y   + sign * halfOf(toNode.id) },
+  }
+}
+
 // ---- Branch builder -------------------------------------------------------
 
 /**
@@ -376,13 +408,20 @@ export function buildBranches(flow) {
   // so selectBranch + the renderer treat them distinctly from forward
   // ribbons. Fixed-width (REJECTION_BAND_WIDTH) — NOT width/rate coupled.
   // A dangling `from`/`to` reference is skipped here (validateFlow flags it).
+  //
+  // bd ai-engineer-91ds: the anchors sit on the BAND EDGE (top/bottom of the
+  // ribbon at the node's x), not the node centerline — so the dotted arc and
+  // the rejected particles peel off the SIDE of the flow. computeNodeWidths
+  // is only paid for when the flow actually has rejection edges.
+  const rejWidths = (flow.rejections && flow.rejections.length)
+    ? computeNodeWidths(flow)
+    : null
   for (const rej of flow.rejections || []) {
     if (rej == null) continue
     const fromNode = nodeById.get(rej.from)
     const toNode = nodeById.get(rej.to)
     if (!fromNode || !toNode) continue
-    const fromPt = { x: fromNode.x, y: fromNode.y }
-    const toPt = { x: toNode.x, y: toNode.y }
+    const { fromPt, toPt } = rejectionEdgeAnchors(fromNode, toNode, rej.bow, rejWidths)
     branches.push({
       kind: 'rejection',
       rejection: rej,

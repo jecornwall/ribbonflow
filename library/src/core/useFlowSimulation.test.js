@@ -1620,3 +1620,52 @@ test('v1.2 R2: a flow with no rejection edges is byte-for-byte unchanged', () =>
   for (let i = 0; i < 600; i++) sim.step(1 / 60)
   assert.equal(sim.traces.revisions.length, 0, 'no revisions without rejection edges')
 })
+
+// ──────────────────────────────────────────────────────────────────────────
+// bd ai-engineer-gez3 — the designer's SPEED slider range is extended past
+// the old 1.75 ceiling. The engine applies `node.speed` as `localNodeSpeed`,
+// a pure targetSpeed multiplier with NO upper clamp — so a value well past
+// 1.75 must be honoured and physically move agents faster.
+// ──────────────────────────────────────────────────────────────────────────
+
+test('gez3: node SPEED past the old 1.75 control cap is honoured by the engine', () => {
+  // Two identical wide flows; the ONLY difference is the node SPEED knob.
+  // Equal widths → identical width-based speedFraction, so any difference in
+  // distance travelled is purely the localNodeSpeed multiplier.
+  const makeFlow = (speed) => ({
+    viewBox: { w: 2000, h: 600 },
+    baseSpeed: 200,
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200, y: 300, width: 70, speed, latency: 1, successors: ['b'] },
+      { id: 'b', x: 1800, y: 300, width: 70, speed, latency: 1, successors: [] },
+    ],
+  })
+  const slow = createFlowSimulation(makeFlow(1.0), { initialAgents: 1 })
+  const fast = createFlowSimulation(makeFlow(5.0), { initialAgents: 1 })
+  for (let i = 0; i < 90; i++) { slow.step(1 / 60); fast.step(1 / 60) }
+  const slowX = slow.agents[0].x
+  const fastX = fast.agents[0].x
+  assert.ok(
+    fastX > slowX + 300,
+    `speed 5.0 (past the old 1.75 cap) must outrun speed 1.0 — slow=${slowX} fast=${fastX}`,
+  )
+})
+
+test('gez3: the engine runs cleanly at a speed far above the old cap', () => {
+  // A high speed must not break integration — agents stay finite and on-canvas.
+  const flow = {
+    viewBox: { w: 2000, h: 600 },
+    baseSpeed: 200,
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200, y: 300, width: 70, speed: 6, latency: 1, successors: ['b'] },
+      { id: 'b', x: 1800, y: 300, width: 70, speed: 6, latency: 1, successors: [] },
+    ],
+  }
+  const sim = createFlowSimulation(flow, { initialAgents: 4 })
+  for (let i = 0; i < 600; i++) sim.step(1 / 60)
+  for (const a of sim.agents) {
+    assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y), 'agent coords stay finite at speed 6')
+  }
+})

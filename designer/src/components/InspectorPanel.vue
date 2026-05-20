@@ -20,7 +20,7 @@ import { computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import {
   LENGTH_RANGE,
-  SPEED_RANGE,
+  SPEED_CONTROL_RANGE,
   WIDTH_RANGE,
 } from '@flow-designer/library/internals'
 
@@ -296,9 +296,9 @@ function fmt(v, decimals = 2) {
         <span>speed</span>
         <input
           type="range" class="slider"
-          :min="SPEED_RANGE.min" :max="SPEED_RANGE.max" step="0.05"
+          :min="SPEED_CONTROL_RANGE.min" :max="SPEED_CONTROL_RANGE.max" step="0.05"
           :value="node.speed ?? 1.0"
-          title="speed particles travel through this node"
+          title="speed particles travel through this node — a heavily-converged node needs a high value to clear its inbound pile-up"
           @input="doc.setNodeSpeed(node.id, +$event.target.value)"
           @change="doc.commitEdit()"
         />
