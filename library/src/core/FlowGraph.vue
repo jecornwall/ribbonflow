@@ -56,7 +56,7 @@
          draftsman's-hand quality reads consistently across the whole figure. -->
     <g :filter="flow.inkWobble ? `url(#${wobbleId})` : undefined">
       <FlowRibbon
-        v-for="(branch, i) in branches"
+        v-for="(branch, i) in renderBranches"
         :key="`branch-${i}`"
         :centerline="branch.centerline"
         :width-fn="branchWidthFn(branch)"
@@ -481,6 +481,16 @@ let sim = buildSim()
 const branches = sim.branches
 const widths   = computeNodeWidths(props.flow)
 
+// Render-side branch list (bd ai-engineer-yzjh). A rejection branch
+// (kind:'rejection') is a routing artefact for the simulation ONLY — the
+// 'revising' particles ride its centerline. It must NOT get a painted
+// ribbon: a rejection edge's whole visual is the thin dotted FlowRejectionArc
+// (drawn separately below). Every ribbon-painting computed — FlowRibbon,
+// coloredSegments, segmentDividers, pinchZones, junctionDiscs — iterates
+// `renderBranches`, never the raw `branches` (which the engine still needs
+// in full for selectBranch routing).
+const renderBranches = branches.filter(b => b.kind !== 'rejection')
+
 // ── Minard legend strip (visuals.md §10.5) ────────────────────────────────
 // Derive the constraint and widest segment labels so the secondary legend line
 // can show the actual throughput ratio for this flow (e.g. "Review handles 1
@@ -589,7 +599,7 @@ const coloredSegments = computed(() => {
   // ribbon profile is buildPinchWidthFn, not the segmented layout, and the
   // dusty-rose pinch overlay already carries the constraint's two-tone read.
   if (props.flow.pinchMode === 'constraint-only') {
-    branches.forEach((branch, bi) => {
+    renderBranches.forEach((branch, bi) => {
       const segLens = branchLatencyArc(branch)
       const wfn = branchWidthFn(branch)
       const total = branch.centerline.totalLength
@@ -610,7 +620,7 @@ const coloredSegments = computed(() => {
     return out
   }
   // Non-pinch flows: smooth segmented layout → plateau + lighter wings.
-  branches.forEach((branch, bi) => {
+  renderBranches.forEach((branch, bi) => {
     const { widthFn, segments } = segmentedRibbonLayout(branch, props.flow, widths)
     segments.forEach((seg, i) => {
       const node = props.flow.nodes.find(n => n.id === seg.nodeId)
@@ -649,7 +659,7 @@ const coloredSegments = computed(() => {
 const segmentDividers = computed(() => {
   if (!props.flow.segmentDividers) return []
   const result = []
-  branches.forEach((branch, bi) => {
+  renderBranches.forEach((branch, bi) => {
     const segLens = branchLatencyArc(branch)
     const wfn = branchWidthFn(branch)
     let acc = 0
@@ -694,7 +704,7 @@ const segmentDividers = computed(() => {
 // constraint is set).
 const pinchZones = computed(() => {
   if (props.flow.pinchMode !== 'constraint-only') return []
-  return branches.map(branch => {
+  return renderBranches.map(branch => {
     const wfn = buildPinchWidthFn(branch, props.flow)
     const ranges = pinchZoneArcRanges(branch, props.flow)
     return {
@@ -731,7 +741,7 @@ const junctionDiscs = computed(() => {
     const node = props.flow.nodes.find(n => n.id === id)
     if (!node) continue
     let maxW = 0
-    for (const branch of branches) {
+    for (const branch of renderBranches) {
       const idx = branch.nodeIds.indexOf(id)
       if (idx < 0) continue
       const wfn = branchWidthFn(branch)

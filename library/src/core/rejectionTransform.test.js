@@ -1,7 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createFlowSimulation, projectToCenterline } from './useFlowSimulation.js'
-import { REJECTION_BAND_WIDTH, PARTICLE_RADIUS, LARGE_PARTICLE_SCALE } from './flowCurve.js'
+import {
+  REJECTION_BAND_WIDTH,
+  PARTICLE_RADIUS,
+  LARGE_PARTICLE_SCALE,
+  REJECTION_SPEED_MULTIPLIER,
+} from './flowCurve.js'
 
 // ──────────────────────────────────────────────────────────────────────────
 // Cross-feature suite — v1.2 rejection edges × v1.3 large particles.
@@ -91,6 +96,46 @@ test('rejection×large: Tier-1 no-escape holds for a large on a thin rejection a
     `large should be pinned to the thin-arc centerline, max centre dist ${maxCentreDist.toFixed(2)}`)
   assert.equal(sim.traces.escapes.length, 0,
     `teleport backstop fired: ${JSON.stringify(sim.traces.escapes.slice(0, 2))}`)
+})
+
+// ── Rejection-branch speed (bd ai-engineer-yzjh) ───────────────────────────
+// A dot travelling a rejection edge must, by default, move FASTER than the
+// default forward-flow particle speed — a snappier back-path. The engine
+// applies REJECTION_SPEED_MULTIPLIER (> 1) as the speedFraction for any
+// rejection branch, bypassing the forward-flow width-ramp slowdown.
+
+test('rejection speed: REJECTION_SPEED_MULTIPLIER is a faster-than-forward default (> 1)', () => {
+  assert.ok(REJECTION_SPEED_MULTIPLIER > 1,
+    `rejection dots must default FASTER than forward flow, got ${REJECTION_SPEED_MULTIPLIER}`)
+})
+
+test('rejection speed: a particle revising on a rejection branch travels faster than forward flow', () => {
+  const sim = createFlowSimulation(largeRejectFlow, { initialAgents: 5 })
+  const prev = new Map()
+  let revSum = 0, revN = 0       // mean speed on a rejection branch
+  let fwdSum = 0, fwdN = 0       // mean speed in forward flow
+  for (let i = 0; i < 3600; i++) {
+    sim.step(1 / 60)
+    for (const a of sim.agents) {
+      const p = prev.get(a.id)
+      if (p) {
+        const speed = Math.hypot(a.x - p.x, a.y - p.y) / (1 / 60)  // px/s
+        const onRejection = a.lifecycle === 'revising' && a.currentNodeId != null
+        if (onRejection) { revSum += speed; revN++ }
+        else if (a.lifecycle === 'in-process') { fwdSum += speed; fwdN++ }
+      }
+      prev.set(a.id, { x: a.x, y: a.y })
+    }
+  }
+  assert.ok(revN > 0, 'a particle was observed travelling a rejection branch')
+  assert.ok(fwdN > 0, 'particles were observed in forward flow')
+  const revMean = revSum / revN
+  const fwdMean = fwdSum / fwdN
+  // The rejection-branch mean speed must clearly exceed forward-flow mean —
+  // a visibly snappier back-path.
+  assert.ok(revMean > fwdMean,
+    `rejection-branch travel (${revMean.toFixed(0)} px/s) should be faster `
+    + `than forward flow (${fwdMean.toFixed(0)} px/s)`)
 })
 
 // ── Case 2 — rejection rolled on a SPLIT node ──────────────────────────────

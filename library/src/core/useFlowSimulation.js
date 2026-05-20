@@ -20,6 +20,7 @@ import {
   LARGE_PARTICLE_SCALE,
   WALL_MARGIN,
   REJECTION_BAND_WIDTH,
+  REJECTION_SPEED_MULTIPLIER,
 } from './flowCurve.js'
 import { resolveRng } from './rng.js'
 
@@ -1955,7 +1956,14 @@ export function createFlowSimulation(flow, opts = {}) {
     // (not the iter-2 behaviour of 0.83 at the plateau, which made the
     // constraint visually as fast as the wide band).
     let speedFraction
-    if (localBandWidth >= SLOW_THRESHOLD_W) {
+    if (branch.kind === 'rejection') {
+      // A rejection branch is a back-path, not a constraint (bd
+      // ai-engineer-yzjh). Its thin fixed REJECTION_BAND_WIDTH would
+      // otherwise drop the agent into the width-ramp slowdown below and
+      // make a 'revising' particle CRAWL. Instead apply a >1 multiplier so
+      // the rejected unit snaps back visibly faster than forward flow.
+      speedFraction = REJECTION_SPEED_MULTIPLIER
+    } else if (localBandWidth >= SLOW_THRESHOLD_W) {
       speedFraction = 1.0
     } else if (localBandWidth <= NARROW_W || SLOW_THRESHOLD_W <= NARROW_W) {
       speedFraction = MIN_SPEED_FACTOR

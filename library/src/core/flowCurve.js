@@ -197,6 +197,17 @@ export function buildCenterline(anchors) {
 export const REJECTION_BAND_WIDTH = 14
 
 /**
+ * Speed multiplier for a particle travelling a rejection branch (bd
+ * ai-engineer-yzjh). A rejected unit snapping BACK along the dotted arc
+ * should read as a quick, decisive return — visibly FASTER than the default
+ * forward-flow particle speed (multiplier > 1). The simulation applies this
+ * as the `speedFraction` for any rejection branch, bypassing the forward
+ * flow's width-ramp slowdown (the thin rejection band is a back-path, not a
+ * constraint, so it must not trigger the queue-formation speed ramp).
+ */
+export const REJECTION_SPEED_MULTIPLIER = 1.6
+
+/**
  * Fallback bow depth (viewBox units) when a rejection edge omits `bow.depth`.
  * Mirrors format/model.js's DEFAULT_REJECTION_BOW_DEPTH — inlined here
  * (module-private) so the curve layer carries no format-layer dependency,
