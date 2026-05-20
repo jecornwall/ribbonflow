@@ -468,6 +468,31 @@ export function setTransformCount(flow, id, n) {
   }
 }
 
+/**
+ * Set a node's explicit CAPACITY override — the max particles it processes
+ * concurrently (bd ai-engineer-ey0b). `capacity` is OPTIONAL: when absent the
+ * library's normalizeFlow derives it from `width` (capacityFromWidth). An
+ * explicit integer override wins, and is what clears a heavily-converged
+ * node's inbound pile-up — the convergence pile-up is capacity-bound, not
+ * speed-bound (proven by the N9 cross-team-review engine sweep).
+ *
+ * A finite value is rounded to an integer ≥ 1 (the engine requires
+ * capacity ≥ 1; validateFlow warns on a non-positive-integer). An empty /
+ * undefined value CLEARS the override, reverting the node to the
+ * width-derived default.
+ */
+export function setNodeCapacity(flow, id, value) {
+  const n = findNode(flow, id)
+  if (!n) return
+  if (value === undefined || value === '' || value === null) {
+    delete n.capacity
+  } else if (typeof value === 'number' && Number.isFinite(value)) {
+    n.capacity = Math.max(1, Math.round(value))
+  } else {
+    n.capacity = value
+  }
+}
+
 /** Set an arbitrary field on a node (label, width, rate, capacity, …). */
 export function setNodeField(flow, id, key, value) {
   const n = findNode(flow, id)

@@ -147,6 +147,9 @@ export {
   // throughput well past the 1.75 coupling ceiling).
   SPEED_CONTROL_RANGE,
   WIDTH_RANGE,
+  // bd ai-engineer-ey0b — the per-node CAPACITY-override slider range (a
+  // converged node needs capacity well past the width-derived ceiling).
+  CAPACITY_CONTROL_RANGE,
   DEFAULT_NODE_LENGTH,
   DEFAULT_NODE_SPEED,
   DEFAULT_NODE_WIDTH,

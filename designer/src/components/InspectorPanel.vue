@@ -22,6 +22,8 @@ import {
   LENGTH_RANGE,
   SPEED_CONTROL_RANGE,
   WIDTH_RANGE,
+  CAPACITY_CONTROL_RANGE,
+  capacityFromWidth,
 } from '@flow-designer/library/internals'
 
 const doc = useFlowDoc()
@@ -147,6 +149,20 @@ function setFlowNum(key, value) {
 function fmt(v, decimals = 2) {
   return typeof v === 'number' ? v.toFixed(decimals) : '—'
 }
+
+// ── per-node CAPACITY override (bd ai-engineer-ey0b) ─────────────────────────
+// `capacity` is OPTIONAL: when the node authors none the library derives it
+// from width. The override checkbox materialises / clears an explicit integer;
+// when off, the width-derived value is shown read-only so the author still
+// sees what the engine will use.
+/** True when the selected node carries an explicit capacity override. */
+const hasCapacityOverride = computed(() =>
+  node.value ? typeof node.value.capacity === 'number' : false,
+)
+/** The capacity the library would derive from this node's width. */
+const derivedCapacity = computed(() =>
+  node.value ? capacityFromWidth(node.value.width ?? 70) : 0,
+)
 </script>
 
 <template>
@@ -326,6 +342,37 @@ function fmt(v, decimals = 2) {
         />
         <span>couple speed ⇄ width</span>
       </label>
+
+      <!-- ── per-node CAPACITY override (bd ai-engineer-ey0b) ─────────────── -->
+      <!-- capacity = max particles a node processes concurrently. It is an
+           OPTIONAL field — off by default, the library derives it from width.
+           Turning the override on materialises an explicit integer (seeded at
+           the width-derived value); the slider then drives it well past that
+           ceiling to clear a heavily-converged node's inbound pile-up. The
+           slider drags live and commits the preview once on release. -->
+      <label class="row couple">
+        <input
+          type="checkbox"
+          :checked="hasCapacityOverride"
+          @change="doc.setCapacityOverride(node.id, $event.target.checked)"
+        />
+        <span>override capacity</span>
+      </label>
+      <div v-if="hasCapacityOverride" class="row ctl">
+        <span>capacity</span>
+        <input
+          type="range" class="slider"
+          :min="CAPACITY_CONTROL_RANGE.min" :max="CAPACITY_CONTROL_RANGE.max" step="1"
+          :value="node.capacity"
+          title="max particles this node processes concurrently — raise it to clear a heavily-converged node's inbound pile-up"
+          @input="doc.setNodeCapacity(node.id, +$event.target.value)"
+          @change="doc.commitEdit()"
+        />
+        <code class="readout">{{ node.capacity }}</code>
+      </div>
+      <p v-else class="hint">
+        capacity auto {{ derivedCapacity }} (derived from width)
+      </p>
 
       <!-- ── per-segment colour scheme ───────────────────────────────────── -->
       <div class="row">

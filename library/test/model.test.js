@@ -21,6 +21,7 @@ import {
   WIDTH_RANGE,
   SPEED_RANGE,
   SPEED_CONTROL_RANGE,
+  CAPACITY_CONTROL_RANGE,
   DEFAULT_NODE_SPEED,
   DEFAULT_REJECTION_RATE,
   DEFAULT_REJECTION_BOW_DEPTH,
@@ -200,6 +201,41 @@ test('a narrow node couples to a low speed (the constraint reads)', () => {
 test('capacityFromWidth is monotone and never below 1', () => {
   assert.ok(capacityFromWidth(20) >= 1)
   assert.ok(capacityFromWidth(120) > capacityFromWidth(20))
+})
+
+// ── bd ai-engineer-ey0b — the CAPACITY-override slider range reaches well past
+// the width-derived ceiling so a converged node's pile-up can be cleared. ────
+test('CAPACITY_CONTROL_RANGE extends beyond the width-derived capacity ceiling', () => {
+  // capacityFromWidth tops out at the widest node; the override slider must
+  // reach past it for a heavily-converged node (the N9 cross-team-review case).
+  const widthDerivedMax = capacityFromWidth(WIDTH_RANGE.max)
+  assert.ok(CAPACITY_CONTROL_RANGE.max > widthDerivedMax,
+    `control max ${CAPACITY_CONTROL_RANGE.max} must exceed the width ceiling ${widthDerivedMax}`)
+  assert.ok(CAPACITY_CONTROL_RANGE.max >= 8,
+    `control max ${CAPACITY_CONTROL_RANGE.max} must reach a converged node's needs`)
+})
+
+test('CAPACITY_CONTROL_RANGE.min is 1 — the strict one-at-a-time gate', () => {
+  // capacity:1 is a hard one-at-a-time gate; the slider must still reach it so
+  // a designer can author (or restore) the deliberate-bottleneck optic.
+  assert.equal(CAPACITY_CONTROL_RANGE.min, 1)
+})
+
+test('CAPACITY_CONTROL_RANGE bounds are positive integers', () => {
+  assert.ok(Number.isInteger(CAPACITY_CONTROL_RANGE.min))
+  assert.ok(Number.isInteger(CAPACITY_CONTROL_RANGE.max))
+  assert.ok(CAPACITY_CONTROL_RANGE.max > CAPACITY_CONTROL_RANGE.min)
+})
+
+test('an explicit capacity inside the control range survives normalizeFlow', () => {
+  // The override must reach the engine intact — normalizeFlow keeps an authored
+  // integer rather than re-deriving it from width (bd ai-engineer-v9mj path).
+  const cap = CAPACITY_CONTROL_RANGE.max
+  const norm = normalizeFlow({
+    nodes: [{ id: 'converged', x: 0, y: 0, width: 30, capacity: cap }],
+  })
+  assert.equal(norm.nodes[0].capacity, cap,
+    'an explicit override capacity is honoured, not re-derived from width')
 })
 
 // ── validateFlow ─────────────────────────────────────────────────────────────

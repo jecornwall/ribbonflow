@@ -62,6 +62,28 @@ export const DEFAULT_NODE_SPEED = 1.0
 export const WIDTH_RANGE = { min: 20, max: 120 }
 export const DEFAULT_NODE_WIDTH = 70
 
+/**
+ * CAPACITY — the explicit per-node capacity OVERRIDE range (bd ai-engineer-ey0b).
+ *
+ * `capacity` is the max particles a node processes concurrently — a hard
+ * `capacity: 1` is a strict one-at-a-time gate. It is an OPTIONAL authored
+ * field: when omitted normalizeFlow derives it from `width` via
+ * capacityFromWidth (the DEFAULT coupling — see below). When a node authors an
+ * explicit integer that value wins.
+ *
+ * `CAPACITY_CONTROL_RANGE` is the range the designer's capacity-override slider
+ * exposes — the analogue of `SPEED_CONTROL_RANGE` for SPEED. It deliberately
+ * reaches well past the width-derived ceiling: capacityFromWidth tops out at ~8
+ * (width 120), but a heavily-converged node — several inbound paths merging
+ * into one — needs a capacity far above a single-path node's to clear its
+ * inbound pile-up (the convergence pile-up the engine sweep on N9's
+ * cross-team-review node proved is capacity-bound, not speed-bound). 12 covers
+ * a ~4–5× converged node with headroom; the engine honours any integer ≥ 1.
+ * The slider OVERRIDES the width coupling without touching capacityFromWidth —
+ * mirroring how SPEED_CONTROL_RANGE overrides without touching SPEED_RANGE.
+ */
+export const CAPACITY_CONTROL_RANGE = { min: 1, max: 12 }
+
 // ── v1.2 rejection-edge defaults (spec §2.3) ─────────────────────────────────
 
 /** Default fraction of a node's outflow taken by a rejection edge. */

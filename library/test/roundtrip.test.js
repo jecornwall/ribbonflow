@@ -248,6 +248,39 @@ test('round-trip of the v5 large-particle flow is idempotent (byte-stable)', () 
   assert.equal(once, twice)
 })
 
+// ── bd ai-engineer-ey0b: the per-node CAPACITY override ──────────────────────
+// `capacity` is an OPTIONAL authored field the designer's new capacity-override
+// control writes. An explicit integer must survive serialize → deserialize
+// byte-faithfully; a node that authors NO capacity must round-trip with the
+// field still absent (so the width-derived default keeps applying on reload).
+
+test('round-trip preserves an explicit per-node capacity override', () => {
+  const flow = {
+    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    nodes: [
+      { id: 'converged', x: 100, y: 100, width: 30, capacity: 4, successors: [] },
+      { id: 'plain', x: 300, y: 100, width: 70, successors: [] },
+    ],
+  }
+  const restored = deserializeFlow(serializeFlow(flow))
+  assert.deepEqual(restored, flow)
+  assert.equal(restored.nodes[0].capacity, 4, 'explicit capacity survives')
+  assert.ok(
+    !('capacity' in restored.nodes[1]),
+    'a node with no authored capacity round-trips with the field still absent',
+  )
+})
+
+test('round-trip of a capacity-override flow is idempotent (byte-stable)', () => {
+  const flow = {
+    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    nodes: [{ id: 'converged', x: 0, y: 0, width: 30, capacity: 8, successors: [] }],
+  }
+  const once = serializeFlow(flow)
+  const twice = serializeFlow(deserializeFlow(once))
+  assert.equal(once, twice)
+})
+
 test('cloneFlow returns a deep, independent copy', () => {
   const copy = cloneFlow(n4Flow)
   assert.deepEqual(copy, n4Flow)

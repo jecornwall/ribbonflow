@@ -39,6 +39,7 @@ import {
   setSourceParticleSize,
   setNodeTransform,
   setTransformCount,
+  setNodeCapacity,
   reconcileForks,
   reconcileMerges,
   setForkRateShare,
@@ -365,6 +366,50 @@ test('setNodeField clears the field when given an empty value', () => {
   assert.equal(findNode(flow, id).width, 50)
   setNodeField(flow, id, 'width', '')
   assert.equal('width' in findNode(flow, id), false, 'empty value deletes the field')
+})
+
+// ── per-node CAPACITY override (bd ai-engineer-ey0b) ─────────────────────────
+
+test('setNodeCapacity sets an explicit integer capacity override', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  assert.equal('capacity' in findNode(flow, id), false, 'no capacity by default')
+  setNodeCapacity(flow, id, 4)
+  assert.equal(findNode(flow, id).capacity, 4)
+})
+
+test('setNodeCapacity rounds a non-integer value to an integer', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeCapacity(flow, id, 3.7)
+  assert.equal(findNode(flow, id).capacity, 4, 'rounded to nearest integer')
+})
+
+test('setNodeCapacity clamps a value below 1 up to 1 (engine requires ≥ 1)', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeCapacity(flow, id, 0)
+  assert.equal(findNode(flow, id).capacity, 1)
+  setNodeCapacity(flow, id, -5)
+  assert.equal(findNode(flow, id).capacity, 1)
+})
+
+test('setNodeCapacity clears the override when given an empty value', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeCapacity(flow, id, 6)
+  assert.equal(findNode(flow, id).capacity, 6)
+  setNodeCapacity(flow, id, '')
+  assert.equal('capacity' in findNode(flow, id), false, 'empty clears the override')
+  setNodeCapacity(flow, id, 6)
+  setNodeCapacity(flow, id, undefined)
+  assert.equal('capacity' in findNode(flow, id), false, 'undefined clears the override')
+})
+
+test('setNodeCapacity no-ops on an unknown node id', () => {
+  const flow = emptyFlow()
+  setNodeCapacity(flow, 'nope', 4) // must not throw
+  assert.equal(flow.nodes.length, 0)
 })
 
 // ── v1.3 large particles (spec §5 / §7 item 8) ───────────────────────────────

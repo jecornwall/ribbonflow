@@ -23,6 +23,8 @@ import {
   cloneFlow,
   speedFromWidth,
   widthFromSpeed,
+  capacityFromWidth,
+  DEFAULT_NODE_WIDTH,
 } from '@flow-designer/library/internals'
 import { makeSampleFlow } from './sampleFlow.js'
 import { GRID_SIZE, NODE_RADIUS } from '../lib/constants.js'
@@ -361,6 +363,36 @@ function setCoupleSpeedWidth(id, on) {
   bumpPreview()
 }
 
+// ── per-node CAPACITY override (bd ai-engineer-ey0b) ─────────────────────────
+// `capacity` is the max particles a node processes concurrently. It is an
+// OPTIONAL field: when absent the library derives it from width. The override
+// control re-adds the field v1.1 dropped — it is the real fix for a converged
+// node's inbound pile-up (capacity-bound, not speed-bound). The slider drags
+// LIVE (setNodeCapacity — no bump; the inspector commits once on release via
+// commitEdit()); the on/off toggle is discrete and remounts immediately.
+
+/** Set a node's explicit CAPACITY override. Live — no bump; commit on release. */
+function setNodeCapacity(id, value) {
+  M.setNodeCapacity(state.flow, id, value)
+}
+
+/**
+ * Toggle the per-node CAPACITY override. Turning it ON materialises an explicit
+ * integer seeded at the current width-derived default (capacityFromWidth) so
+ * the slider starts from a sensible value; turning it OFF clears the field so
+ * the node reverts to the width coupling. Discrete — remounts the preview now.
+ */
+function setCapacityOverride(id, on) {
+  if (on) {
+    const n = M.findNode(state.flow, id)
+    const width = n && typeof n.width === 'number' ? n.width : DEFAULT_NODE_WIDTH
+    M.setNodeCapacity(state.flow, id, capacityFromWidth(width))
+  } else {
+    M.setNodeCapacity(state.flow, id, undefined)
+  }
+  bumpPreview()
+}
+
 /** Set a node's per-segment colour scheme ('red' | 'neutral' | 'green'). */
 function setColorScheme(id, scheme) {
   M.setNodeField(state.flow, id, 'colorScheme', scheme)
@@ -658,6 +690,8 @@ const api = {
   setNodeLength,
   setNodeWidth,
   setNodeSpeed,
+  setNodeCapacity,
+  setCapacityOverride,
   setCoupleSpeedWidth,
   setColorScheme,
   setLabelSide,
