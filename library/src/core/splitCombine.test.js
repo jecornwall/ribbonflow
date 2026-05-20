@@ -123,6 +123,45 @@ test('split: the despawned large is gone and small particles reach the downstrea
     `split children should reach the sink, got ${sinkEntries.length} entries`)
 })
 
+test('split: the large decomposes AT the split node — forward-only, no downstream-then-backward teleport (bd ai-engineer-4pce)', () => {
+  // Regression for the v1.3-L3 cross-OUT split bug (Jason 2026-05-21, "Test
+  // explosion"): the large used to enter the split node, traverse the ENTIRE
+  // split→successor segment, despawn at the SUCCESSOR's anchor, and only then
+  // spawn the children back at the split node — a visible backward teleport.
+  // The fix decomposes the large AT the split node on the cross-INTO frame.
+  const sim = createFlowSimulation(splitFlow, { initialAgents: 4 })
+  const splitX = splitFlow.nodes.find(n => n.id === 'decompose').x  // 700
+  const sinkX  = splitFlow.nodes.find(n => n.id === 'sink').x       // 1200
+  // Last in-process position seen for every large, frame by frame.
+  const lastLargeX = new Map()
+  for (let i = 0; i < 2400; i++) {
+    for (const a of sim.agents) {
+      if (a.size === 'large' && a.lifecycle === 'in-process') {
+        lastLargeX.set(a.id, a.x)
+      }
+    }
+    sim.step(1 / 60)
+  }
+  assert.ok(sim.traces.splits.length >= 1, 'a split must have happened')
+  for (const ev of sim.traces.splits) {
+    const x = lastLargeX.get(ev.sourceId)
+    assert.ok(x != null, `the despawned large ${ev.sourceId} was tracked while alive`)
+    // The large must despawn AT the split node — never after travelling
+    // downstream toward the sink.
+    assert.ok(Math.abs(x - splitX) < Math.abs(x - sinkX),
+      `large ${ev.sourceId} decomposed at x=${x.toFixed(0)}: expected at the `
+      + `split node (x≈${splitX}), not downstream toward the sink (x≈${sinkX})`)
+    // Its children must enter the simulation AT the split node and then flow
+    // FORWARD (their first downstream entry is the sink, not a node upstream
+    // of the split).
+    for (const childId of ev.agentIds) {
+      const childEntries = sim.traces.entries.filter(e => e.id === childId)
+      assert.equal(childEntries[0].nodeId, 'decompose',
+        `split child ${childId} must spawn AT the split node`)
+    }
+  }
+})
+
 test('split: a split node passes a SMALL arrival through unchanged (no decomposition)', () => {
   const smallThroughSplit = {
     viewBox: { w: 1600, h: 900 }, baseSpeed: 200,

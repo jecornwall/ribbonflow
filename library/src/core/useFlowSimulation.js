@@ -1590,6 +1590,22 @@ export function createFlowSimulation(flow, opts = {}) {
       )
       const atSegmentEdge = segGated
         && bestS >= branch.segHoldBounds[gateIdx] - ENTRY_DIST
+      // Arc-length anchor-pass crossing (bd ai-engineer-4pce). The Euclidean
+      // `distToTarget < ENTRY_DIST` gate is lateral-offset-sensitive: on a
+      // WIDE band a centerline-following agent can pass the target node's
+      // anchor while still further than ENTRY_DIST from it *laterally* (its
+      // y-offset alone exceeds 30), miss the gate entirely, and ride the
+      // branch all the way off to its leaf end — a large overshooting a
+      // split node, then permanently holding a source-capacity slot and
+      // slowly deadlocking the flow. `bestS` is the agent's projected
+      // arc-length along the branch: lateral-offset-independent. Once it
+      // reaches the target node's anchor arc-length the agent HAS arrived
+      // longitudinally and must be allowed to cross. This is a pure safety
+      // net — a centered agent still trips the Euclidean gate ~ENTRY_DIST
+      // earlier; atAnchorArc only catches the off-centre agents that gate
+      // misses. Junction targets keep the physical-arrival gate (the
+      // two-stage teleport fix below depends on `distToTarget`).
+      const atAnchorArc = gateIdx >= 0 && bestS >= branch.anchorS[gateIdx]
       // ── Two-stage junction cross (bd ai-engineer-e0cj — TELEPORT FIX) ──
       // When the cap-gated target is the LAST node of the agent's current
       // branch, the post-cross branch is a DIFFERENT branch that meets
@@ -1621,7 +1637,7 @@ export function createFlowSimulation(flow, opts = {}) {
       // branch and so never needs the two-stage cross.
       const targetIsJunction = isJunctionNode(agent.targetNodeId)
       const junctionCross = targetIsJunction && segGated
-      if (distToTarget < ENTRY_DIST || atSegmentEdge) {
+      if (distToTarget < ENTRY_DIST || atSegmentEdge || atAnchorArc) {
         // Stage 1 — junction only: reserve the slot without crossing.
         if (junctionCross
             && agent._slotClaim !== targetNode.id
@@ -1636,19 +1652,6 @@ export function createFlowSimulation(flow, opts = {}) {
           ? (claimed && distToTarget < ENTRY_DIST)
           : (occupancy[targetNode.id] < targetNode.capacity)
         if (doCross) {
-          // ── Split (v1.3 L3 §3.3) ────────────────────────────────────────
-          // A LARGE agent leaving a `transform:'split'` node decomposes
-          // instead of crossing: it despawns and splitCount smalls spawn at
-          // the split node. A SMALL arrival at a split node is unaffected —
-          // it falls through to the normal cross below.
-          const exitNode = agent.currentNodeId
-            ? flow.nodes.find(n => n.id === agent.currentNodeId)
-            : null
-          if (exitNode && exitNode.transform === 'split'
-              && agent.size === 'large') {
-            performSplit(agent, exitNode, nodesWithExitsThisStep)
-            return
-          }
           // Cross the boundary.
           if (agent.currentNodeId) {
             occupancy[agent.currentNodeId]--
@@ -1699,6 +1702,37 @@ export function createFlowSimulation(flow, opts = {}) {
             // rejection branch back to its `to` node; otherwise it advances
             // forward via nextSuccessor. routeAfterNode handles both.
             routeAfterNode(targetNode, agent)
+
+            // ── Split (v1.3 L3 §3.3 — fix bd ai-engineer-4pce) ────────────
+            // A LARGE agent that has just crossed INTO a transform:'split'
+            // node and was NOT rejection-rolled back decomposes AT that node:
+            // it despawns and splitCount small children spawn at the split
+            // node, each targeting nextSuccessor(splitNode) and flowing
+            // FORWARD to the node's successor.
+            //
+            // The split is performed HERE — on the cross-INTO frame, the
+            // moment the large reaches the split node's anchor — so the
+            // children spawn where the large physically IS. The previous
+            // build keyed performSplit on the cross-OUT of the split node:
+            // the large entered the split node, then traversed the ENTIRE
+            // split→successor segment as a large particle, despawned at the
+            // SUCCESSOR's anchor, and only THEN spawned the children back at
+            // the split node — a visible backward teleport (Jason
+            // 2026-05-21, "Test explosion": split fires late, then jumps
+            // back). Splitting at-the-node is forward-only.
+            //
+            // Ordering: AFTER routeAfterNode so the rejection roll still
+            // wins — a rejected large revises and never splits
+            // (lifecycle === 'revising'). A SMALL arrival is unaffected
+            // (gated on size === 'large'). A leaf split node never fires
+            // (spec §2 — no exit transition).
+            if (agent.lifecycle !== 'revising'
+                && targetNode.transform === 'split'
+                && agent.size === 'large'
+                && (targetNode.successors || []).length > 0) {
+              performSplit(agent, targetNode, nodesWithExitsThisStep)
+              return
+            }
           }
           // Post-gate Euclidean clamp: the capacity gate fires ENTRY_DIST units
           // before the physical node, so the agent's physical position may be
@@ -1792,11 +1826,14 @@ export function createFlowSimulation(flow, opts = {}) {
   }
 
   // ── Split / combine transform mechanics (v1.3 L3 — spec §3.3 / §3.4) ──────
-  // performSplit: a LARGE agent crossing out of a `transform:'split'` node
-  // decomposes — the large despawns (its slot freed, any junction claim
-  // released), and `splitCount` small agents are spawned at the split node
-  // (deferred via pendingSpawns — spec §6), each routed via nextSuccessor so a
-  // forking split distributes its children. Called from the doCross block.
+  // performSplit: a LARGE agent reaching a `transform:'split'` node
+  // decomposes — the large despawns (its slot at its current node freed, any
+  // reserved junction `_slotClaim` released), and `splitCount` small agents
+  // are spawned AT the split node (deferred via pendingSpawns — spec §6),
+  // each routed via nextSuccessor so a forking split distributes its
+  // children. Called from the doCross block at the cross-INTO moment, so the
+  // children spawn where the large physically is — no backward teleport
+  // (bd ai-engineer-4pce).
   function performSplit(largeAgent, splitNode, nodesWithExitsThisStep) {
     if (largeAgent.currentNodeId) {
       occupancy[largeAgent.currentNodeId] =
