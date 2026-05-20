@@ -234,6 +234,27 @@ function setNodeKind(id, kind) {
   bumpPreview()
 }
 
+// ── v1.3 large particles (spec §5) ───────────────────────────────────────────
+// All three are STRUCTURAL — they change emission size or node behaviour, so
+// the preview simulation must rebuild. They remount immediately (discrete
+// edits: a toggle, a selector, a committed number entry — no live-drag here).
+
+/** Set a source node's emitted particle size ('small' | 'large'). */
+function setSourceParticleSize(id, size) {
+  M.setSourceParticleSize(state.flow, id, size)
+  bumpPreview()
+}
+/** Set a node's transform behaviour ('none' | 'split' | 'combine'). */
+function setNodeTransform(id, transform) {
+  M.setNodeTransform(state.flow, id, transform)
+  bumpPreview()
+}
+/** Set a split / combine node's transform count. */
+function setTransformCount(id, n) {
+  M.setTransformCount(state.flow, id, n)
+  bumpPreview()
+}
+
 // ── v1.1 node controls: Length / Speed / Width + colour scheme ───────────────
 // The three sliders are dragged live: their setters mutate the reactive doc
 // (the editor canvas tracks it) but do NOT bump the preview — the inspector
@@ -496,6 +517,9 @@ const api = {
   findRejection,
   setNodeField,
   setNodeKind,
+  setSourceParticleSize,
+  setNodeTransform,
+  setTransformCount,
   setNodeLength,
   setNodeWidth,
   setNodeSpeed,

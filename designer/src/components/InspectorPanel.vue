@@ -137,6 +137,40 @@ function fmt(v, decimals = 2) {
         </select>
       </label>
 
+      <!-- ── v1.3 transform behaviour (spec §5) ──────────────────────────── -->
+      <!-- A node may transform arriving particles: split (1 large → N small)
+           or combine (N small → 1 large). Choosing split/combine reveals the
+           matching count control. -->
+      <label class="row">
+        <span>transform</span>
+        <select
+          :value="node.transform || 'none'"
+          @change="doc.setNodeTransform(node.id, $event.target.value)"
+        >
+          <option value="none">none</option>
+          <option value="split">split</option>
+          <option value="combine">combine</option>
+        </select>
+      </label>
+      <label v-if="node.transform === 'split'" class="row">
+        <span>split count</span>
+        <input
+          type="number" min="2" step="1"
+          :value="node.splitCount ?? 4"
+          title="how many small particles one large particle splits into"
+          @change="doc.setTransformCount(node.id, num($event.target.value))"
+        />
+      </label>
+      <label v-if="node.transform === 'combine'" class="row">
+        <span>combine count</span>
+        <input
+          type="number" min="2" step="1"
+          :value="node.combineCount ?? 4"
+          title="how many small particles accumulate before one large fires"
+          @change="doc.setTransformCount(node.id, num($event.target.value))"
+        />
+      </label>
+
       <div class="row">
         <span>label side</span>
         <div class="seg">
@@ -182,6 +216,21 @@ function fmt(v, decimals = 2) {
           @change="setNodeNum('rate', $event.target.value)"
         />
       </label>
+
+      <!-- ── v1.3 source particle size (spec §5) — small vs large ─────────── -->
+      <div v-if="node.kind === 'source'" class="row">
+        <span>particle</span>
+        <div class="seg">
+          <button
+            :class="{ active: (node.particleSize || 'small') === 'small' }"
+            @click="doc.setSourceParticleSize(node.id, 'small')"
+          >small</button>
+          <button
+            :class="{ active: node.particleSize === 'large' }"
+            @click="doc.setSourceParticleSize(node.id, 'large')"
+          >large</button>
+        </div>
+      </div>
 
       <!-- ── the three v1.1 node controls (sliders — bd zesj) ────────────── -->
       <!-- Sliders drag live (`@input` mutates the reactive doc — the editor

@@ -10,9 +10,17 @@
   `colorScheme` (RED / NEUTRAL / GREEN) — the constraint node *type* is gone, so
   colour is the per-node visual register. A source node keeps a distinct inner
   emitter ring so emission still reads at a glance, independent of its colour.
+
+  v1.3 L5 (bead ai-engineer-dkcr): a split / combine node carries a small badge
+  at its top-right showing the §4 transform glyph (a fork for split, a merge
+  for combine) so the author sees which nodes transform particle size without
+  opening the inspector. The glyph path geometry is the library's own
+  `transformGlyphFor` (the same helper the preview renderer draws from), so the
+  canvas badge and the rendered slide stay glyph-identical by construction.
 -->
 <script setup>
 import { computed } from 'vue'
+import { transformGlyphFor } from '@flow-designer/library/internals'
 import { NODE_RADIUS } from '../lib/constants.js'
 
 const props = defineProps({
@@ -41,6 +49,16 @@ const stroke = computed(() => {
 
 const labelX = computed(() => props.node.x + (props.node.labelDx || 0))
 const labelY = computed(() => props.node.y + (props.node.labelDy || 0))
+
+// ── v1.3 transform badge ─────────────────────────────────────────────────────
+// transformGlyphFor returns { id, kind, d, x, y } for a split/combine node, or
+// null for a 'none' node — so `glyph` doubles as the v-if. The glyph path `d`
+// is in glyph-local coords (spans x −8..8, y −6..6); we draw it inside a small
+// badge disc pinned to the handle's top-right corner.
+const glyph = computed(() => transformGlyphFor(props.node))
+const BADGE_RADIUS = 12
+const badgeX = computed(() => props.node.x + NODE_RADIUS)
+const badgeY = computed(() => props.node.y - NODE_RADIUS)
 </script>
 
 <template>
@@ -92,6 +110,33 @@ const labelY = computed(() => props.node.y + (props.node.labelDy || 0))
       stroke-width="2.5"
       pointer-events="none"
     />
+    <!-- v1.3 transform badge — split (fork) / combine (merge) glyph, pinned
+         to the handle's top-right. Pointer-transparent so it never steals a
+         click; the glyph path comes verbatim from the library helper. -->
+    <g
+      v-if="glyph"
+      class="cn-xform-badge"
+      :data-transform="glyph.kind"
+      pointer-events="none"
+    >
+      <circle
+        :cx="badgeX"
+        :cy="badgeY"
+        :r="BADGE_RADIUS"
+        fill="#fff"
+        stroke="#15171A"
+        stroke-width="1.5"
+      />
+      <path
+        :d="glyph.d"
+        :transform="`translate(${badgeX} ${badgeY})`"
+        fill="none"
+        stroke="#15171A"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </g>
     <!-- the draggable label -->
     <text
       :x="labelX"

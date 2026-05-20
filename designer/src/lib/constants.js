@@ -46,3 +46,14 @@ export const NEW_REJECTION_BOW_DEPTH = 80
  * alignment, fine enough not to fight intentional placement.
  */
 export const GRID_SIZE = 40
+
+/**
+ * v1.3 large particles (spec §5). A source emits one particle size; a node
+ * may `transform` arriving particles (split / combine). These mirror the
+ * library's DEFAULT_PARTICLE_SIZE / DEFAULT_SPLIT_COUNT / DEFAULT_COMBINE_COUNT
+ * (format/model.js §2.3) — kept here so the pure mutation layer stays
+ * library-import-free for headless tests.
+ */
+export const DEFAULT_PARTICLE_SIZE = 'small'
+export const NEW_SPLIT_COUNT = 4
+export const NEW_COMBINE_COUNT = 4

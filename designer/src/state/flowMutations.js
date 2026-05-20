@@ -22,7 +22,14 @@ import {
   DEFAULT_SOURCE_RATE,
   NEW_REJECTION_RATE,
   NEW_REJECTION_BOW_DEPTH,
+  NEW_SPLIT_COUNT,
+  NEW_COMBINE_COUNT,
 } from '../lib/constants.js'
+
+/** Legal `source.particleSize` values (mirrors library PARTICLE_SIZES). */
+const PARTICLE_SIZE_VALUES = ['small', 'large']
+/** Legal `node.transform` values (mirrors library NODE_TRANSFORMS). */
+const NODE_TRANSFORM_VALUES = ['none', 'split', 'combine']
 
 /** Find a node by id, or undefined. */
 export function findNode(flow, id) {
@@ -201,6 +208,73 @@ export function setRejectionBow(flow, from, to, side, depth) {
   if (r.bow == null || typeof r.bow !== 'object') r.bow = {}
   if (side !== undefined) r.bow.side = side
   if (depth !== undefined) r.bow.depth = depth
+}
+
+// ── v1.3 large particles (spec §5) ───────────────────────────────────────────
+// A source emits one particle size (`source.particleSize`); a node may
+// `transform` arriving particles — `split` (1 large → splitCount small) or
+// `combine` (combineCount small → 1 large). The library owns the format and
+// fills omitted defaults via normalizeFlow; these mutations seed concrete
+// values so a designer edit round-trips with explicit fields — matching the
+// v1.2 rejection-mutation precedent.
+
+/**
+ * Set a source node's emitted particle size ('small' | 'large'). A no-op on a
+ * non-source node (the field belongs on sources — spec §2.1) and on an
+ * unrecognised size.
+ */
+export function setSourceParticleSize(flow, id, size) {
+  const n = findNode(flow, id)
+  if (!n || n.kind !== 'source') return
+  if (!PARTICLE_SIZE_VALUES.includes(size)) return
+  n.particleSize = size
+}
+
+/**
+ * Set a node's transform behaviour ('none' | 'split' | 'combine'). Switching
+ * to split / combine seeds the matching count default (4) when absent;
+ * switching to 'none' leaves any authored count intact so toggling back
+ * restores it — validateFlow ignores a stale count on a non-matching
+ * transform (spec §2.4). A no-op on an unrecognised transform.
+ */
+export function setNodeTransform(flow, id, transform) {
+  const n = findNode(flow, id)
+  if (!n) return
+  if (!NODE_TRANSFORM_VALUES.includes(transform)) return
+  n.transform = transform
+  if (transform === 'split' && n.splitCount === undefined) {
+    n.splitCount = NEW_SPLIT_COUNT
+  }
+  if (transform === 'combine' && n.combineCount === undefined) {
+    n.combineCount = NEW_COMBINE_COUNT
+  }
+}
+
+/**
+ * Set the transform count of a split / combine node. The target field is
+ * picked from the node's current transform — `splitCount` for split,
+ * `combineCount` for combine; a no-op on a 'none' node. An empty value clears
+ * the field, letting normalizeFlow re-fill the default. A finite number is
+ * rounded to an integer (counts are integers ≥ 2); validateFlow surfaces a
+ * count < 2 (spec §2.4), so the mutation does not clamp.
+ */
+export function setTransformCount(flow, id, n) {
+  const node = findNode(flow, id)
+  if (!node) return
+  const key =
+    node.transform === 'split'
+      ? 'splitCount'
+      : node.transform === 'combine'
+        ? 'combineCount'
+        : null
+  if (!key) return
+  if (n === undefined || n === '' || n === null) {
+    delete node[key]
+  } else if (typeof n === 'number' && Number.isFinite(n)) {
+    node[key] = Math.round(n)
+  } else {
+    node[key] = n
+  }
 }
 
 /** Set an arbitrary field on a node (label, width, rate, capacity, …). */

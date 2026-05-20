@@ -36,6 +36,9 @@ import {
   setRejectionField,
   setRejectionBow,
   findRejection,
+  setSourceParticleSize,
+  setNodeTransform,
+  setTransformCount,
 } from '../src/state/flowMutations.js'
 
 function emptyFlow() {
@@ -341,4 +344,92 @@ test('setNodeField clears the field when given an empty value', () => {
   assert.equal(findNode(flow, id).width, 50)
   setNodeField(flow, id, 'width', '')
   assert.equal('width' in findNode(flow, id), false, 'empty value deletes the field')
+})
+
+// ── v1.3 large particles (spec §5 / §7 item 8) ───────────────────────────────
+
+test('setSourceParticleSize sets the emit size on a source node', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeKind(flow, id, 'source')
+  setSourceParticleSize(flow, id, 'large')
+  assert.equal(findNode(flow, id).particleSize, 'large')
+  setSourceParticleSize(flow, id, 'small')
+  assert.equal(findNode(flow, id).particleSize, 'small')
+})
+
+test('setSourceParticleSize no-ops on a non-source node or unknown size', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0) // kind 'normal'
+  setSourceParticleSize(flow, id, 'large')
+  assert.equal('particleSize' in findNode(flow, id), false, 'not set on a normal node')
+  setNodeKind(flow, id, 'source')
+  setSourceParticleSize(flow, id, 'huge')
+  assert.equal('particleSize' in findNode(flow, id), false, 'unknown size ignored')
+})
+
+test('setNodeTransform sets the transform and seeds the matching count', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeTransform(flow, id, 'split')
+  let n = findNode(flow, id)
+  assert.equal(n.transform, 'split')
+  assert.equal(n.splitCount, 4, 'split seeds the default count')
+  assert.equal('combineCount' in n, false, 'no combineCount on a split node')
+
+  setNodeTransform(flow, id, 'combine')
+  n = findNode(flow, id)
+  assert.equal(n.transform, 'combine')
+  assert.equal(n.combineCount, 4, 'combine seeds the default count')
+})
+
+test('setNodeTransform preserves an authored count when toggling away and back', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeTransform(flow, id, 'split')
+  setTransformCount(flow, id, 7)
+  assert.equal(findNode(flow, id).splitCount, 7)
+  setNodeTransform(flow, id, 'none')
+  assert.equal(findNode(flow, id).splitCount, 7, 'count kept while transform is none')
+  setNodeTransform(flow, id, 'split')
+  assert.equal(findNode(flow, id).splitCount, 7, 'authored count restored, not re-seeded')
+})
+
+test('setNodeTransform ignores an unknown transform', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeTransform(flow, id, 'shuffle')
+  assert.equal('transform' in findNode(flow, id), false)
+})
+
+test('setTransformCount targets the field for the node transform', () => {
+  const flow = emptyFlow()
+  const a = addNode(flow, 0, 0)
+  setNodeTransform(flow, a, 'split')
+  setTransformCount(flow, a, 6)
+  assert.equal(findNode(flow, a).splitCount, 6, 'split node → splitCount')
+
+  const b = addNode(flow, 1, 1)
+  setNodeTransform(flow, b, 'combine')
+  setTransformCount(flow, b, 3)
+  assert.equal(findNode(flow, b).combineCount, 3, 'combine node → combineCount')
+})
+
+test('setTransformCount rounds to an integer and clears on an empty value', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeTransform(flow, id, 'split')
+  setTransformCount(flow, id, 5.7)
+  assert.equal(findNode(flow, id).splitCount, 6, 'finite number rounded to integer')
+  setTransformCount(flow, id, '')
+  assert.equal('splitCount' in findNode(flow, id), false, 'empty value clears the field')
+})
+
+test('setTransformCount no-ops on a node with no transform', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0) // transform unset → treated as 'none'
+  setTransformCount(flow, id, 8)
+  const n = findNode(flow, id)
+  assert.equal('splitCount' in n, false)
+  assert.equal('combineCount' in n, false)
 })
