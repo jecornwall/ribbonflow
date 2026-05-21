@@ -5,6 +5,10 @@
     {
       "slug": "gates",
       "title": "Coordination & gates"
+    },
+    {
+      "slug": "multiteam",
+      "title": "Multiple teams · shared gate sequence"
     }
   ]
 }
