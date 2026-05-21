@@ -1,6 +1,6 @@
 {
-  "id": "n17-build-and-test",
-  "title": "N17 · build & test environment",
+  "id": "n12-review-turnaround",
+  "title": "N12 · review turnaround",
   "flows": [
     {
       "slug": "before",
@@ -8,7 +8,7 @@
     },
     {
       "slug": "after",
-      "title": "After"
+      "title": "After · review invest"
     }
   ],
   "transition": {

@@ -1,6 +1,6 @@
 {
-  "id": "n16-review-turnaround",
-  "title": "N16 · review turnaround",
+  "id": "n4-startup",
+  "title": "N4 · startup collapse",
   "flows": [
     {
       "slug": "before",
@@ -8,7 +8,7 @@
     },
     {
       "slug": "after",
-      "title": "After · review invest"
+      "title": "After · Claude Code"
     }
   ],
   "transition": {

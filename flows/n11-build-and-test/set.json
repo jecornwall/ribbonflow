@@ -1,6 +1,6 @@
 {
-  "id": "n7-startup",
-  "title": "N7 · startup collapse",
+  "id": "n11-build-and-test",
+  "title": "N11 · build & test environment",
   "flows": [
     {
       "slug": "before",
@@ -8,7 +8,7 @@
     },
     {
       "slug": "after",
-      "title": "After · Claude Code"
+      "title": "After"
     }
   ],
   "transition": {
