@@ -134,7 +134,7 @@
         :width="hatchWidth"
         :height="14"
         :fill="`url(#${hatchId})`"
-        opacity="0.6"
+        style="opacity:0.6"
       />
     </g>
   </g>
