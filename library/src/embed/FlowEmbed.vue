@@ -24,7 +24,7 @@
   swapped onto this component until M5.
 -->
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import FlowGraph from '../core/FlowGraph.vue'
 import FlowSetPlayer from './FlowSetPlayer.vue'
 import { normalizeFlowInput } from '../format/index.js'
@@ -59,15 +59,30 @@ const resolved = computed(() => {
   }
   return { kind: 'flow', value: normalizeFlowInput(f) }
 })
+
+// Remount key (bd ai-engineer-5ws4). <FlowGraph> builds its branches / widths /
+// simulation ONCE at setup — deterministic geometry it deliberately does NOT
+// rebuild on a `flow` prop change (see FlowGraph.vue §buildSim). That holds
+// while a slide keeps one flow per <FlowEmbed>, but the deck's click idiom
+// swaps the `flow` prop on a SINGLE embed (`$clicks > 0 ? after : before` —
+// S4/S5/S11/S12). Without a remount FlowGraph keeps the previous flow's
+// topology: a width-only swap renders stale geometry, and a topology swap
+// (solo→team) throws on a stale node id. Bumping a key whenever the input
+// flow identity changes remounts the child with a clean build, so a slide
+// never has to remember its own `:key`.
+const remountKey = ref(0)
+watch(() => props.flow, () => { remountKey.value++ })
 </script>
 
 <template>
   <FlowSetPlayer
     v-if="resolved.kind === 'flow-set'"
+    :key="remountKey"
     :flow-set="resolved.value"
   />
   <FlowGraph
     v-else
+    :key="remountKey"
     :flow="resolved.value"
     :show-metrics="showMetrics"
   />
