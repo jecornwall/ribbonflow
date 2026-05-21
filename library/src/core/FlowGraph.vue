@@ -67,7 +67,13 @@
              hex) — used for the n14 context-layer backbone, which must read as
              a high-contrast ink/charcoal element, NOT a ribbon-scheme tone
              (bead ai-engineer-lrv6.6). When absent it falls back to the
-             ribbon-scheme palette keyed by `dec.colorScheme`. -->
+             ribbon-scheme palette keyed by `dec.colorScheme`.
+             Opacity is rendered as an INLINE STYLE, not an `opacity="..."`
+             presentation attribute (bead ai-engineer-tsb4): UnoCSS attributify
+             reads a bare integer attr like `opacity="1"` as its `opacity-1`
+             utility (= 1% in UnoCSS's scale) and the generated CSS rule
+             overrides the SVG attribute, painting the spine near-invisible.
+             An inline style beats a UnoCSS utility, so the true opacity wins. -->
         <line
           v-if="dec.kind === 'spine'"
           :x1="dec.x"
@@ -78,7 +84,7 @@
             || RIBBON_SCHEME_COLORS[dec.colorScheme || 'neutral']
             || RIBBON_SCHEME_COLORS.neutral"
           :stroke-width="dec.width ?? 14"
-          :opacity="dec.opacity ?? 0.9"
+          :style="{ opacity: dec.opacity ?? 0.9 }"
           stroke-linecap="round"
         />
         <text
@@ -277,7 +283,7 @@
         stroke="#555555"
         stroke-width="2.5"
         stroke-linecap="round"
-        opacity="0.85"
+        style="opacity: 0.85"
       />
     </g>
 
@@ -328,7 +334,7 @@
     <g
       v-if="flow.ghostMarkers?.length"
       class="ghost-markers"
-      :opacity="flow.ghostOpacity ?? 0.3"
+      :style="{ opacity: flow.ghostOpacity ?? 0.3 }"
     >
       <g
         v-for="gm in flow.ghostMarkers"
@@ -383,7 +389,7 @@
         fill="none"
         :stroke="TRANSFORM_GLYPH_STROKE"
         :stroke-width="TRANSFORM_GLYPH_STROKE_WIDTH"
-        :opacity="TRANSFORM_GLYPH_OPACITY"
+        :style="{ opacity: TRANSFORM_GLYPH_OPACITY }"
         stroke-linecap="round"
         stroke-linejoin="round"
       />
