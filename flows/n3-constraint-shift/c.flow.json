@@ -30,9 +30,9 @@
         "width": 70,
         "coupleSpeedWidth": true,
         "colorScheme": "neutral",
-        "labelSide": "below",
+        "labelSide": "above",
         "labelDx": 0,
-        "labelDy": 70,
+        "labelDy": -120,
         "successors": ["solution-design"]
       },
       {
@@ -46,9 +46,9 @@
         "width": 46,
         "coupleSpeedWidth": true,
         "colorScheme": "red",
-        "labelSide": "below",
+        "labelSide": "above",
         "labelDx": 0,
-        "labelDy": 70,
+        "labelDy": -120,
         "successors": ["implementation"]
       },
       {
@@ -62,9 +62,9 @@
         "width": 116,
         "coupleSpeedWidth": true,
         "colorScheme": "green",
-        "labelSide": "below",
+        "labelSide": "above",
         "labelDx": 0,
-        "labelDy": 70,
+        "labelDy": -120,
         "successors": ["test"]
       },
       {
@@ -78,9 +78,9 @@
         "width": 84,
         "coupleSpeedWidth": true,
         "colorScheme": "neutral",
-        "labelSide": "below",
+        "labelSide": "above",
         "labelDx": 0,
-        "labelDy": 70,
+        "labelDy": -120,
         "successors": ["deploy"]
       },
       {
@@ -94,9 +94,9 @@
         "width": 64,
         "coupleSpeedWidth": true,
         "colorScheme": "neutral",
-        "labelSide": "below",
+        "labelSide": "above",
         "labelDx": 0,
-        "labelDy": 70,
+        "labelDy": -120,
         "successors": []
       }
     ]

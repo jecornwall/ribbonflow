@@ -1,0 +1,10 @@
+{
+  "id": "test-explosion",
+  "title": "Test explosion",
+  "flows": [
+    {
+      "slug": "test",
+      "title": "Test"
+    }
+  ]
+}

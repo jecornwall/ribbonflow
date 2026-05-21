@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 5,
   "flow": {
     "viewBox": {
       "x": 0,
@@ -23,7 +23,7 @@
         "y": 450,
         "label": "weekend ideas",
         "kind": "source",
-        "rate": 0.8,
+        "rate": 4,
         "length": 0.3,
         "speed": 1,
         "width": 70,
@@ -35,7 +35,9 @@
         "labelDy": -100,
         "successors": [
           "implementation"
-        ]
+        ],
+        "transform": "none",
+        "particleSize": "small"
       },
       {
         "id": "implementation",
@@ -54,7 +56,8 @@
         "labelDy": -100,
         "successors": [
           "shipped"
-        ]
+        ],
+        "transform": "none"
       },
       {
         "id": "shipped",
@@ -70,8 +73,10 @@
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": []
+        "successors": [],
+        "transform": "none"
       }
-    ]
+    ],
+    "rejections": []
   }
 }
