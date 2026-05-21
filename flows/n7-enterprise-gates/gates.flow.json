@@ -48,7 +48,7 @@
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -64,
+        "labelDy": -128,
         "successors": ["arch-review"]
       },
       {
@@ -65,7 +65,7 @@
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -54,
+        "labelDy": -64,
         "successors": ["build"]
       },
       {
@@ -81,7 +81,7 @@
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -64,
+        "labelDy": -128,
         "successors": ["security-review"]
       },
       {
@@ -98,7 +98,7 @@
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -54,
+        "labelDy": -64,
         "successors": ["legal"]
       },
       {
@@ -115,7 +115,7 @@
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -54,
+        "labelDy": -128,
         "successors": ["integrate"]
       },
       {
@@ -148,7 +148,7 @@
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -54,
+        "labelDy": -128,
         "successors": ["release-approval"]
       },
       {
@@ -165,7 +165,7 @@
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -54,
+        "labelDy": -64,
         "successors": ["ship"]
       },
       {
@@ -181,7 +181,7 @@
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -64,
+        "labelDy": -128,
         "successors": []
       }
     ],
