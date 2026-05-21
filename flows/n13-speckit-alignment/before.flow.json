@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 5,
   "flow": {
     "viewBox": {
       "x": 0,
@@ -18,131 +18,141 @@
     "merges": [],
     "nodes": [
       {
-        "id": "draft",
+        "id": "a-design",
         "x": 160,
         "y": 275,
-        "label": "draft",
+        "label": "A · design",
         "kind": "source",
         "rate": 0.4,
-        "length": 0.5,
+        "particleSize": "small",
+        "length": 0.6,
         "speed": 1,
-        "width": 70,
-        "capacity": 50,
-        "coupleSpeedWidth": true,
+        "width": 64,
+        "coupleSpeedWidth": false,
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "reviewer-arch"
-        ]
+        "successors": ["b-review-a"]
       },
       {
-        "id": "reviewer-arch",
+        "id": "b-review-a",
         "x": 440,
         "y": 275,
-        "label": "arch",
+        "label": "B reviews A",
         "kind": "normal",
-        "length": 1.6,
-        "speed": 1,
+        "length": 0.9,
+        "speed": 0.78,
         "width": 30,
-        "capacity": 1,
+        "capacity": 2,
         "coupleSpeedWidth": false,
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "reviewer-legal"
-        ]
+        "successors": ["b-design"]
       },
       {
-        "id": "reviewer-legal",
+        "id": "b-design",
         "x": 720,
         "y": 275,
-        "label": "legal",
+        "label": "B · design",
         "kind": "normal",
-        "length": 1.6,
+        "length": 0.9,
         "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
+        "width": 64,
+        "coupleSpeedWidth": false,
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "reviewer-sec"
-        ]
+        "successors": ["c-review-b"]
       },
       {
-        "id": "reviewer-sec",
+        "id": "c-review-b",
         "x": 1000,
         "y": 275,
-        "label": "sec",
+        "label": "C reviews B",
         "kind": "normal",
-        "length": 1.6,
-        "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
-        "colorScheme": "neutral",
+        "length": 0.9,
+        "speed": 0.78,
+        "width": 30,
+        "capacity": 2,
+        "coupleSpeedWidth": false,
+        "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "reviewer-data"
-        ]
+        "successors": ["c-design"]
       },
       {
-        "id": "reviewer-data",
+        "id": "c-design",
         "x": 1280,
         "y": 275,
-        "label": "data",
+        "label": "C · design",
         "kind": "normal",
-        "length": 1.6,
+        "length": 0.9,
         "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
+        "width": 64,
+        "coupleSpeedWidth": false,
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "reviewer-comms"
-        ]
+        "successors": ["a-review-c"]
       },
       {
-        "id": "reviewer-comms",
+        "id": "a-review-c",
         "x": 1560,
         "y": 275,
-        "label": "comms",
+        "label": "A reviews C",
         "kind": "normal",
-        "length": 1.6,
-        "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
-        "colorScheme": "neutral",
+        "length": 0.9,
+        "speed": 0.78,
+        "width": 30,
+        "capacity": 2,
+        "coupleSpeedWidth": false,
+        "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "approved"
-        ]
+        "successors": ["aligned"]
       },
       {
-        "id": "approved",
+        "id": "aligned",
         "x": 1840,
         "y": 275,
-        "label": "approved",
+        "label": "aligned",
         "kind": "normal",
-        "length": 0.5,
+        "length": 0.6,
         "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
+        "width": 64,
+        "coupleSpeedWidth": false,
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
         "successors": []
+      }
+    ],
+    "rejections": [
+      {
+        "from": "b-review-a",
+        "to": "a-design",
+        "rate": 0.12,
+        "bow": { "side": "below", "depth": 55 }
+      },
+      {
+        "from": "c-review-b",
+        "to": "b-design",
+        "rate": 0.12,
+        "bow": { "side": "below", "depth": 55 }
+      },
+      {
+        "from": "a-review-c",
+        "to": "c-design",
+        "rate": 0.12,
+        "bow": { "side": "below", "depth": 55 }
       }
     ]
   }

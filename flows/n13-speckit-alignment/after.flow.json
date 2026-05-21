@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 5,
   "flow": {
     "viewBox": {
       "x": 0,
@@ -11,56 +11,37 @@
     "initialAgents": 8,
     "inkWobble": true,
     "fenceMarkers": true,
+    "segmentDividers": true,
     "showBoxes": false,
     "showLegend": false,
     "ghostMarkers": [
-      {
-        "x": 720,
-        "y": 275,
-        "label": "legal",
-        "labelDy": 90
-      },
-      {
-        "x": 1000,
-        "y": 275,
-        "label": "sec",
-        "labelDy": 90
-      },
-      {
-        "x": 1280,
-        "y": 275,
-        "label": "data",
-        "labelDy": 90
-      },
-      {
-        "x": 1560,
-        "y": 275,
-        "label": "comms",
-        "labelDy": 90
-      }
+      { "x": 440, "y": 275, "label": "B reviews A", "labelDy": 90 },
+      { "x": 720, "y": 275, "label": "B · design", "labelDy": 90 },
+      { "x": 1000, "y": 275, "label": "C reviews B", "labelDy": 90 },
+      { "x": 1280, "y": 275, "label": "C · design", "labelDy": 90 },
+      { "x": 1560, "y": 275, "label": "A reviews C", "labelDy": 90 }
     ],
     "ghostOpacity": 0.3,
     "forks": [],
     "merges": [],
     "nodes": [
       {
-        "id": "draft",
+        "id": "kickoff",
         "x": 160,
         "y": 275,
-        "label": "draft",
+        "label": "AI-drafted kickoff",
         "kind": "source",
         "rate": 0.6,
-        "length": 0.5,
+        "particleSize": "small",
+        "length": 0.6,
         "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
+        "width": 64,
+        "coupleSpeedWidth": false,
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "alignment-sprint"
-        ]
+        "successors": ["alignment-sprint"]
       },
       {
         "id": "alignment-sprint",
@@ -70,32 +51,31 @@
         "kind": "normal",
         "length": 1,
         "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
+        "width": 64,
+        "coupleSpeedWidth": false,
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
-        "successors": [
-          "approved"
-        ]
+        "successors": ["aligned"]
       },
       {
-        "id": "approved",
+        "id": "aligned",
         "x": 1840,
         "y": 275,
-        "label": "approved",
+        "label": "aligned",
         "kind": "normal",
-        "length": 0.5,
+        "length": 0.6,
         "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
+        "width": 64,
+        "coupleSpeedWidth": false,
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
         "successors": []
       }
-    ]
+    ],
+    "rejections": []
   }
 }
