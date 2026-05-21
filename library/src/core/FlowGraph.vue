@@ -249,7 +249,7 @@
       :key="`marker-${node.id}`"
       v-bind="markerPropsFor(node)"
       :label="markerLabelFor(node)"
-      :is-constraint="node.kind === 'constraint'"
+      :is-constraint="isConstraintNode(node)"
       :label-dx="labelOffsetFor(node).dx"
       :label-dy="labelOffsetFor(node).dy"
       :vertical-leader="!!(flow.verticalLeaders)"
@@ -418,6 +418,7 @@ import {
   TRANSFORM_GLYPH_OPACITY,
 } from './transformGlyph.js'
 import { renderRadiusForAgent } from './agentRender.js'
+import { isConstraintNode } from './nodeKind.js'
 import FlowRibbon from './FlowRibbon.vue'
 import FlowSegmentMarker from './FlowSegmentMarker.vue'
 import FlowAgent from './FlowAgent.vue'
