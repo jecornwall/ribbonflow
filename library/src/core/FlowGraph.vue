@@ -63,13 +63,19 @@
          that declare no `decorations` array. -->
     <g v-if="flow.decorations?.length" class="flow-decorations">
       <template v-for="(dec, i) in flow.decorations" :key="`dec-${i}`">
+        <!-- Spine stroke. `dec.color` is an explicit author override (a raw
+             hex) — used for the n14 context-layer backbone, which must read as
+             a high-contrast ink/charcoal element, NOT a ribbon-scheme tone
+             (bead ai-engineer-lrv6.6). When absent it falls back to the
+             ribbon-scheme palette keyed by `dec.colorScheme`. -->
         <line
           v-if="dec.kind === 'spine'"
           :x1="dec.x"
           :y1="dec.y1"
           :x2="dec.x"
           :y2="dec.y2"
-          :stroke="RIBBON_SCHEME_COLORS[dec.colorScheme || 'neutral']
+          :stroke="dec.color
+            || RIBBON_SCHEME_COLORS[dec.colorScheme || 'neutral']
             || RIBBON_SCHEME_COLORS.neutral"
           :stroke-width="dec.width ?? 14"
           :opacity="dec.opacity ?? 0.9"
