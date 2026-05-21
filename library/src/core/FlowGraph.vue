@@ -177,17 +177,26 @@
 
          For each interior boundary between consecutive nodes on a branch
          (i.e. boundaries at arc=segLens[0], segLens[0]+segLens[1], ... up
-         to but excluding the final endpoint), draw a vertical hairline
-         spanning the band's full height at that arc position with a small
-         margin extending above and below the ribbon edge. The first node's
-         left boundary and the last node's right boundary are NOT drawn —
-         those are the ribbon's open ends and need no internal divider. -->
+         to but excluding the final endpoint), draw a hairline tick that
+         crosses the band at that arc position with a small margin extending
+         past each ribbon edge. The first node's left boundary and the last
+         node's right boundary are NOT drawn — those are the ribbon's open
+         ends and need no internal divider.
+
+         bd ai-engineer-vw07.19: the tick is drawn PERPENDICULAR to the local
+         centerline tangent, not as a pure vertical. On a steeply-curved
+         branch (e.g. the n14 context-layer fan-out) a vertical tick of
+         height = ribbon-width, centred on a diagonal centerline, projects
+         partly OUTSIDE the ribbon — the protruding ends read as stray
+         vertical segments floating in the whitespace. A tangent-perpendicular
+         tick crosses the ribbon cleanly. For horizontal segments the normal
+         is (0,1) so the tick stays vertical — unchanged from before. -->
     <g v-if="flow.segmentDividers" class="segment-dividers">
       <line
         v-for="d in segmentDividers"
         :key="`div-${d.key}`"
-        :x1="d.x" :y1="d.y - d.halfH - 4"
-        :x2="d.x" :y2="d.y + d.halfH + 4"
+        :x1="d.x + d.nx * (d.halfH + 4)" :y1="d.y + d.ny * (d.halfH + 4)"
+        :x2="d.x - d.nx * (d.halfH + 4)" :y2="d.y - d.ny * (d.halfH + 4)"
         stroke="#555555"
         stroke-width="0.8"
         stroke-linecap="round"
@@ -688,12 +697,19 @@ const segmentDividers = computed(() => {
       acc += segLens[i]
       const sBoundary = Math.min(acc, branch.centerline.totalLength)
       const pt = branch.centerline.pointAtArcLength(sBoundary)
+      const tan = branch.centerline.tangentAtArcLength(sBoundary)
       const halfH = wfn(sBoundary) / 2
+      // Unit normal = tangent rotated 90°: (-ty, tx). The divider tick is
+      // drawn along this normal so it crosses the ribbon perpendicular to the
+      // local flow direction (bd ai-engineer-vw07.19). Horizontal tangent
+      // (1,0) → normal (0,1) → vertical tick, identical to the legacy render.
       result.push({
         key: `${bi}-${i}`,
         x: pt.x,
         y: pt.y,
         halfH,
+        nx: -tan.y,
+        ny: tan.x,
       })
     }
   })
