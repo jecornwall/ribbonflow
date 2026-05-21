@@ -1,0 +1,23 @@
+{
+  "id": "n3-constraint-shift",
+  "title": "N3 · constraint shift",
+  "flows": [
+    {
+      "slug": "a",
+      "title": "A · baseline"
+    },
+    {
+      "slug": "b",
+      "title": "B · widen the constraint"
+    },
+    {
+      "slug": "c",
+      "title": "C · widen the wrong stage"
+    }
+  ],
+  "transition": {
+    "durationMs": 1100,
+    "holdMs": 2600,
+    "easing": "easeInOut"
+  }
+}
