@@ -50,6 +50,44 @@
          SVG element in standalone / parity contexts. -->
     <g :clip-path="`url(#${clipId})`">
 
+    <!-- Decorative guides (bd ai-engineer-lrv6.3 — flow.decorations[]).
+         Static, non-agent chrome the flow author places to give the audience a
+         concrete *thing* to point at — e.g. the n14 context-layer spine: a thin
+         vertical neutral bar the team lanes thread through. A decoration carries
+         NO agents and is NOT a flow node, so the agent graph (nodes / forks /
+         merges) stays topologically untouched — exactly what the §13.7
+         "minimum necessary force" before/after needs (the spine appears in
+         `after` only without perturbing the pinned nine-node topology).
+         Drawn FIRST inside the clip group, so ribbons and agents render OVER
+         it and it reads as the layer the value streams sit on. Inert for flows
+         that declare no `decorations` array. -->
+    <g v-if="flow.decorations?.length" class="flow-decorations">
+      <template v-for="(dec, i) in flow.decorations" :key="`dec-${i}`">
+        <line
+          v-if="dec.kind === 'spine'"
+          :x1="dec.x"
+          :y1="dec.y1"
+          :x2="dec.x"
+          :y2="dec.y2"
+          :stroke="RIBBON_SCHEME_COLORS[dec.colorScheme || 'neutral']
+            || RIBBON_SCHEME_COLORS.neutral"
+          :stroke-width="dec.width ?? 14"
+          :opacity="dec.opacity ?? 0.9"
+          stroke-linecap="round"
+        />
+        <text
+          v-if="dec.kind === 'spine' && dec.label"
+          :x="dec.x + (dec.labelDx ?? 0)"
+          :y="(dec.labelSide === 'below' ? dec.y2 : dec.y1) + (dec.labelDy ?? 0)"
+          font-family="ET Book, Georgia, serif"
+          font-style="italic"
+          :style="{ fontSize: '24px' }"
+          fill="#555555"
+          text-anchor="middle"
+        >{{ dec.label }}</text>
+      </template>
+    </g>
+
     <!-- main ribbons (one per branch). Filter group applies the ink-wobble
          displacement to ALL flow paint inside it (ribbon body + pinch rose
          overlays + constraint plateau). Strokes inherit the filter so the

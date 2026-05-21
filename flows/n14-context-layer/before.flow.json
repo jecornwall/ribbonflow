@@ -33,17 +33,17 @@
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -44,
-        "successors": ["a-docs"]
+        "successors": ["a-mid"]
       },
       {
-        "id": "a-docs",
+        "id": "a-mid",
         "x": 700,
         "y": 190,
         "label": "",
         "kind": "normal",
         "length": 0.8,
-        "speed": 0.7,
-        "width": 30,
+        "speed": 0.65,
+        "width": 28,
         "capacity": 2,
         "coupleSpeedWidth": false,
         "colorScheme": "red",
@@ -84,17 +84,17 @@
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -44,
-        "successors": ["b-docs"]
+        "successors": ["b-mid"]
       },
       {
-        "id": "b-docs",
+        "id": "b-mid",
         "x": 700,
         "y": 450,
-        "label": "find docs",
+        "label": "finding the docs",
         "kind": "normal",
         "length": 0.8,
-        "speed": 0.7,
-        "width": 30,
+        "speed": 0.65,
+        "width": 28,
         "capacity": 2,
         "coupleSpeedWidth": false,
         "colorScheme": "red",
@@ -135,17 +135,17 @@
         "labelSide": "below",
         "labelDx": 0,
         "labelDy": 44,
-        "successors": ["c-docs"]
+        "successors": ["c-mid"]
       },
       {
-        "id": "c-docs",
+        "id": "c-mid",
         "x": 700,
         "y": 710,
         "label": "",
         "kind": "normal",
         "length": 0.8,
-        "speed": 0.7,
-        "width": 30,
+        "speed": 0.65,
+        "width": 28,
         "capacity": 2,
         "coupleSpeedWidth": false,
         "colorScheme": "red",
@@ -174,19 +174,19 @@
     "rejections": [
       {
         "from": "a-deliver",
-        "to": "a-docs",
+        "to": "a-mid",
         "rate": 0.15,
         "bow": { "side": "below", "depth": 66 }
       },
       {
         "from": "b-deliver",
-        "to": "b-docs",
+        "to": "b-mid",
         "rate": 0.15,
         "bow": { "side": "below", "depth": 66 }
       },
       {
         "from": "c-deliver",
-        "to": "c-docs",
+        "to": "c-mid",
         "rate": 0.15,
         "bow": { "side": "below", "depth": 66 }
       }

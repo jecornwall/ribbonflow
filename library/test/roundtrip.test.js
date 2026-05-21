@@ -320,6 +320,40 @@ test('round-trip of a redRatio flow is idempotent (byte-stable)', () => {
   assert.equal(once, twice)
 })
 
+test('round-trip is lossless for a flow carrying decorations (bd ai-engineer-lrv6.3)', () => {
+  // A `decorations[]` array — static non-agent chrome (e.g. the n14
+  // context-layer spine). It is purely additive: the serializer is
+  // byte-faithful, so a decoration must survive a save/load cycle intact,
+  // and a flow without one must round-trip with the field still absent.
+  const withSpine = {
+    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', rate: 1, successors: ['d'] },
+      { id: 'd', x: 400, y: 0, width: 46, successors: [] },
+    ],
+    decorations: [
+      { kind: 'spine', x: 700, y1: 150, y2: 750, width: 14,
+        colorScheme: 'neutral', opacity: 0.9,
+        label: 'shared context · in the IDE',
+        labelSide: 'above', labelDx: 0, labelDy: -28 },
+    ],
+  }
+  const restored = deserializeFlow(serializeFlow(withSpine))
+  assert.deepEqual(restored, withSpine)
+  assert.equal(restored.decorations[0].label, 'shared context · in the IDE')
+
+  const noDecorations = {
+    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', rate: 1, successors: [] }],
+  }
+  const restoredBare = deserializeFlow(serializeFlow(noDecorations))
+  assert.deepEqual(restoredBare, noDecorations)
+  assert.ok(
+    !('decorations' in restoredBare),
+    'a flow with no decorations round-trips with the field still absent',
+  )
+})
+
 test('cloneFlow returns a deep, independent copy', () => {
   const copy = cloneFlow(n4Flow)
   assert.deepEqual(copy, n4Flow)
