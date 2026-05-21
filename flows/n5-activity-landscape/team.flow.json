@@ -48,14 +48,14 @@
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -48,
+        "labelDy": -119,
         "successors": ["eng-a-review"]
       },
       {
         "id": "eng-a-review",
         "x": 950,
         "y": 380,
-        "label": "code review",
+        "label": "",
         "kind": "normal",
         "length": 0.8,
         "speed": 1,
@@ -98,14 +98,14 @@
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -48,
+        "labelDy": -68,
         "successors": ["eng-b-code"]
       },
       {
         "id": "eng-b-code",
         "x": 560,
         "y": 380,
-        "label": "coding",
+        "label": "",
         "kind": "normal",
         "length": 0.8,
         "speed": 1,
@@ -130,7 +130,7 @@
         "colorScheme": "neutral",
         "labelSide": "above",
         "labelDx": 0,
-        "labelDy": -44,
+        "labelDy": -105,
         "successors": ["eng-b-ship"]
       },
       {
@@ -164,7 +164,7 @@
         "colorScheme": "neutral",
         "labelSide": "below",
         "labelDx": 0,
-        "labelDy": 48,
+        "labelDy": 68,
         "successors": ["eng-c-code"]
       },
       {
@@ -178,16 +178,16 @@
         "width": 44,
         "coupleSpeedWidth": false,
         "colorScheme": "neutral",
-        "labelSide": "below",
+        "labelSide": "above",
         "labelDx": 0,
-        "labelDy": 48,
+        "labelDy": -124,
         "successors": ["eng-c-review"]
       },
       {
         "id": "eng-c-review",
         "x": 950,
         "y": 760,
-        "label": "code review",
+        "label": "",
         "kind": "normal",
         "length": 0.8,
         "speed": 1,
@@ -237,7 +237,7 @@
         "id": "eng-d-code",
         "x": 560,
         "y": 760,
-        "label": "coding",
+        "label": "",
         "kind": "normal",
         "length": 0.8,
         "speed": 1,
@@ -260,9 +260,9 @@
         "width": 38,
         "coupleSpeedWidth": false,
         "colorScheme": "neutral",
-        "labelSide": "below",
+        "labelSide": "above",
         "labelDx": 0,
-        "labelDy": 44,
+        "labelDy": -111,
         "successors": ["eng-d-ship"]
       },
       {
