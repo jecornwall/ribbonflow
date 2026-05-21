@@ -162,8 +162,8 @@
         :key="`box-${node.id}`"
         :points="isoBoxPoints(node)"
         fill="none"
-        :stroke="node.kind === 'constraint' ? '#E2522B' : '#15171A'"
-        :stroke-width="node.kind === 'constraint' ? 1.8 : 1.2"
+        :stroke="isConstraintNode(node) ? '#E2522B' : '#15171A'"
+        :stroke-width="isConstraintNode(node) ? 1.8 : 1.2"
       />
     </g>
 
