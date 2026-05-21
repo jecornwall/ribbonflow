@@ -340,7 +340,10 @@
          rejection arcs). A 'revising' agent — one riding a rejection branch
          (v1.2 R2 lifecycle) — renders as the normal particle dot tinted
          toward REJECTION_COLOR (spec §4, Jason decision B): same dot, visibly
-         travelling the back-path. Every other agent uses FlowAgent's default
+         travelling the back-path. A `defective` agent (bd ai-engineer-s8cm) —
+         emitted red by a source's redRatio — renders SOLID red. Precedence:
+         revising (a routing state) wins over defective (a work property) so
+         the back-path stays legible; every other agent uses the default
          cream. -->
     <FlowAgent
       v-for="agent in agentsView"
@@ -349,7 +352,7 @@
       :x="agent.x"
       :y="agent.y"
       :radius="agent.radius"
-      :color="agent.lifecycle === 'revising' ? REJECTION_PARTICLE_COLOR : undefined"
+      :color="agentColor(agent)"
     />
 
     <!-- Minard-style inset legend strip — visuals.md §10.5.
@@ -409,6 +412,7 @@ import {
   RIBBON_SCHEME_COLORS,
   RIBBON_SCHEME_COLORS_LIGHT,
   REJECTION_PARTICLE_COLOR,
+  DEFECTIVE_PARTICLE_COLOR,
   rejectionEdgeAnchors,
 } from './flowCurve.js'
 import {
@@ -530,8 +534,23 @@ const agentsView = ref(
     .map(a => ({
       id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle,
       radius: renderRadiusForAgent(a),
+      // bd ai-engineer-s8cm — the engine's per-agent red (defective) flag.
+      defective: !!a.defective,
     })),
 )
+
+/**
+ * Fill colour for an agent dot. A 'revising' agent (riding a rejection
+ * back-path) tints toward REJECTION_COLOR; a `defective` agent (red — emitted
+ * per a source's redRatio, bd ai-engineer-s8cm) renders solid red; every other
+ * agent uses FlowAgent's default cream (returned as `undefined`). Revising
+ * wins over defective so the back-path stays legible.
+ */
+function agentColor(agent) {
+  if (agent.lifecycle === 'revising') return REJECTION_PARTICLE_COLOR
+  if (agent.defective) return DEFECTIVE_PARTICLE_COLOR
+  return undefined
+}
 
 /**
  * Compute the proportional arc-length occupied by each node on a branch.
@@ -1067,6 +1086,8 @@ function syncAgentsView() {
     .map(a => ({
       id: a.id, x: a.x, y: a.y, lifecycle: a.lifecycle,
       radius: renderRadiusForAgent(a),
+      // bd ai-engineer-s8cm — the engine's per-agent red (defective) flag.
+      defective: !!a.defective,
     }))
 }
 

@@ -69,6 +69,43 @@ test('normalizeFlow defaults a source node rate to 1.0', () => {
   assert.equal(out.nodes[0].rate, 1.0)
 })
 
+// ── redRatio — the per-emitter red-particle ratio (bd ai-engineer-s8cm) ──────
+
+test('normalizeFlow defaults a source redRatio to 0 (all black)', () => {
+  const out = normalizeFlow({ nodes: [{ id: 's', x: 0, y: 0, kind: 'source' }] })
+  assert.equal(out.nodes[0].redRatio, 0)
+})
+
+test('normalizeFlow does not add redRatio to a non-source node', () => {
+  const out = normalizeFlow({ nodes: [{ id: 'a', x: 0, y: 0 }] })
+  assert.ok(!('redRatio' in out.nodes[0]), 'redRatio is a source-only field')
+})
+
+test('normalizeFlow honours an authored source redRatio', () => {
+  const out = normalizeFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', redRatio: 0.3 }],
+  })
+  assert.equal(out.nodes[0].redRatio, 0.3)
+})
+
+test('validateFlow warns on an out-of-range source redRatio', () => {
+  const bad = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', redRatio: 1.5 }],
+  })
+  assert.ok(bad.warnings.some(w => w.includes('invalid redRatio')))
+  const ok = validateFlow({
+    nodes: [{ id: 's', x: 0, y: 0, kind: 'source', redRatio: 0.4 }],
+  })
+  assert.ok(!ok.warnings.some(w => w.includes('invalid redRatio')))
+})
+
+test('validateFlow warns on a redRatio carried by a non-source node', () => {
+  const bad = validateFlow({
+    nodes: [{ id: 'a', x: 0, y: 0, redRatio: 0.5 }],
+  })
+  assert.ok(bad.warnings.some(w => w.includes('is not a source')))
+})
+
 test('normalizeFlow preserves explicitly-set values over defaults', () => {
   const out = normalizeFlow({
     baseSpeed: 999,

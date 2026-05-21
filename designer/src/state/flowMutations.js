@@ -493,6 +493,29 @@ export function setNodeCapacity(flow, id, value) {
   }
 }
 
+/**
+ * Set a SOURCE node's RED-RATIO — the fraction of its emitted particles that
+ * are RED, signifying defective work that should not pass to production
+ * (bd ai-engineer-s8cm). `redRatio` is OPTIONAL and source-only: when absent
+ * the source emits all-black particles (ratio 0 — the historical behaviour).
+ *
+ * A finite value is clamped to [0,1]. A value of 0 (or empty / undefined)
+ * CLEARS the field, so an all-black source round-trips with no `redRatio` key
+ * (omitted-stays-omitted — the capacity-override precedent). A no-op on a
+ * non-source node — red is an emitter property.
+ */
+export function setNodeRedRatio(flow, id, value) {
+  const n = findNode(flow, id)
+  if (!n || n.kind !== 'source') return
+  // Coerce to a [0,1] fraction; a non-numeric / empty value reads as 0.
+  let ratio = typeof value === 'number' && Number.isFinite(value) ? value : 0
+  ratio = Math.min(1, Math.max(0, ratio))
+  // A ratio of 0 (explicit, empty, or clamped-from-negative) CLEARS the field
+  // so an all-black source round-trips with no `redRatio` key.
+  if (ratio === 0) delete n.redRatio
+  else n.redRatio = ratio
+}
+
 /** Set an arbitrary field on a node (label, width, rate, capacity, …). */
 export function setNodeField(flow, id, key, value) {
   const n = findNode(flow, id)
@@ -514,6 +537,9 @@ export function setNodeKind(flow, id, kind) {
   if (!n) return
   n.kind = kind
   if (kind === 'source' && n.rate === undefined) n.rate = DEFAULT_SOURCE_RATE
+  // bd ai-engineer-s8cm: redRatio is an emitter property — a node leaving the
+  // 'source' kind drops it so it never lingers as a stale non-source field.
+  if (kind !== 'source' && 'redRatio' in n) delete n.redRatio
 }
 
 /**

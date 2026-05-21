@@ -713,6 +713,21 @@ export const REJECTION_COLOR = '#b5524b'
 // hoisted function declaration, so this module-load-time call is well-defined.
 export const REJECTION_PARTICLE_COLOR = mixHex('#F4F2ED', REJECTION_COLOR, 0.55)
 
+// ---- Defective-particle palette (bd ai-engineer-s8cm) ---------------------
+//
+// A source may emit a fraction of its particles RED — "bad work that should
+// not pass to production" (defective work). A defective particle renders as a
+// SOLID, saturated red dot, deliberately distinct from BOTH:
+//   - the firebrick CONSTRAINT_INK ribbon accent (#E2522B — orange-leaning),
+//     so a defective dot does not read as a stray bit of the constraint band;
+//   - the muted, cream-toned REJECTION_PARTICLE_COLOR — a particle riding a
+//     rejection back-path is a desaturated dot; a defective particle is a
+//     full-strength red because red IS the work's nature.
+// Red is a PROPERTY of the work, carried for the particle's whole life — not
+// the rejection-edge routing concept. #C8201A is a deep, unambiguous crimson
+// that reads clearly against the warm-wheat FLOW_BAND.
+export const DEFECTIVE_PARTICLE_COLOR = '#C8201A'
+
 // ---- Per-segment colour-scheme palette (v1.1 §3, bd ai-engineer-3ihf) -----
 //
 // The v1.1 node model carries a per-node `colorScheme` ('red'|'neutral'|

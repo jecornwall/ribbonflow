@@ -84,6 +84,29 @@ export const DEFAULT_NODE_WIDTH = 70
  */
 export const CAPACITY_CONTROL_RANGE = { min: 1, max: 12 }
 
+/**
+ * RED RATIO — the fraction of a SOURCE's emitted particles that are RED
+ * (bd ai-engineer-s8cm). A red particle signifies "bad work that should not
+ * pass to production" — defective work. It is a PROPERTY of the work, carried
+ * for the particle's whole life; it is deliberately NOT coupled to the
+ * rejection-edge concept (rejection is a routing decision — see spec note on
+ * the bead).
+ *
+ * `redRatio` is an OPTIONAL, source-only field. When omitted a source emits
+ * all-black particles — DEFAULT_RED_RATIO (0), the historical behaviour.
+ * normalizeFlow fills 0 on every source so the engine always reads a number;
+ * the serializer stays byte-faithful, so a source the designer never gave a
+ * red ratio round-trips with no `redRatio` key (omitted-stays-omitted, the
+ * capacity-override precedent).
+ *
+ * `RED_RATIO_RANGE` is the range the designer's red-ratio slider exposes — a
+ * plain 0..1 fraction (shown to the author as 0–100 %). Unlike the SPEED /
+ * CAPACITY override ranges it needs no headroom past its natural bound: a
+ * ratio is meaningless outside [0,1].
+ */
+export const DEFAULT_RED_RATIO = 0
+export const RED_RATIO_RANGE = { min: 0, max: 1 }
+
 // ── v1.2 rejection-edge defaults (spec §2.3) ─────────────────────────────────
 
 /** Default fraction of a node's outflow taken by a rejection edge. */
@@ -250,6 +273,12 @@ export function normalizeFlow(flow) {
     // carries a split/combine count. transform itself is filled by NODE_DEFAULTS.
     if (n.kind === 'source' && n.particleSize === undefined) {
       n.particleSize = DEFAULT_PARTICLE_SIZE
+    }
+    // bd ai-engineer-s8cm: a source emits a fraction of its particles RED
+    // (defective work). Omitted → 0 (all black) — the engine always reads a
+    // number; the authored flow stays byte-faithful (no field written).
+    if (n.kind === 'source' && n.redRatio === undefined) {
+      n.redRatio = DEFAULT_RED_RATIO
     }
     if (n.transform === 'split' && n.splitCount === undefined) {
       n.splitCount = DEFAULT_SPLIT_COUNT
@@ -499,6 +528,15 @@ export function validateFlow(flow) {
     if (src.rate !== undefined && !(src.rate > 0)) {
       warnings.push(`source "${src.id}" has a non-positive rate (${src.rate})`)
     }
+    // bd ai-engineer-s8cm — redRatio is a source-only fraction in [0,1].
+    if (src.redRatio !== undefined
+        && !(typeof src.redRatio === 'number'
+             && src.redRatio >= 0 && src.redRatio <= 1)) {
+      warnings.push(
+        `source "${src.id}" has an invalid redRatio (${src.redRatio}) — `
+        + 'expected a fraction between 0 and 1',
+      )
+    }
   }
 
   // v1.1 controls — advisory range / enum checks
@@ -517,6 +555,13 @@ export function validateFlow(flow) {
       warnings.push(
         `node "${node.id}" uses the removed kind:'constraint' — v3 has no `
         + `constraint type (use a narrow width + the 'red' colorScheme)`,
+      )
+    }
+    // bd ai-engineer-s8cm — redRatio is meaningful only on a source node.
+    if (node.redRatio !== undefined && node.kind !== 'source') {
+      warnings.push(
+        `node "${node.id}" carries a redRatio but is not a source — `
+        + 'redRatio is only honoured on source (emitter) nodes',
       )
     }
 

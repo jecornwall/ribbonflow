@@ -23,6 +23,7 @@ import {
   SPEED_CONTROL_RANGE,
   WIDTH_RANGE,
   CAPACITY_CONTROL_RANGE,
+  RED_RATIO_RANGE,
   capacityFromWidth,
 } from '@flow-designer/library/internals'
 
@@ -286,6 +287,26 @@ const derivedCapacity = computed(() =>
             @click="doc.setSourceParticleSize(node.id, 'large')"
           >large</button>
         </div>
+      </div>
+
+      <!-- ── per-emitter RED RATIO (bd ai-engineer-s8cm) ─────────────────── -->
+      <!-- The fraction of this source's particles emitted RED — "bad work
+           that should not pass to production" (defective work). OPTIONAL and
+           source-only: 0 (the default) emits all black, the historical
+           behaviour. The slider drags live and commits the preview once on
+           release; a ratio of 0 clears the field so an all-black source
+           round-trips with no redRatio key. -->
+      <div v-if="node.kind === 'source'" class="row ctl">
+        <span>red ratio</span>
+        <input
+          type="range" class="slider"
+          :min="RED_RATIO_RANGE.min" :max="RED_RATIO_RANGE.max" step="0.05"
+          :value="node.redRatio ?? 0"
+          title="fraction of emitted particles that are red — defective work that should not pass to production"
+          @input="doc.setNodeRedRatio(node.id, +$event.target.value)"
+          @change="doc.commitEdit()"
+        />
+        <code class="readout">{{ pct(node.redRatio ?? 0) }}%</code>
       </div>
 
       <!-- ── the three v1.1 node controls (sliders — bd zesj) ────────────── -->

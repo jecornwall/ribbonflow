@@ -150,6 +150,10 @@ export {
   // bd ai-engineer-ey0b — the per-node CAPACITY-override slider range (a
   // converged node needs capacity well past the width-derived ceiling).
   CAPACITY_CONTROL_RANGE,
+  // bd ai-engineer-s8cm — the per-emitter red-particle ratio (defective work):
+  // the slider range + the all-black default.
+  RED_RATIO_RANGE,
+  DEFAULT_RED_RATIO,
   DEFAULT_NODE_LENGTH,
   DEFAULT_NODE_SPEED,
   DEFAULT_NODE_WIDTH,

@@ -308,6 +308,17 @@ function setSourceParticleSize(id, size) {
   M.setSourceParticleSize(state.flow, id, size)
   bumpPreview()
 }
+
+// bd ai-engineer-s8cm — the per-emitter red-particle ratio (defective work).
+// Emission-affecting, so STRUCTURAL — the preview sim must rebuild. The slider
+// drags LIVE (setNodeRedRatio mutates the reactive doc — no bump); the
+// inspector commits once on pointer release via commitEdit(), mirroring the
+// Length/Speed/Width and capacity slider cadence.
+
+/** Set a source node's RED-RATIO. Live — no bump; commit on release. */
+function setNodeRedRatio(id, value) {
+  M.setNodeRedRatio(state.flow, id, value)
+}
 /** Set a node's transform behaviour ('none' | 'split' | 'combine'). */
 function setNodeTransform(id, transform) {
   M.setNodeTransform(state.flow, id, transform)
@@ -685,6 +696,7 @@ const api = {
   forkBranchesFor,
   predecessorsOf,
   setSourceParticleSize,
+  setNodeRedRatio,
   setNodeTransform,
   setTransformCount,
   setNodeLength,
