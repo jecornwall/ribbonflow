@@ -34,14 +34,14 @@
         "labelDx": 0,
         "labelDy": -100,
         "successors": [
-          "you"
+          "implementation"
         ]
       },
       {
-        "id": "you",
+        "id": "implementation",
         "x": 830,
         "y": 450,
-        "label": "you",
+        "label": "implementation",
         "kind": "normal",
         "length": 1.25,
         "speed": 0.4,

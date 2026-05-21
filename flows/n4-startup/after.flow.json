@@ -24,23 +24,24 @@
         "label": "weekend ideas",
         "kind": "source",
         "rate": 0.8,
-        "length": 0.8,
-        "speed": 0.4,
-        "width": 30,
+        "length": 0.3,
+        "speed": 1,
+        "width": 70,
+        "capacity": 50,
         "coupleSpeedWidth": true,
         "colorScheme": "red",
         "labelSide": "above",
         "labelDx": 0,
         "labelDy": -100,
         "successors": [
-          "you"
+          "implementation"
         ]
       },
       {
-        "id": "you",
+        "id": "implementation",
         "x": 830,
         "y": 450,
-        "label": "you",
+        "label": "implementation",
         "kind": "normal",
         "length": 0.55,
         "speed": 1.75,
