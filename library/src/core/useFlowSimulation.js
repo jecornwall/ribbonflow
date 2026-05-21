@@ -53,6 +53,14 @@ export function radiusForSize(size) {
 // (the engine takes raw flow configs — see the linearFlow test fixtures).
 const particleSizeOf = (node) =>
   node && node.particleSize === 'large' ? 'large' : 'small'
+// A node's red-particle ratio (bd ai-engineer-s8cm) — the fraction of its
+// emitted particles that are RED (defective work). Source-only; clamped to
+// [0,1]; absent / non-numeric → 0 (all black — the historical behaviour).
+// Defends against an un-normalized flow, exactly as particleSizeOf does.
+const redRatioOf = (node) => {
+  const r = node && typeof node.redRatio === 'number' ? node.redRatio : 0
+  return r < 0 ? 0 : r > 1 ? 1 : r
+}
 // Transform-count defaults — inlined so the engine carries no format-layer
 // dependency (mirrors DEFAULT_SOURCE_RATE below; format/model.js owns the
 // canonical DEFAULT_SPLIT_COUNT / DEFAULT_COMBINE_COUNT).
@@ -813,6 +821,34 @@ export function createFlowSimulation(flow, opts = {}) {
   let pendingSeq = 0
   const markPending = (agent) => { agent._pendingSeq = ++pendingSeq }
 
+  // ── Red-particle emission (bd ai-engineer-s8cm) ───────────────────────────
+  //
+  // A source emits a fraction (`redRatio`) of its particles RED — defective
+  // work that should not pass to production. `emitDefective(node)` is called
+  // EXACTLY ONCE per emitted particle, in emit order, and returns whether that
+  // particle is red.
+  //
+  // The distribution is a deterministic ERROR-DIFFUSION accumulator (the
+  // spawnAccumulators precedent): a per-node accumulator accrues `redRatio`
+  // each emit and fires a red whenever it crosses 1. This gives EXACTLY the
+  // authored fraction in the long run, evenly spaced (ratio 0.25 → every 4th
+  // particle red), and is fully deterministic — no RNG draw — so a seeded
+  // engine run stays byte-identical. Keyed lazily by node id so it also
+  // covers the legacy bulk-fill entry node, which is not in `sources`.
+  const redAccumulators = {}
+  const emitDefective = (node) => {
+    if (!node) return false
+    const ratio = redRatioOf(node)
+    if (ratio <= 0) return false
+    const acc = (redAccumulators[node.id] || 0) + ratio
+    if (acc >= 1) {
+      redAccumulators[node.id] = acc - 1
+      return true
+    }
+    redAccumulators[node.id] = acc
+    return false
+  }
+
   const occupancy = Object.fromEntries(flow.nodes.map(n => [n.id, 0]))
   const agents = []
   if (rateLimited) {
@@ -838,6 +874,8 @@ export function createFlowSimulation(flow, opts = {}) {
           age: 0,
           size,
           radius: radiusForSize(size),
+          // bd ai-engineer-s8cm: red (defective) per the source's redRatio.
+          defective: emitDefective(seedSource),
         })
       } else {
         // Pending — assigned to a source in proportion to that source's rate.
@@ -854,6 +892,9 @@ export function createFlowSimulation(flow, opts = {}) {
           age: 0,
           size,
           radius: radiusForSize(size),
+          // bd ai-engineer-s8cm: red (defective) per the source's redRatio —
+          // fixed at seed time, like size, by the assigned source.
+          defective: emitDefective(src),
         }
         markPending(a)
         agents.push(a)
@@ -872,6 +913,9 @@ export function createFlowSimulation(flow, opts = {}) {
         : null  // overflow: agent stays in 'pending' lifecycle off-canvas
       // v1.3 L3: legacy bulk-fill is single-source — size is the entry's.
       const legacySize = particleSizeOf(entryNode)
+      // bd ai-engineer-s8cm: one redRatio roll per iteration (one agent
+      // created either way), so emit order stays 1:1 with particles.
+      const legacyDefective = emitDefective(entryNode)
       if (startNode) {
         occupancy[startNode.id]++
         const nextTarget = nextSuccessor(startNode)
@@ -886,6 +930,7 @@ export function createFlowSimulation(flow, opts = {}) {
           age: 0,
           size: legacySize,
           radius: radiusForSize(legacySize),
+          defective: legacyDefective,
         })
       } else {
         agents.push({
@@ -898,6 +943,7 @@ export function createFlowSimulation(flow, opts = {}) {
           age: 0,
           size: legacySize,
           radius: radiusForSize(legacySize),
+          defective: legacyDefective,
         })
       }
     }
@@ -1870,6 +1916,9 @@ export function createFlowSimulation(flow, opts = {}) {
         _enteredAt: largeAgent.age,
         size: 'small',
         radius: radiusForSize('small'),
+        // bd ai-engineer-s8cm: red is a property of the WORK — split children
+        // inherit the parent large particle's defective flag.
+        defective: !!largeAgent.defective,
       }
       occupancy[splitNode.id]++
       pendingSpawns.push(a)
@@ -1932,6 +1981,9 @@ export function createFlowSimulation(flow, opts = {}) {
           _enteredAt: t,
           size: 'large',
           radius: radiusForSize('large'),
+          // bd ai-engineer-s8cm: red is a property of the WORK — a combine
+          // fires a defective large if ANY consumed piece was defective.
+          defective: consumed.some(a => !!a.defective),
         }
         // bd ai-engineer-zq54: the combine-fired large IS the combine node's
         // output — so it is subject to the same rejection roll as any other
@@ -2395,6 +2447,9 @@ export function createFlowSimulation(flow, opts = {}) {
           _enteredAt: 0,
           size,
           radius: radiusForSize(size),
+          // bd ai-engineer-s8cm: the true-emitter path — a brand-new agent is
+          // red per the source's redRatio (deterministic error diffusion).
+          defective: emitDefective(srcNode),
         }
         agents.push(a)
         traces.entries.push({ id: a.id, nodeId: s.id, t: a.age })

@@ -1669,3 +1669,99 @@ test('gez3: the engine runs cleanly at a speed far above the old cap', () => {
     assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y), 'agent coords stay finite at speed 6')
   }
 })
+
+// ──────────────────────────────────────────────────────────────────────────
+// bd ai-engineer-s8cm — per-emitter RED-particle ratio (defective work).
+//
+// A source emits a fraction (`redRatio`) of its particles RED. The engine
+// stamps a per-agent `defective` flag at every emission site. The emit-fraction
+// logic is a DETERMINISTIC error-diffusion accumulator (no RNG draw), so the
+// realised fraction is exact and a seeded run stays byte-identical.
+// ──────────────────────────────────────────────────────────────────────────
+
+const redSourceFlow = {
+  viewBox: { w: 1600, h: 900 },
+  baseSpeed: 200,
+  nodes: [
+    { id: 'src', x: 200, y: 500, kind: 'source', rate: 3, redRatio: 0.5,
+      capacity: 1, latency: 0.5, width: 60, successors: ['mid'] },
+    { id: 'mid', x: 700, y: 500, capacity: 8, latency: 0.6, width: 60,
+      successors: ['sink'] },
+    { id: 'sink', x: 1200, y: 500, capacity: 8, latency: 0.5, width: 60,
+      successors: [] },
+  ],
+}
+
+// Strip `redRatio` (and any other listed keys) off the source node.
+function withoutSourceKeys(flow, ...keys) {
+  return {
+    ...flow,
+    nodes: flow.nodes.map((n) => {
+      if (n.kind !== 'source') return n
+      const copy = { ...n }
+      for (const k of keys) delete copy[k]
+      return copy
+    }),
+  }
+}
+
+test('s8cm: a source emits exactly redRatio of its particles as red', () => {
+  // 10 seed particles, ratio 0.5 → error diffusion fires red on every 2nd
+  // emission: exactly 5 red, 5 black. Deterministic — no RNG, no stepping.
+  const sim = createFlowSimulation(redSourceFlow, { initialAgents: 10 })
+  const red = sim.agents.filter(a => a.defective).length
+  assert.equal(red, 5, `ratio 0.5 of 10 → exactly 5 red, got ${red}`)
+  assert.equal(sim.agents.length, 10)
+})
+
+test('s8cm: a source with no redRatio emits all-black particles (default)', () => {
+  const sim = createFlowSimulation(
+    withoutSourceKeys(redSourceFlow, 'redRatio'), { initialAgents: 10 },
+  )
+  assert.equal(sim.agents.filter(a => a.defective).length, 0,
+    'an omitted redRatio is the all-black default')
+})
+
+test('s8cm: redRatio 1 emits every particle red', () => {
+  const flow = {
+    ...redSourceFlow,
+    nodes: redSourceFlow.nodes.map(n =>
+      n.kind === 'source' ? { ...n, redRatio: 1 } : n),
+  }
+  const sim = createFlowSimulation(flow, { initialAgents: 10 })
+  assert.equal(sim.agents.filter(a => a.defective).length, 10,
+    'ratio 1 → every emitted particle is red')
+})
+
+test('s8cm: the true-emitter path emits red at the authored ratio', () => {
+  // initialAgents:0 — every agent comes from the per-step true-emitter pass.
+  // Red is a permanent property and red/black travel identically, so the
+  // live-population fraction tracks the authored ratio.
+  const flow = {
+    ...redSourceFlow,
+    nodes: redSourceFlow.nodes.map(n =>
+      n.kind === 'source' ? { ...n, redRatio: 0.5, capacity: 4 } : n),
+  }
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  for (let i = 0; i < 3600; i++) sim.step(1 / 60)
+  const total = sim.agents.length
+  const red = sim.agents.filter(a => a.defective).length
+  assert.ok(total > 4, `expected a populated flow, got ${total} agents`)
+  const frac = red / total
+  assert.ok(frac > 0.35 && frac < 0.65,
+    `red fraction ${frac.toFixed(2)} should track redRatio 0.5`)
+})
+
+test('s8cm: the red emit-fraction is deterministic under a fixed seed', () => {
+  const flow = {
+    ...redSourceFlow,
+    nodes: redSourceFlow.nodes.map(n =>
+      n.kind === 'source' ? { ...n, redRatio: 0.3, capacity: 4 } : n),
+  }
+  const run = () => {
+    const sim = createFlowSimulation(flow, { initialAgents: 0, seed: 42 })
+    for (let i = 0; i < 1800; i++) sim.step(1 / 60)
+    return sim.agents.map(a => !!a.defective)
+  }
+  assert.deepEqual(run(), run(), 'two seeded runs stamp identical defective flags')
+})

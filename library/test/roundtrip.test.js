@@ -281,6 +281,45 @@ test('round-trip of a capacity-override flow is idempotent (byte-stable)', () =>
   assert.equal(once, twice)
 })
 
+// ── bd ai-engineer-s8cm: the per-emitter red-particle ratio ──────────────────
+// `redRatio` is an OPTIONAL source-only field the designer's red-ratio control
+// writes. An explicit fraction must survive serialize → deserialize
+// byte-faithfully; a source that authors NO redRatio must round-trip with the
+// field still absent (an all-black source stays all-black on reload, ratio 0).
+
+test('round-trip preserves an explicit per-emitter redRatio', () => {
+  const flow = {
+    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    nodes: [
+      { id: 'intake', x: 100, y: 100, kind: 'source', rate: 1, redRatio: 0.25,
+        successors: ['ship'] },
+      { id: 'cleanSrc', x: 100, y: 300, kind: 'source', rate: 1,
+        successors: ['ship'] },
+      { id: 'ship', x: 400, y: 200, width: 70, successors: [] },
+    ],
+  }
+  const restored = deserializeFlow(serializeFlow(flow))
+  assert.deepEqual(restored, flow)
+  assert.equal(restored.nodes[0].redRatio, 0.25, 'explicit redRatio survives')
+  assert.ok(
+    !('redRatio' in restored.nodes[1]),
+    'a source with no authored redRatio round-trips with the field still absent',
+  )
+})
+
+test('round-trip of a redRatio flow is idempotent (byte-stable)', () => {
+  const flow = {
+    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    nodes: [
+      { id: 's', x: 0, y: 0, kind: 'source', rate: 2, redRatio: 0.5,
+        successors: [] },
+    ],
+  }
+  const once = serializeFlow(flow)
+  const twice = serializeFlow(deserializeFlow(once))
+  assert.equal(once, twice)
+})
+
 test('cloneFlow returns a deep, independent copy', () => {
   const copy = cloneFlow(n4Flow)
   assert.deepEqual(copy, n4Flow)

@@ -37,6 +37,7 @@ import {
   setRejectionBow,
   findRejection,
   setSourceParticleSize,
+  setNodeRedRatio,
   setNodeTransform,
   setTransformCount,
   setNodeCapacity,
@@ -404,6 +405,55 @@ test('setNodeCapacity clears the override when given an empty value', () => {
   setNodeCapacity(flow, id, 6)
   setNodeCapacity(flow, id, undefined)
   assert.equal('capacity' in findNode(flow, id), false, 'undefined clears the override')
+})
+
+// ── setNodeRedRatio — per-emitter red-particle ratio (bd ai-engineer-s8cm) ───
+
+test('setNodeRedRatio sets a fraction on a source node', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeKind(flow, id, 'source')
+  assert.equal('redRatio' in findNode(flow, id), false, 'no redRatio by default')
+  setNodeRedRatio(flow, id, 0.3)
+  assert.equal(findNode(flow, id).redRatio, 0.3)
+})
+
+test('setNodeRedRatio clamps the fraction to [0,1]', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeKind(flow, id, 'source')
+  setNodeRedRatio(flow, id, 1.8)
+  assert.equal(findNode(flow, id).redRatio, 1)
+  setNodeRedRatio(flow, id, -0.4)
+  // -0.4 is finite and non-zero, clamps up to 0 — which then reads as cleared.
+  assert.equal('redRatio' in findNode(flow, id), false, 'a clamped-to-0 ratio clears')
+})
+
+test('setNodeRedRatio: a ratio of 0 clears the field (omitted-stays-omitted)', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeKind(flow, id, 'source')
+  setNodeRedRatio(flow, id, 0.5)
+  assert.equal(findNode(flow, id).redRatio, 0.5)
+  setNodeRedRatio(flow, id, 0)
+  assert.equal('redRatio' in findNode(flow, id), false, '0 clears — no all-black key')
+})
+
+test('setNodeRedRatio is a no-op on a non-source node', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeRedRatio(flow, id, 0.5)
+  assert.equal('redRatio' in findNode(flow, id), false, 'red is an emitter-only property')
+})
+
+test('setNodeKind drops a stale redRatio when a node leaves the source kind', () => {
+  const flow = emptyFlow()
+  const id = addNode(flow, 0, 0)
+  setNodeKind(flow, id, 'source')
+  setNodeRedRatio(flow, id, 0.4)
+  assert.equal(findNode(flow, id).redRatio, 0.4)
+  setNodeKind(flow, id, 'normal')
+  assert.equal('redRatio' in findNode(flow, id), false, 'redRatio cleared with the kind')
 })
 
 test('setNodeCapacity no-ops on an unknown node id', () => {
