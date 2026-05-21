@@ -1,0 +1,19 @@
+{
+  "id": "n5-activity-landscape",
+  "title": "N5 · engineer-activity landscape",
+  "flows": [
+    {
+      "slug": "solo",
+      "title": "Solo · one engineer's week"
+    },
+    {
+      "slug": "team",
+      "title": "Team · four engineers"
+    }
+  ],
+  "transition": {
+    "durationMs": 900,
+    "holdMs": 2400,
+    "easing": "easeInOut"
+  }
+}

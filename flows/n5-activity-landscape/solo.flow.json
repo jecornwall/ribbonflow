@@ -1,0 +1,155 @@
+{
+  "formatVersion": 5,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 0,
+      "w": 1600,
+      "h": 900
+    },
+    "baseSpeed": 200,
+    "initialAgents": 18,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "segmentDividers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [
+      {
+        "from": "week",
+        "branches": [
+          { "to": "other", "rateShare": 0.57 },
+          { "to": "meetings", "rateShare": 0.12 },
+          { "to": "coding", "rateShare": 0.11 },
+          { "to": "debugging", "rateShare": 0.09 },
+          { "to": "design", "rateShare": 0.06 },
+          { "to": "code-review", "rateShare": 0.05 }
+        ]
+      }
+    ],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "week",
+        "x": 220,
+        "y": 450,
+        "label": "an engineer's week",
+        "kind": "source",
+        "rate": 3,
+        "particleSize": "small",
+        "length": 0.8,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -62,
+        "successors": [
+          "other",
+          "meetings",
+          "coding",
+          "debugging",
+          "design",
+          "code-review"
+        ]
+      },
+      {
+        "id": "other",
+        "x": 1200,
+        "y": 130,
+        "label": "everything else",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 112,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -82,
+        "successors": []
+      },
+      {
+        "id": "meetings",
+        "x": 1200,
+        "y": 290,
+        "label": "meetings & comms",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 46,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": []
+      },
+      {
+        "id": "coding",
+        "x": 1200,
+        "y": 420,
+        "label": "coding",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 42,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -44,
+        "successors": []
+      },
+      {
+        "id": "debugging",
+        "x": 1200,
+        "y": 540,
+        "label": "debugging",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 36,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 40,
+        "successors": []
+      },
+      {
+        "id": "design",
+        "x": 1200,
+        "y": 650,
+        "label": "design",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 28,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 36,
+        "successors": []
+      },
+      {
+        "id": "code-review",
+        "x": 1200,
+        "y": 760,
+        "label": "code review",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 26,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 35,
+        "successors": []
+      }
+    ]
+  }
+}
