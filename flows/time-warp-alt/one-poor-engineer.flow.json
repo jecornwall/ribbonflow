@@ -9,6 +9,7 @@
     },
     "baseSpeed": 200,
     "initialAgents": 6,
+    "showLegend": false,
     "forks": [],
     "merges": [
       {
