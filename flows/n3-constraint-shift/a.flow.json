@@ -19,7 +19,7 @@
     "nodes": [
       {
         "id": "problem-definition",
-        "x": 220,
+        "x": 210,
         "y": 450,
         "label": "problem definition",
         "kind": "source",
@@ -39,7 +39,7 @@
       },
       {
         "id": "solution-design",
-        "x": 520,
+        "x": 510,
         "y": 450,
         "label": "solution design",
         "kind": "normal",
@@ -57,7 +57,7 @@
       },
       {
         "id": "implementation",
-        "x": 820,
+        "x": 810,
         "y": 450,
         "label": "implementation",
         "kind": "normal",
@@ -75,7 +75,7 @@
       },
       {
         "id": "test",
-        "x": 1110,
+        "x": 1100,
         "y": 450,
         "label": "test",
         "kind": "normal",
@@ -93,7 +93,7 @@
       },
       {
         "id": "deploy",
-        "x": 1400,
+        "x": 1390,
         "y": 450,
         "label": "deploy",
         "kind": "normal",

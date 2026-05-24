@@ -19,7 +19,7 @@
     "nodes": [
       {
         "id": "weekend-ideas",
-        "x": 280,
+        "x": 250,
         "y": 450,
         "label": "weekend ideas",
         "kind": "source",
@@ -41,11 +41,11 @@
       },
       {
         "id": "implementation",
-        "x": 830,
+        "x": 800,
         "y": 450,
         "label": "implementation",
         "kind": "normal",
-        "length": 1.25,
+        "length": 0.8,
         "speed": 0.4,
         "width": 30,
         "capacity": 1,
@@ -61,7 +61,7 @@
       },
       {
         "id": "shipped",
-        "x": 1380,
+        "x": 1350,
         "y": 450,
         "label": "shipped",
         "kind": "normal",
