@@ -120,25 +120,6 @@
         "rate": 1
       },
       {
-        "id": "node-3",
-        "x": 680,
-        "y": 240,
-        "label": "new tech",
-        "kind": "source",
-        "length": 0.8,
-        "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
-        "colorScheme": "neutral",
-        "labelSide": "above",
-        "labelDx": 0,
-        "labelDy": -70,
-        "successors": [
-          "node-6"
-        ],
-        "rate": 1
-      },
-      {
         "id": "node-4",
         "x": 1040,
         "y": 480,
@@ -175,22 +156,6 @@
         ],
         "transform": "split",
         "splitCount": 4
-      },
-      {
-        "id": "node-6",
-        "x": 1120,
-        "y": 240,
-        "label": "learning & development",
-        "kind": "normal",
-        "length": 0.8,
-        "speed": 1,
-        "width": 70,
-        "coupleSpeedWidth": true,
-        "colorScheme": "neutral",
-        "labelSide": "above",
-        "labelDx": 0,
-        "labelDy": -70,
-        "successors": []
       },
       {
         "id": "node-7",

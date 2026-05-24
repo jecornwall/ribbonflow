@@ -5,6 +5,38 @@
     {
       "slug": "one-poor-engineer",
       "title": "One poor engineer"
+    },
+    {
+      "slug": "state-0",
+      "title": "S6 state 0 — empty plate"
+    },
+    {
+      "slug": "state-1",
+      "title": "S6 state 1 — feature work + coding"
+    },
+    {
+      "slug": "state-2",
+      "title": "S6 state 2 — + debugging"
+    },
+    {
+      "slug": "state-3",
+      "title": "S6 state 3 — + pr review"
+    },
+    {
+      "slug": "state-4",
+      "title": "S6 state 4 — + planning + design"
+    },
+    {
+      "slug": "state-5",
+      "title": "S6 state 5 — + security / compliance"
+    },
+    {
+      "slug": "state-6",
+      "title": "S6 state 6 — + maintenance"
+    },
+    {
+      "slug": "state-7",
+      "title": "S6 state 7 — full plate"
     }
   ]
 }

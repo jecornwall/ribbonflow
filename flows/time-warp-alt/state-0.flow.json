@@ -1,0 +1,17 @@
+{
+  "formatVersion": 5,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 0,
+      "w": 1600,
+      "h": 900
+    },
+    "baseSpeed": 200,
+    "initialAgents": 6,
+    "showLegend": false,
+    "forks": [],
+    "merges": [],
+    "nodes": []
+  }
+}
