@@ -114,6 +114,12 @@ export { default as FlowAgent } from './core/FlowAgent.vue'
 export { default as FlowSegmentMarker } from './core/FlowSegmentMarker.vue'
 export { default as FlowRejectionArc } from './core/FlowRejectionArc.vue'
 
+// ── Pure scene model (Phase 1 — ribbonflow extraction) ──────────────────────
+// The framework-free render model the imperative renderer (Phase 2) and the
+// designer drive. buildFlowScene(flow, sim) → static primitives; agentsView(sim)
+// → the per-frame agents list. See core/buildFlowScene.js.
+export { buildFlowScene, agentsView } from './core/buildFlowScene.js'
+
 // The flow-set player (M4). The designer drives this directly for its
 // set-preview view; <FlowEmbed> wraps it for the slide face.
 export { default as FlowSetPlayer } from './embed/FlowSetPlayer.vue'

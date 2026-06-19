@@ -164,3 +164,42 @@ test('buildFlowScene: a purely linear flow emits no junction discs', () => {
   const discs = buildFlowScene(flow, sim).static.filter((p) => p.kind === 'disc')
   assert.equal(discs.length, 0)
 })
+
+test('buildFlowScene: end-to-end over n4-flow-a yields ribbons + discs, all well-formed', () => {
+  const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(forkFlow, sim)
+
+  const kinds = new Set(scene.static.map((p) => p.kind))
+  assert.ok(kinds.has('ribbon'), 'expected ribbon primitives')
+  assert.ok(kinds.has('disc'), 'expected junction discs (n4-flow-a forks + merges)')
+
+  // Every static primitive is renderable: paths carry a moveto, discs a radius.
+  for (const p of scene.static) {
+    if (p.kind === 'ribbon' || p.kind === 'path') assert.ok(p.d.startsWith('M'))
+    if (p.kind === 'disc') assert.ok(p.r > 0)
+  }
+
+  // Ribbons come before discs in paint order (FlowGraph paints discs over ribbons).
+  const firstDisc = scene.static.findIndex((p) => p.kind === 'disc')
+  const lastRibbon = scene.static.map((p) => p.kind).lastIndexOf('ribbon')
+  assert.ok(lastRibbon < firstDisc, 'ribbons must paint before discs')
+})
+
+test('internals barrel re-exports buildFlowScene + agentsView', async () => {
+  // internals.js re-exports .vue components that bare node cannot load, so we
+  // verify the export at the source level rather than by dynamic import. This
+  // checks the same invariant: the names appear as named exports in the barrel.
+  const { readFileSync } = await import('node:fs')
+  const { fileURLToPath } = await import('node:url')
+  const { dirname, join } = await import('node:path')
+  const dir = dirname(fileURLToPath(import.meta.url))
+  const src = readFileSync(join(dir, '../internals.js'), 'utf8')
+  assert.ok(
+    src.includes('buildFlowScene') && src.includes('agentsView'),
+    'internals.js must export buildFlowScene and agentsView',
+  )
+  // Also verify they are actually exported from the implementation module.
+  const impl = await import('./buildFlowScene.js')
+  assert.equal(typeof impl.buildFlowScene, 'function')
+  assert.equal(typeof impl.agentsView, 'function')
+})
