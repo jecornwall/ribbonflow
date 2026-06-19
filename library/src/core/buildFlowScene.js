@@ -10,6 +10,9 @@
  * Provenance: each section cites the FlowGraph.vue block it was lifted from.
  */
 
+import { renderRadiusForAgent } from './agentRender.js'
+import { REJECTION_PARTICLE_COLOR, DEFECTIVE_PARTICLE_COLOR } from './flowCurve.js'
+
 // Module-local counter for stable, collision-free ids per buildFlowScene call.
 // NOT Math.random (FlowGraph used random for the same purpose) — a deterministic
 // counter keeps headless tests stable and avoids the banned Math.random in
@@ -41,4 +44,33 @@ export function buildFlowScene(flow, sim) {
   // Primitive families are appended in paint order by the tasks below.
 
   return { viewBox, defs, static: staticPrims }
+}
+
+/**
+ * Per-frame agents view. Pure: reads the CURRENT sim's agents each call, so a
+ * visibility-gate sim rebuild (Phase 2 startFresh) is reflected without
+ * recapturing. Pending agents are dropped (they pile at an off-canvas anchor —
+ * FlowGraph.vue:583-588). `fill: null` means "renderer default cream".
+ *
+ * @param {{agents: object[]}} sim
+ * @returns {{id, x, y, r, fill}[]}
+ */
+export function agentsView(sim) {
+  return sim.agents
+    .filter((a) => a.lifecycle !== 'pending')
+    .map((a) => ({
+      id: a.id,
+      x: a.x,
+      y: a.y,
+      r: renderRadiusForAgent(a),
+      fill: agentFill(a),
+    }))
+}
+
+// FlowGraph.vue:608-612 — revising (routing state) wins over defective (work
+// property); everything else is the renderer's default.
+function agentFill(agent) {
+  if (agent.lifecycle === 'revising') return REJECTION_PARTICLE_COLOR
+  if (agent.defective) return DEFECTIVE_PARTICLE_COLOR
+  return null
 }

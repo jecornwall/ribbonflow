@@ -2,7 +2,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createFlowSimulation } from './useFlowSimulation.js'
-import { buildFlowScene } from './buildFlowScene.js'
+import { buildFlowScene, agentsView } from './buildFlowScene.js'
+import { REJECTION_PARTICLE_COLOR, DEFECTIVE_PARTICLE_COLOR } from './flowCurve.js'
+import { RENDER_RADIUS_SMALL } from './agentRender.js'
 
 // A minimal two-node linear flow — enough to exercise viewBox + one branch.
 function linearFlow() {
@@ -44,4 +46,36 @@ test('buildFlowScene: wobble def is null unless flow.inkWobble is set', () => {
   assert.equal(wscene.defs.wobble.baseFrequency, 0.012)
   assert.equal(wscene.defs.wobble.scale, 1.6)
   assert.ok(wscene.defs.wobble.id.length > 0)
+})
+
+test('agentsView: drops pending agents, keeps active ones', () => {
+  const sim = {
+    agents: [
+      { id: 1, x: 10, y: 20, lifecycle: 'pending' },
+      { id: 2, x: 30, y: 40, lifecycle: 'active' },
+    ],
+  }
+  const view = agentsView(sim)
+  assert.equal(view.length, 1)
+  assert.equal(view[0].id, 2)
+  assert.deepEqual([view[0].x, view[0].y], [30, 40])
+})
+
+test('agentsView: colour precedence — revising beats defective beats default', () => {
+  const sim = {
+    agents: [
+      { id: 1, x: 0, y: 0, lifecycle: 'revising', defective: true },
+      { id: 2, x: 0, y: 0, lifecycle: 'active', defective: true },
+      { id: 3, x: 0, y: 0, lifecycle: 'active' },
+    ],
+  }
+  const [a, b, c] = agentsView(sim)
+  assert.equal(a.fill, REJECTION_PARTICLE_COLOR)
+  assert.equal(b.fill, DEFECTIVE_PARTICLE_COLOR)
+  assert.equal(c.fill, null)
+})
+
+test('agentsView: radius defaults to the small render radius', () => {
+  const sim = { agents: [{ id: 1, x: 0, y: 0, lifecycle: 'active' }] }
+  assert.equal(agentsView(sim)[0].r, RENDER_RADIUS_SMALL)
 })
