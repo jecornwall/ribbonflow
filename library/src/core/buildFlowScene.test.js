@@ -97,10 +97,12 @@ test('buildFlowScene: ribbon fill honours flow.ribbonColor, else neutral', () =>
   const neutralFlow = linearFlow()
   const nsim = createFlowSimulation(neutralFlow, { initialAgents: 0 })
   const nribbon = buildFlowScene(neutralFlow, nsim).static.find((p) => p.kind === 'ribbon')
+  assert.ok(nribbon, 'expected at least one ribbon')
   assert.equal(nribbon.fill, RIBBON_SCHEME_COLORS.neutral)
 
   const tinted = { ...linearFlow(), ribbonColor: '#abcdef' }
   const tsim = createFlowSimulation(tinted, { initialAgents: 0 })
   const tribbon = buildFlowScene(tinted, tsim).static.find((p) => p.kind === 'ribbon')
+  assert.ok(tribbon, 'expected at least one ribbon')
   assert.equal(tribbon.fill, '#abcdef')
 })

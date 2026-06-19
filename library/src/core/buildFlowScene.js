@@ -23,6 +23,12 @@ import {
 
 // FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
 // else uses the smooth segmented layout's widthFn (shared with the engine).
+/**
+ * @param {object} branch — a sim branch (has .nodeIds, .centerline, .kind)
+ * @param {object} flow   — the normalised flow object
+ * @param {{[id:string]: number}} widths — per-node widths from computeNodeWidths
+ * @returns {(s: number) => number} arc-length → ribbon width
+ */
 function branchWidthFn(branch, flow, widths) {
   if (flow.pinchMode === 'constraint-only') return buildPinchWidthFn(branch, flow)
   return segmentedRibbonLayout(branch, flow, widths).widthFn
