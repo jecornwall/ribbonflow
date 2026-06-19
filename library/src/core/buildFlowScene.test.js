@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createFlowSimulation } from './useFlowSimulation.js'
 import { buildFlowScene, agentsView } from './buildFlowScene.js'
-import { REJECTION_PARTICLE_COLOR, DEFECTIVE_PARTICLE_COLOR, RIBBON_SCHEME_COLORS } from './flowCurve.js'
+import { REJECTION_PARTICLE_COLOR, DEFECTIVE_PARTICLE_COLOR, RIBBON_SCHEME_COLORS, RIBBON_SCHEME_COLORS_LIGHT } from './flowCurve.js'
 import { RENDER_RADIUS_SMALL } from './agentRender.js'
 
 // A minimal two-node linear flow — enough to exercise viewBox + one branch.
@@ -105,4 +105,38 @@ test('buildFlowScene: ribbon fill honours flow.ribbonColor, else neutral', () =>
   const tribbon = buildFlowScene(tinted, tsim).static.find((p) => p.kind === 'ribbon')
   assert.ok(tribbon, 'expected at least one ribbon')
   assert.equal(tribbon.fill, '#abcdef')
+})
+
+// A linear flow whose middle node is GREEN — exercises the non-pinch
+// two-tone overlay (plateau in full tone, wings in light tone).
+function coloredFlow() {
+  return {
+    viewBox: { w: 1600, h: 900 },
+    baseSpeed: 200,
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200, y: 450, label: 'a', capacity: 1, latency: 0.6, colorScheme: 'neutral', successors: ['b'] },
+      { id: 'b', x: 700, y: 450, label: 'b', capacity: 1, latency: 0.6, colorScheme: 'green', successors: ['c'] },
+      { id: 'c', x: 1200, y: 450, label: 'c', capacity: 1, latency: 0.6, colorScheme: 'neutral', successors: [] },
+    ],
+  }
+}
+
+test('buildFlowScene: neutral-only flow emits no coloured-segment overlays', () => {
+  const flow = linearFlow() // no colorScheme anywhere → all neutral
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const paths = buildFlowScene(flow, sim).static.filter((p) => p.kind === 'path')
+  assert.equal(paths.length, 0)
+})
+
+test('buildFlowScene: a green node emits plateau (full) + wing (light) overlays', () => {
+  const flow = coloredFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const paths = buildFlowScene(flow, sim).static.filter((p) => p.kind === 'path')
+  assert.ok(paths.length >= 1, 'expected at least the plateau overlay')
+  assert.ok(paths.some((p) => p.fill === RIBBON_SCHEME_COLORS.green), 'plateau in full green')
+  for (const p of paths) {
+    assert.ok(p.d.startsWith('M'))
+    assert.ok([RIBBON_SCHEME_COLORS.green, RIBBON_SCHEME_COLORS_LIGHT.green].includes(p.fill))
+  }
 })

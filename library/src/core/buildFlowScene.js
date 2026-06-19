@@ -19,6 +19,8 @@ import {
   buildPinchWidthFn,
   computeNodeWidths,
   RIBBON_SCHEME_COLORS,
+  RIBBON_SCHEME_COLORS_LIGHT,
+  pinchZoneOutlinePath,
 } from './flowCurve.js'
 
 // FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
@@ -32,6 +34,17 @@ import {
 function branchWidthFn(branch, flow, widths) {
   if (flow.pinchMode === 'constraint-only') return buildPinchWidthFn(branch, flow)
   return segmentedRibbonLayout(branch, flow, widths).widthFn
+}
+
+// Distribute the centerline's geometric length across nodes by latency share.
+// FlowGraph.vue:629-636
+function branchLatencyArc(branch, flow) {
+  const latencies = branch.nodeIds.map(
+    (id) => flow.nodes.find((n) => n.id === id).latency,
+  )
+  const sum = latencies.reduce((a, b) => a + b, 0)
+  const total = branch.centerline.totalLength
+  return latencies.map((l) => (l / sum) * total)
 }
 
 // Module-local counter for stable, collision-free ids per buildFlowScene call.
@@ -72,6 +85,49 @@ export function buildFlowScene(flow, sim) {
       kind: 'ribbon',
       d: ribbonOutlinePath(branch.centerline, branchWidthFn(branch, flow, widths)),
       fill: ribbonColor,
+    })
+  }
+
+  // ── Coloured-segment overlays — FlowGraph.vue:676-724 ─────────────────────
+  if (flow.pinchMode === 'constraint-only') {
+    // Pinch flows: flat per-segment overlay over the latency-proportioned range.
+    renderBranches.forEach((branch, bi) => {
+      const segLens = branchLatencyArc(branch, flow)
+      const wfn = branchWidthFn(branch, flow, widths)
+      const total = branch.centerline.totalLength
+      let acc = 0
+      for (let i = 0; i < branch.nodeIds.length; i++) {
+        const sStart = acc
+        const sEnd = Math.min(acc + segLens[i], total)
+        acc += segLens[i]
+        const node = flow.nodes.find((n) => n.id === branch.nodeIds[i])
+        const scheme = (node && node.colorScheme) || 'neutral'
+        if (scheme === 'neutral') continue
+        const color = RIBBON_SCHEME_COLORS[scheme]
+        if (!color) continue
+        const d = pinchZoneOutlinePath(branch.centerline, wfn, { sStart, sEnd })
+        if (d) staticPrims.push({ kind: 'path', key: `seg-${bi}-${i}`, d, fill: color })
+      }
+    })
+  } else {
+    // Non-pinch flows: two-tone — plateau in full tone, wings in light tone.
+    renderBranches.forEach((branch, bi) => {
+      const { widthFn, segments } = segmentedRibbonLayout(branch, flow, widths)
+      segments.forEach((seg, i) => {
+        const node = flow.nodes.find((n) => n.id === seg.nodeId)
+        const scheme = (node && node.colorScheme) || 'neutral'
+        if (scheme === 'neutral') return
+        const full = RIBBON_SCHEME_COLORS[scheme]
+        const light = RIBBON_SCHEME_COLORS_LIGHT[scheme]
+        if (!full) return
+        const pd = pinchZoneOutlinePath(branch.centerline, widthFn, seg.plateau)
+        if (pd) staticPrims.push({ kind: 'path', key: `seg-${bi}-${i}-p`, d: pd, fill: full })
+        ;[['l', seg.leftWing], ['r', seg.rightWing]].forEach(([wk, wing]) => {
+          if (!wing) return
+          const wd = pinchZoneOutlinePath(branch.centerline, widthFn, wing)
+          if (wd) staticPrims.push({ kind: 'path', key: `seg-${bi}-${i}-w${wk}`, d: wd, fill: light })
+        })
+      })
     })
   }
 
