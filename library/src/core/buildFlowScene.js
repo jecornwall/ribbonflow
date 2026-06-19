@@ -26,7 +26,7 @@ let _sceneSeq = 0
 export function buildFlowScene(flow, sim) {
   const seq = _sceneSeq++
   const vb = flow.viewBox || { w: 0, h: 0 }
-  const viewBox = { x: vb.x ?? 0, y: vb.y ?? 0, w: vb.w, h: vb.h }
+  const viewBox = { x: vb.x ?? 0, y: vb.y ?? 0, w: vb.w ?? 0, h: vb.h ?? 0 }
 
   const defs = {
     clipId: `flow-clip-${seq}`,

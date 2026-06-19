@@ -43,4 +43,5 @@ test('buildFlowScene: wobble def is null unless flow.inkWobble is set', () => {
   const wscene = buildFlowScene(wobbly, wsim)
   assert.equal(wscene.defs.wobble.baseFrequency, 0.012)
   assert.equal(wscene.defs.wobble.scale, 1.6)
+  assert.ok(wscene.defs.wobble.id.length > 0)
 })
