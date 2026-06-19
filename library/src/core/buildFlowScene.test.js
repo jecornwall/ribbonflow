@@ -182,6 +182,7 @@ test('buildFlowScene: end-to-end over n4-flow-a yields ribbons + discs, all well
   // Ribbons come before discs in paint order (FlowGraph paints discs over ribbons).
   const firstDisc = scene.static.findIndex((p) => p.kind === 'disc')
   const lastRibbon = scene.static.map((p) => p.kind).lastIndexOf('ribbon')
+  assert.ok(firstDisc > -1, 'expected at least one disc')
   assert.ok(lastRibbon < firstDisc, 'ribbons must paint before discs')
 })
 
@@ -195,8 +196,8 @@ test('internals barrel re-exports buildFlowScene + agentsView', async () => {
   const dir = dirname(fileURLToPath(import.meta.url))
   const src = readFileSync(join(dir, '../internals.js'), 'utf8')
   assert.ok(
-    src.includes('buildFlowScene') && src.includes('agentsView'),
-    'internals.js must export buildFlowScene and agentsView',
+    src.includes("export { buildFlowScene, agentsView } from './core/buildFlowScene.js'"),
+    'internals.js must re-export buildFlowScene + agentsView from buildFlowScene.js',
   )
   // Also verify they are actually exported from the implementation module.
   const impl = await import('./buildFlowScene.js')
