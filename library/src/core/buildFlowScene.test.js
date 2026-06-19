@@ -147,8 +147,9 @@ test('buildFlowScene: fork/merge flow emits junction discs at the junction nodes
   const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
   const scene = buildFlowScene(forkFlow, sim)
   const discs = scene.static.filter((p) => p.kind === 'disc')
-  // n4-flow-a forks at `design` (→ build, test-prep) and merges at `review`.
-  assert.ok(discs.length >= 1, 'expected at least one junction disc')
+  // n4-flow-a has exactly two junctions: `design` (fork → build, test-prep)
+  // and `review` (merge ← build, test-prep) — so exactly two discs.
+  assert.equal(discs.length, 2, 'expected exactly two junction discs (design fork + review merge)')
   for (const disc of discs) {
     assert.equal(typeof disc.cx, 'number')
     assert.equal(typeof disc.cy, 'number')

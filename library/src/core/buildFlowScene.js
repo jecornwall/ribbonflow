@@ -55,6 +55,32 @@ function branchLatencyArc(branch, flow) {
 let _sceneSeq = 0
 
 /**
+ * Build the static Scene for a flow.
+ *
+ * ── Scene primitive schema (canonical) ───────────────────────────────────────
+ * `static[]` carries declarative SVG primitive descriptors, emitted in paint
+ * order — ribbons → coloured-segment overlays → junction discs. Each primitive
+ * uses SVG-native field names so the (Phase 2) imperative renderer maps 1:1 to
+ * DOM attributes:
+ *
+ *   { kind: 'ribbon', d, fill }              — one per render branch; `d` is the
+ *                                              full ribbon outline path.
+ *   { kind: 'path',   d, fill, key }         — a coloured-segment overlay
+ *                                              (pinch flat / non-pinch two-tone).
+ *   { kind: 'disc',   cx, cy, r, fill, key } — a junction star-burst cap
+ *                                              (one per fork/merge node).
+ *
+ * Field convention: `d` for path geometry, `cx`/`cy`/`r` for circles, `fill`
+ * for paint on every primitive — matching SVG `<path>` / `<circle>` attributes.
+ *
+ * `agentsView(sim)` (below) returns the per-frame layer: `{id, x, y, r, fill}[]`,
+ * where `fill: null` means "renderer default cream".
+ *
+ * This is the canonical schema the Phase 2 imperative renderer consumes.
+ * FlowGraph.vue keeps its own internal Vue computeds and is NOT a consumer of
+ * this scene; the two derive identical geometry from the same flowCurve.js
+ * helpers but are otherwise independent.
+ *
  * @param {object} flow — a normalised flow object
  * @param {object} sim  — a simulation from createFlowSimulation(flow, ...);
  *                        provides sim.branches (geometry) and, via agentsView,
