@@ -11,7 +11,22 @@
  */
 
 import { renderRadiusForAgent } from './agentRender.js'
-import { REJECTION_PARTICLE_COLOR, DEFECTIVE_PARTICLE_COLOR } from './flowCurve.js'
+import {
+  REJECTION_PARTICLE_COLOR,
+  DEFECTIVE_PARTICLE_COLOR,
+  ribbonOutlinePath,
+  segmentedRibbonLayout,
+  buildPinchWidthFn,
+  computeNodeWidths,
+  RIBBON_SCHEME_COLORS,
+} from './flowCurve.js'
+
+// FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
+// else uses the smooth segmented layout's widthFn (shared with the engine).
+function branchWidthFn(branch, flow, widths) {
+  if (flow.pinchMode === 'constraint-only') return buildPinchWidthFn(branch, flow)
+  return segmentedRibbonLayout(branch, flow, widths).widthFn
+}
 
 // Module-local counter for stable, collision-free ids per buildFlowScene call.
 // NOT Math.random (FlowGraph used random for the same purpose) — a deterministic
@@ -41,7 +56,20 @@ export function buildFlowScene(flow, sim) {
   }
 
   const staticPrims = []
-  // Primitive families are appended in paint order by the tasks below.
+  const widths = computeNodeWidths(flow)
+  const renderBranches = sim.branches.filter((b) => b.kind !== 'rejection')
+  const ribbonColor = flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral
+
+  // ── Ribbons (one per render branch) — FlowGraph.vue:108-114 ───────────────
+  for (const branch of renderBranches) {
+    staticPrims.push({
+      kind: 'ribbon',
+      d: ribbonOutlinePath(branch.centerline, branchWidthFn(branch, flow, widths)),
+      fill: ribbonColor,
+    })
+  }
+
+  // Further primitive families are appended below in paint order.
 
   return { viewBox, defs, static: staticPrims }
 }

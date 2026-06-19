@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createFlowSimulation } from './useFlowSimulation.js'
 import { buildFlowScene, agentsView } from './buildFlowScene.js'
-import { REJECTION_PARTICLE_COLOR, DEFECTIVE_PARTICLE_COLOR } from './flowCurve.js'
+import { REJECTION_PARTICLE_COLOR, DEFECTIVE_PARTICLE_COLOR, RIBBON_SCHEME_COLORS } from './flowCurve.js'
 import { RENDER_RADIUS_SMALL } from './agentRender.js'
 
 // A minimal two-node linear flow — enough to exercise viewBox + one branch.
@@ -78,4 +78,29 @@ test('agentsView: colour precedence — revising beats defective beats default',
 test('agentsView: radius defaults to the small render radius', () => {
   const sim = { agents: [{ id: 1, x: 0, y: 0, lifecycle: 'active' }] }
   assert.equal(agentsView(sim)[0].r, RENDER_RADIUS_SMALL)
+})
+
+test('buildFlowScene: one ribbon primitive per non-rejection branch', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const scene = buildFlowScene(flow, sim)
+  const ribbons = scene.static.filter((p) => p.kind === 'ribbon')
+  const renderBranches = sim.branches.filter((b) => b.kind !== 'rejection')
+  assert.equal(ribbons.length, renderBranches.length)
+  for (const r of ribbons) {
+    assert.equal(typeof r.d, 'string')
+    assert.ok(r.d.startsWith('M'), `ribbon path should start with a moveto, got: ${r.d.slice(0, 8)}`)
+  }
+})
+
+test('buildFlowScene: ribbon fill honours flow.ribbonColor, else neutral', () => {
+  const neutralFlow = linearFlow()
+  const nsim = createFlowSimulation(neutralFlow, { initialAgents: 0 })
+  const nribbon = buildFlowScene(neutralFlow, nsim).static.find((p) => p.kind === 'ribbon')
+  assert.equal(nribbon.fill, RIBBON_SCHEME_COLORS.neutral)
+
+  const tinted = { ...linearFlow(), ribbonColor: '#abcdef' }
+  const tsim = createFlowSimulation(tinted, { initialAgents: 0 })
+  const tribbon = buildFlowScene(tinted, tsim).static.find((p) => p.kind === 'ribbon')
+  assert.equal(tribbon.fill, '#abcdef')
 })
