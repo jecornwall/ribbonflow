@@ -21,6 +21,7 @@ import {
   RIBBON_SCHEME_COLORS,
   RIBBON_SCHEME_COLORS_LIGHT,
   pinchZoneOutlinePath,
+  junctionNodeIds,
 } from './flowCurve.js'
 
 // FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
@@ -129,6 +130,41 @@ export function buildFlowScene(flow, sim) {
         })
       })
     })
+  }
+
+  // ── Junction discs (star-burst caps) — FlowGraph.vue:823-862 ──────────────
+  const junctionIds = junctionNodeIds(flow)
+  for (const id of junctionIds) {
+    const node = flow.nodes.find((n) => n.id === id)
+    if (!node) continue
+    let maxW = 0
+    for (const branch of renderBranches) {
+      const idx = branch.nodeIds.indexOf(id)
+      if (idx < 0) continue
+      const wfn = branchWidthFn(branch, flow, widths)
+      const total = branch.centerline.totalLength
+      let s
+      if (idx === 0) {
+        s = 0
+      } else if (idx === branch.nodeIds.length - 1) {
+        s = total
+      } else {
+        const segLens = branchLatencyArc(branch, flow)
+        let acc = 0
+        for (let i = 0; i < idx; i++) acc += segLens[i]
+        s = Math.min(acc, total)
+      }
+      const w = wfn(s)
+      if (typeof w === 'number' && w > maxW) maxW = w
+    }
+    const scheme = node.colorScheme || 'neutral'
+    const color =
+      scheme === 'neutral'
+        ? (flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral)
+        : (RIBBON_SCHEME_COLORS[scheme] || RIBBON_SCHEME_COLORS.neutral)
+    if (maxW > 0) {
+      staticPrims.push({ kind: 'disc', key: `junction-${id}`, cx: node.x, cy: node.y, r: maxW / 2, fill: color })
+    }
   }
 
   // Further primitive families are appended below in paint order.

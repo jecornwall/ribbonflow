@@ -140,3 +140,26 @@ test('buildFlowScene: a green node emits plateau (full) + wing (light) overlays'
     assert.ok([RIBBON_SCHEME_COLORS.green, RIBBON_SCHEME_COLORS_LIGHT.green].includes(p.fill))
   }
 })
+
+import forkFlow from '../../test/fixtures/flows/n4-flow-a.js'
+
+test('buildFlowScene: fork/merge flow emits junction discs at the junction nodes', () => {
+  const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(forkFlow, sim)
+  const discs = scene.static.filter((p) => p.kind === 'disc')
+  // n4-flow-a forks at `design` (→ build, test-prep) and merges at `review`.
+  assert.ok(discs.length >= 1, 'expected at least one junction disc')
+  for (const disc of discs) {
+    assert.equal(typeof disc.cx, 'number')
+    assert.equal(typeof disc.cy, 'number')
+    assert.ok(disc.r > 0, 'disc radius must be positive')
+    assert.equal(typeof disc.fill, 'string')
+  }
+})
+
+test('buildFlowScene: a purely linear flow emits no junction discs', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const discs = buildFlowScene(flow, sim).static.filter((p) => p.kind === 'disc')
+  assert.equal(discs.length, 0)
+})
