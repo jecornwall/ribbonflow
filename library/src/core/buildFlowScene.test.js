@@ -373,3 +373,26 @@ test('buildFlowScene: no showBoxes → no box polygons', () => {
   const boxes = buildFlowScene(flow, sim).static.filter((p) => p.kind === 'polygon' && (p.key || '').startsWith('box-'))
   assert.equal(boxes.length, 0)
 })
+
+test('buildFlowScene: segmentDividers emits interior boundary ticks (none on open ends)', () => {
+  const sim = createFlowSimulation(pinchFlow, { initialAgents: 0 }) // n4-toc-baseline: segmentDividers:true
+  const scene = buildFlowScene(pinchFlow, sim)
+  const divs = scene.static.filter((p) => p.kind === 'line' && p.key && p.key.startsWith('div-'))
+  // Interior boundaries per branch = nodeIds.length − 1 summed over render branches.
+  const renderBranches = sim.branches.filter((b) => b.kind !== 'rejection')
+  const expected = renderBranches.reduce((sum, b) => sum + Math.max(0, b.nodeIds.length - 1), 0)
+  assert.equal(divs.length, expected)
+  for (const d of divs) {
+    assert.equal(d.stroke, '#555555')
+    assert.equal(d.strokeWidth, 0.8)
+    assert.equal(d.linecap, 'round')
+    assert.ok(Number.isFinite(d.x1) && Number.isFinite(d.y2))
+  }
+})
+
+test('buildFlowScene: no segmentDividers flag → no divider ticks', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const divs = buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('div-'))
+  assert.equal(divs.length, 0)
+})

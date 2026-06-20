@@ -138,6 +138,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildPinchRoses(ctx)
   buildRejectionArcs(ctx)
   buildStationBoxes(ctx)
+  buildSegmentDividers(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -385,6 +386,48 @@ function buildStationBoxes(ctx) {
       strokeWidth: constraint ? 1.8 : 1.2,
     })
   }
+}
+
+// ── Segment dividers (tangent-perpendicular hairline ticks) — :244-254/:739-767
+// Only for flow.segmentDividers. One hairline tick per INTERIOR node boundary on
+// each render branch (the ribbon's open ends are omitted). At each boundary's arc
+// position we sample the centerline point + unit tangent + width fn, then draw a
+// tick PERPENDICULAR to the local tangent (unit normal = (−ty, tx)), extending
+// halfH + 4 past each band edge. FlowGraph's template folds that normal-projection
+// + margin into the <line> endpoints; the scene bakes the same math into x1/y1/
+// x2/y2. The marginalia grey '#555555' has no named export in flowCurve.js, so it
+// stays inline — faithful to FlowGraph.
+function buildSegmentDividers(ctx) {
+  const { flow, widths, renderBranches, prims } = ctx
+  if (!flow.segmentDividers) return
+  renderBranches.forEach((branch, bi) => {
+    const segLens = branchLatencyArc(branch, flow)
+    const wfn = branchWidthFn(branch, flow, widths)
+    let acc = 0
+    // Interior boundaries only: i in [0, segLens.length − 1).
+    for (let i = 0; i < segLens.length - 1; i++) {
+      acc += segLens[i]
+      const sBoundary = Math.min(acc, branch.centerline.totalLength)
+      const pt = branch.centerline.pointAtArcLength(sBoundary)
+      const tan = branch.centerline.tangentAtArcLength(sBoundary)
+      const halfH = wfn(sBoundary) / 2
+      // Unit normal = tangent rotated 90°: (−ty, tx). Horizontal tangent (1,0)
+      // → normal (0,1) → vertical tick, identical to the legacy render. The
+      // template's (halfH + 4) margin is folded into the endpoints here.
+      const nx = -tan.y
+      const ny = tan.x
+      const ext = halfH + 4
+      prims.push({
+        kind: 'line',
+        key: `div-${bi}-${i}`,
+        x1: pt.x + nx * ext, y1: pt.y + ny * ext,
+        x2: pt.x - nx * ext, y2: pt.y - ny * ext,
+        stroke: '#555555',
+        strokeWidth: 0.8,
+        linecap: 'round',
+      })
+    }
+  })
 }
 
 /**
