@@ -456,9 +456,13 @@ test('buildFlowScene: one marker label per labelled node, firebrick on constrain
 
 test('buildFlowScene: showMetrics appends the cap/latency suffix to marker labels', () => {
   const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
-  const plain = buildFlowScene(forkFlow, sim).static.find((p) => (p.key || '').startsWith('marker-'))
+  // Select the label TEXT specifically: post-T8 the first marker-keyed primitive
+  // is a boundary-tick line (no .text), so target the `-label` text primitive.
+  const plain = buildFlowScene(forkFlow, sim).static.find(
+    (p) => p.kind === 'text' && (p.key || '').startsWith('marker-'),
+  )
   const metric = buildFlowScene(forkFlow, sim, { showMetrics: true }).static.find(
-    (p) => (p.key || '').startsWith('marker-') && p.key === plain.key,
+    (p) => p.kind === 'text' && p.key === plain.key,
   )
   assert.ok(!plain.text.includes('· cap'))
   assert.ok(metric.text.includes('· cap'), 'metric label carries the cap/latency suffix')
@@ -486,4 +490,36 @@ test('buildFlowScene: an unlabelled flow node emits no marker label; labelled si
   const keys = new Set(buildFlowScene(flow, sim).static.filter((p) => p.kind === 'text').map((p) => p.key))
   assert.ok(!keys.has('marker-b-label'), 'unlabelled node b is skipped (guard fires)')
   assert.ok(keys.has('marker-a-label') && keys.has('marker-c-label'), 'labelled siblings still emit')
+})
+
+// ── Task 8: segment-marker boundary ticks + leader lines ────────────────────
+
+test('buildFlowScene: perpendicular markers emit 2 ticks + 1 leader per labelled node', () => {
+  const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(forkFlow, sim)
+  const labelled = forkFlow.nodes.filter((n) => n.label).length
+  const ticks = scene.static.filter((p) => p.kind === 'line' && p.key && p.key.startsWith('marker-') && p.key.includes('tick'))
+  const leaders = scene.static.filter((p) => p.kind === 'line' && p.key && p.key.startsWith('marker-') && p.key.includes('leader'))
+  assert.equal(ticks.length, labelled * 2, 'start + end tick per marker')
+  assert.equal(leaders.length, labelled, 'one perpendicular leader per marker')
+  for (const t of ticks) {
+    assert.equal(t.strokeWidth, 1.2)
+    assert.ok(['#555555', '#E2522B'].includes(t.stroke))
+  }
+  for (const l of leaders) assert.equal(l.strokeWidth, 0.6)
+})
+
+test('buildFlowScene: fence-post markers emit a single 1.0px leader, no ticks', () => {
+  const flow = { ...forkFlow, fenceMarkers: true }
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const scene = buildFlowScene(flow, sim)
+  const labelled = flow.nodes.filter((n) => n.label).length
+  const ticks = scene.static.filter((p) => (p.key || '').startsWith('marker-') && (p.key || '').includes('tick'))
+  const leaders = scene.static.filter((p) => p.kind === 'line' && (p.key || '').startsWith('marker-') && (p.key || '').includes('leader'))
+  assert.equal(ticks.length, 0, 'fence-post has no boundary ticks')
+  assert.equal(leaders.length, labelled, 'one fence-post leader per marker')
+  for (const l of leaders) {
+    assert.equal(l.strokeWidth, 1.0)
+    assert.equal(l.x1, l.x2, 'fence-post leader is vertical')
+  }
 })

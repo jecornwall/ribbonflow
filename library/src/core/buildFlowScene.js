@@ -605,11 +605,12 @@ function markerLabelAnchor(mp, labelDx, labelDy, verticalLeader) {
 }
 
 // ── Segment markers — FlowGraph.vue:306-317 + FlowSegmentMarker.vue ─────────
-// One marker per LABELLED node. This task emits the label text only; ticks /
-// leaders (T8) and constraint hatching (T9) extend it. The marker-label colour
-// is firebrick (CONSTRAINT_INK) for constraint nodes, else marginalia grey;
-// showMetrics (from ctx.opts) appends the cap/latency suffix; fence-post style
-// (flow.fenceMarkers) renders the label lowercased (FlowSegmentMarker.vue:113).
+// One marker per LABELLED node, in two visual registers: perpendicular (default
+// — start/end boundary ticks + a hairline leader) and fence-post (a single
+// vertical leader under the label). T9 adds constraint hatching. The marker
+// colour is firebrick (CONSTRAINT_INK) for constraint nodes, else marginalia
+// grey; showMetrics (from ctx.opts) appends the cap/latency suffix; fence-post
+// style (flow.fenceMarkers) renders the label lowercased (FlowSegmentMarker.vue:113).
 function buildSegmentMarkers(ctx) {
   const { flow, opts, prims } = ctx
   const forkRootIds = forkRootIdSet(flow)
@@ -620,10 +621,80 @@ function buildSegmentMarkers(ctx) {
     const mp = markerPropsFor(node, ctx, forkRootIds, preMergeIds)
     const constraint = isConstraintNode(node)
     const { dx, dy } = labelOffsetFor(node)
-    const { labelAnchor } = markerLabelAnchor(mp, dx, dy, !!flow.verticalLeaders)
+    const { anchorBase, labelAnchor } = markerLabelAnchor(mp, dx, dy, !!flow.verticalLeaders)
     // The grey '#555555' marginalia ink has no named export in flowCurve.js, so
     // it stays inline — faithful to FlowGraph; CONSTRAINT_INK === '#E2522B'.
     const tickColor = constraint ? CONSTRAINT_INK : '#555555'
+    // FlowGraph passes node.y − BOX_HALF_ISO as the box-top anchor when
+    // showBoxes is on (fence-post leader descends to the box top, not band top).
+    const boxTopY = flow.showBoxes ? node.y - BOX_HALF_ISO : null
+
+    // Ticks / leaders paint BEFORE the label — FlowSegmentMarker.vue:41-118.
+    if (fencePost) {
+      // Fence-post leader — FlowSegmentMarker.vue:58-63 + leaderDescentEndY :210-217.
+      // A single vertical hairline from just below the label baseline down to the
+      // box top (showBoxes) or the band top at the label's x-position.
+      const descentEndY = boxTopY != null
+        ? boxTopY - 2
+        : mp.labelCenterlineY - mp.bandWidthAtLabel / 2 - 2
+      prims.push({
+        kind: 'line',
+        key: `marker-${node.id}-leader`,
+        x1: labelAnchor.x, y1: labelAnchor.y + 6,
+        x2: labelAnchor.x, y2: descentEndY,
+        stroke: tickColor,
+        strokeWidth: 1.0,
+        linecap: 'round',
+      })
+    } else {
+      // Boundary ticks — FlowSegmentMarker.vue:219-234. Perpendiculars (tangent
+      // rotated 90° CCW → unit normal (−ty, tx)) at the segment start/end,
+      // length 2·MARKER_TICK_HALF, centred on the centerline boundary point.
+      const nStart = { x: -mp.startTangent.y, y: mp.startTangent.x }
+      const nEnd = { x: -mp.endTangent.y, y: mp.endTangent.x }
+      prims.push({
+        kind: 'line',
+        key: `marker-${node.id}-tick-start`,
+        x1: mp.startPoint.x + nStart.x * MARKER_TICK_HALF, y1: mp.startPoint.y + nStart.y * MARKER_TICK_HALF,
+        x2: mp.startPoint.x - nStart.x * MARKER_TICK_HALF, y2: mp.startPoint.y - nStart.y * MARKER_TICK_HALF,
+        stroke: tickColor, strokeWidth: 1.2, linecap: 'round',
+      })
+      prims.push({
+        kind: 'line',
+        key: `marker-${node.id}-tick-end`,
+        x1: mp.endPoint.x + nEnd.x * MARKER_TICK_HALF, y1: mp.endPoint.y + nEnd.y * MARKER_TICK_HALF,
+        x2: mp.endPoint.x - nEnd.x * MARKER_TICK_HALF, y2: mp.endPoint.y - nEnd.y * MARKER_TICK_HALF,
+        stroke: tickColor, strokeWidth: 1.2, linecap: 'round',
+      })
+      // Leader — FlowSegmentMarker.vue:265-293. From just below/above the label
+      // (dirY baseline correction) to leaderEnd: verticalLeaders → straight drop
+      // at anchorBase.x; else back off MARKER_LEADER_PAD along the
+      // anchorBase→labelAnchor vector (mag<1e-6 guard → anchorBase itself).
+      const dirY = dy < 0 ? 6 : -16
+      const leaderStart = { x: labelAnchor.x, y: labelAnchor.y + dirY }
+      let leaderEnd
+      if (flow.verticalLeaders) {
+        const signY = dy < 0 ? -1 : 1
+        leaderEnd = { x: anchorBase.x, y: anchorBase.y + signY * MARKER_LEADER_PAD }
+      } else {
+        const ddx = labelAnchor.x - anchorBase.x
+        const ddy = labelAnchor.y - anchorBase.y
+        const mag = Math.hypot(ddx, ddy)
+        leaderEnd = mag < 1e-6
+          ? { x: anchorBase.x, y: anchorBase.y }
+          : { x: anchorBase.x + (ddx / mag) * MARKER_LEADER_PAD, y: anchorBase.y + (ddy / mag) * MARKER_LEADER_PAD }
+      }
+      prims.push({
+        kind: 'line',
+        key: `marker-${node.id}-leader`,
+        x1: leaderStart.x, y1: leaderStart.y,
+        x2: leaderEnd.x, y2: leaderEnd.y,
+        stroke: tickColor, strokeWidth: 0.6, linecap: 'round',
+      })
+    }
+
+    // Label LAST in the per-node block — FlowSegmentMarker paints it after the
+    // ticks/leader (:108-118). T7's label tests assert only counts/attrs.
     prims.push({
       kind: 'text',
       key: `marker-${node.id}-label`,
