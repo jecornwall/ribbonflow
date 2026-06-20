@@ -139,6 +139,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildRejectionArcs(ctx)
   buildStationBoxes(ctx)
   buildSegmentDividers(ctx)
+  buildStageAnchors(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -428,6 +429,36 @@ function buildSegmentDividers(ctx) {
       })
     }
   })
+}
+
+// ── Stage-anchor notches — FlowGraph.vue:273-288 ────────────────────────────
+// Only for flow.stageAnchors. One short vertical notch per non-entry,
+// non-constraint, LABELLED node, drawn at the node's label x (labelX ?? x) and
+// spanning node.y ± (bandWidth/2 + 6). The filter is FlowGraph's LITERAL
+// `n.kind !== 'constraint'` (NOT the broader isConstraintNode predicate) — a v3
+// colorScheme:'red' constraint lacking kind:'constraint' still gets a notch,
+// faithful to FlowGraph.vue:276. The marginalia grey '#555555' has no named
+// export in flowCurve.js, so it stays inline — faithful to FlowGraph.
+function buildStageAnchors(ctx) {
+  const { flow, prims } = ctx
+  if (!flow.stageAnchors) return
+  const half = (flow.bandWidth ?? 70) / 2
+  const nodes = flow.nodes.filter(
+    (n) => n.id !== flow.entryId && n.kind !== 'constraint' && n.label,
+  )
+  for (const node of nodes) {
+    const ax = node.labelX ?? node.x
+    prims.push({
+      kind: 'line',
+      key: `anchor-${node.id}`,
+      x1: ax, y1: node.y - half - 6,
+      x2: ax, y2: node.y + half + 6,
+      stroke: '#555555',
+      strokeWidth: 2.5,
+      linecap: 'round',
+      opacity: 0.85,
+    })
+  }
 }
 
 /**

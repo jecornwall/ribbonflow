@@ -396,3 +396,40 @@ test('buildFlowScene: no segmentDividers flag → no divider ticks', () => {
   const divs = buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('div-'))
   assert.equal(divs.length, 0)
 })
+
+import multilaneFlow from '../../test/fixtures/flows/n9-multilane.js'
+
+test('buildFlowScene: stageAnchors emits a notch per non-entry non-constraint labelled node', () => {
+  const sim = createFlowSimulation(multilaneFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(multilaneFlow, sim)
+  const notches = scene.static.filter((p) => p.kind === 'line' && p.key && p.key.startsWith('anchor-'))
+  const expected = multilaneFlow.nodes.filter(
+    (n) => n.id !== multilaneFlow.entryId && n.kind !== 'constraint' && n.label,
+  ).length
+  assert.equal(notches.length, expected)
+  for (const n of notches) {
+    assert.equal(n.stroke, '#555555')
+    assert.equal(n.strokeWidth, 2.5)
+    assert.equal(n.opacity, 0.85)
+    assert.equal(n.x1, n.x2, 'notch is vertical')
+    assert.ok(n.y2 > n.y1, 'spans top→bottom of the band + 6 each side')
+  }
+  // Independently pin the filter by key: the kind:'constraint' node
+  // (cross-team-review) is excluded; a labelled non-constraint sibling
+  // (build-feature) is present. Guards against the count-only tautology.
+  const keys = new Set(notches.map((n) => n.key))
+  assert.ok(!keys.has('anchor-cross-team-review'), 'constraint node excluded from notches')
+  assert.ok(keys.has('anchor-build-feature'), 'labelled non-constraint node included')
+
+  // Directly assert the labelX ?? node.x anchor override: design-review has
+  // labelX 540 ≠ x 560, so its notch must sit at x=540, not 560.
+  const dr = scene.static.find((p) => p.key === 'anchor-design-review')
+  assert.equal(dr.x1, 540, 'notch uses labelX (540), not node.x (560)')
+})
+
+test('buildFlowScene: no stageAnchors flag → no notches', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const notches = buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('anchor-'))
+  assert.equal(notches.length, 0)
+})
