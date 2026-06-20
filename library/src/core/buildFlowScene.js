@@ -21,7 +21,10 @@ import {
   RIBBON_SCHEME_COLORS,
   RIBBON_SCHEME_COLORS_LIGHT,
   pinchZoneOutlinePath,
+  pinchZoneArcRanges,
   junctionNodeIds,
+  PINCH_ROSE,
+  CONSTRAINT_ROSE,
 } from './flowCurve.js'
 
 // FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
@@ -98,6 +101,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildRibbons(ctx)
   buildColoredOverlays(ctx)
   buildJunctionDiscs(ctx)
+  buildPinchRoses(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -270,6 +274,26 @@ function buildJunctionDiscs(ctx) {
       prims.push({ kind: 'disc', key: `junction-${id}`, cx: node.x, cy: node.y, r: maxW / 2, fill: color })
     }
   }
+}
+
+// ── Pinch-zone rose overlays — FlowGraph.vue:155-173 + :792-803 ─────────────
+// One up/down/plateau triple per branch in constraint-only flows. Uses
+// buildPinchWidthFn directly (the wineglass profile), matching the computed.
+function buildPinchRoses(ctx) {
+  const { flow, renderBranches, prims } = ctx
+  if (flow.pinchMode !== 'constraint-only') return
+  const roseFill = flow.pinchFillColor || PINCH_ROSE
+  const plateauFill = flow.constraintFillColor || CONSTRAINT_ROSE
+  renderBranches.forEach((branch, i) => {
+    const wfn = buildPinchWidthFn(branch, flow)
+    const ranges = pinchZoneArcRanges(branch, flow)
+    const up = pinchZoneOutlinePath(branch.centerline, wfn, ranges.upstream)
+    const down = pinchZoneOutlinePath(branch.centerline, wfn, ranges.downstream)
+    const plat = pinchZoneOutlinePath(branch.centerline, wfn, ranges.constraintPlateau)
+    if (up) prims.push({ kind: 'path', key: `pinch-${i}-up`, d: up, fill: roseFill })
+    if (down) prims.push({ kind: 'path', key: `pinch-${i}-down`, d: down, fill: roseFill })
+    if (plat) prims.push({ kind: 'path', key: `pinch-${i}-plat`, d: plat, fill: plateauFill })
+  })
 }
 
 /**

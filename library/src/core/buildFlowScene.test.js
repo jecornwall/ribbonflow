@@ -264,3 +264,34 @@ test('buildFlowScene: spine colour falls back to the ribbon scheme when no overr
   assert.equal(spine.strokeWidth, 14) // default width
   assert.equal(spine.opacity, 0.9)    // default opacity
 })
+
+// ── Task 2: Pinch-zone roses — FlowGraph.vue:155-173 + :792-803 ──────────────
+import pinchFlow from '../../test/fixtures/flows/n4-toc-baseline.js'
+
+test('buildFlowScene: a constraint-only flow emits pinch-rose overlays', () => {
+  const sim = createFlowSimulation(pinchFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(pinchFlow, sim)
+  // NB: n4-toc-baseline has no fork/merge junctions, so this scene emits zero
+  // 'disc' primitives — a "roses after discs" ordering assertion would pass
+  // trivially (lastDisc -1) without verifying anything, so the test name claims
+  // only what it checks. buildPinchRoses is wired after buildJunctionDiscs in
+  // buildFlowScene; that call-order is the structural guarantee.
+  const roses = scene.static.filter((p) => p.kind === 'path' && p.key && p.key.startsWith('pinch-'))
+  assert.ok(roses.length >= 1, 'expected at least one pinch-rose path')
+  for (const r of roses) {
+    assert.ok(r.d.startsWith('M'), 'rose path is a real outline')
+    assert.ok(
+      [pinchFlow.pinchFillColor || '#e6c8c8', pinchFlow.constraintFillColor || '#d8a8a8'].includes(r.fill),
+      `rose fill is one of the two rose tones, got ${r.fill}`,
+    )
+  }
+  // Constraint-plateau roses use the deeper tone.
+  assert.ok(roses.some((r) => r.fill === (pinchFlow.constraintFillColor || '#d8a8a8')), 'expected a constraint plateau')
+})
+
+test('buildFlowScene: a non-pinch flow emits no pinch-rose overlays', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const roses = buildFlowScene(flow, sim).static.filter((p) => p.key && p.key.startsWith('pinch-'))
+  assert.equal(roses.length, 0)
+})
