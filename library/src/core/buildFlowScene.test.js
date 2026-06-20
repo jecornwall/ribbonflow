@@ -295,3 +295,41 @@ test('buildFlowScene: a non-pinch flow emits no pinch-rose overlays', () => {
   const roses = buildFlowScene(flow, sim).static.filter((p) => p.key && p.key.startsWith('pinch-'))
   assert.equal(roses.length, 0)
 })
+
+// ── Task 3: Rejection-edge arcs — FlowGraph.vue:184-192 + :871-894 ──────────
+// NB: v12-rejections.v4.js is a RAW round-trip fixture — it deliberately omits
+// derived render fields (e.g. node.latency) that normalizeFlow() fills, since
+// its job is to prove byte-faithful losslessness, not to render. The render
+// pipeline (FlowGraph / the deck) always paints a NORMALIZED flow, so the
+// scene-builder tests must too: a raw flow has NaN segment bounds and crashes
+// the (already-merged) coloured-overlay builder before reaching the arcs. We
+// normalize here to feed buildFlowScene its real production input contract.
+import rawRejectionFlow from '../../test/fixtures/flows/v12-rejections.v4.js'
+import { normalizeFlow } from '../format/model.js'
+import { REJECTION_COLOR } from './flowCurve.js'
+import { REJECTION_ARC_DASHARRAY } from './flowRejectionArc.js'
+
+const rejectionFlow = normalizeFlow(rawRejectionFlow)
+
+test('buildFlowScene: rejection edges emit dotted rejectionArc primitives with arrowheads', () => {
+  const sim = createFlowSimulation(rejectionFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(rejectionFlow, sim)
+  const arcs = scene.static.filter((p) => p.kind === 'rejectionArc')
+  const validRej = (rejectionFlow.rejections || []).filter(
+    (r) => r && rejectionFlow.nodes.some((n) => n.id === r.from) && rejectionFlow.nodes.some((n) => n.id === r.to),
+  )
+  assert.equal(arcs.length, validRej.length, 'one arc per resolvable rejection edge')
+  for (const arc of arcs) {
+    assert.ok(arc.d.startsWith('M'), 'arc path is a real curve')
+    assert.equal(typeof arc.arrowPoints, 'string')
+    assert.ok(arc.arrowPoints.length > 0, 'arrowhead polygon points present')
+    assert.equal(arc.stroke, REJECTION_COLOR)
+    assert.equal(arc.dasharray, REJECTION_ARC_DASHARRAY)
+  }
+})
+
+test('buildFlowScene: a flow with no rejections emits no rejectionArc primitives', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  assert.equal(buildFlowScene(flow, sim).static.filter((p) => p.kind === 'rejectionArc').length, 0)
+})

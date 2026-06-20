@@ -23,9 +23,17 @@ import {
   pinchZoneOutlinePath,
   pinchZoneArcRanges,
   junctionNodeIds,
+  rejectionEdgeAnchors,
+  REJECTION_COLOR,
   PINCH_ROSE,
   CONSTRAINT_ROSE,
 } from './flowCurve.js'
+import {
+  rejectionArcPath,
+  rejectionArrowPointsAttr,
+  REJECTION_ARC_STROKE_WIDTH,
+  REJECTION_ARC_DASHARRAY,
+} from './flowRejectionArc.js'
 
 // FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
 // else uses the smooth segmented layout's widthFn (shared with the engine).
@@ -102,6 +110,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildColoredOverlays(ctx)
   buildJunctionDiscs(ctx)
   buildPinchRoses(ctx)
+  buildRejectionArcs(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -293,6 +302,39 @@ function buildPinchRoses(ctx) {
     if (up) prims.push({ kind: 'path', key: `pinch-${i}-up`, d: up, fill: roseFill })
     if (down) prims.push({ kind: 'path', key: `pinch-${i}-down`, d: down, fill: roseFill })
     if (plat) prims.push({ kind: 'path', key: `pinch-${i}-plat`, d: plat, fill: plateauFill })
+  })
+}
+
+// ── Rejection-edge arcs — FlowGraph.vue:184-192 + :871-894 ──────────────────
+// Thin dotted desaturated-red bow per rejection edge, anchored on the band
+// EDGE (rejectionEdgeAnchors) so it peels off the ribbon side. Arc + arrowhead
+// derive from the SAME rejectionBowCurve the engine centerline uses, so the
+// visible arc and the 'revising' particles' path agree by construction. A
+// dangling edge (missing node) is skipped — the renderer must not crash on a
+// transient mid-edit designer state. Faithful match to FlowGraph.vue:885: the
+// raw `rej.bow` is passed to rejectionEdgeAnchors, while the arc path +
+// arrowhead use `bow = rej.bow || {}` (FlowRejectionArc's prop default).
+function buildRejectionArcs(ctx) {
+  const { flow, prims, widths } = ctx
+  const rejList = flow.rejections
+  if (!Array.isArray(rejList) || rejList.length === 0) return
+  const byId = new Map(flow.nodes.map((n) => [n.id, n]))
+  rejList.forEach((rej, i) => {
+    if (rej == null) return
+    const f = byId.get(rej.from)
+    const t = byId.get(rej.to)
+    if (!f || !t) return
+    const bow = rej.bow || {}
+    const { fromPt, toPt } = rejectionEdgeAnchors(f, t, rej.bow, widths)
+    prims.push({
+      kind: 'rejectionArc',
+      key: `rej-${i}`,
+      d: rejectionArcPath(fromPt, toPt, bow),
+      arrowPoints: rejectionArrowPointsAttr(fromPt, toPt, bow),
+      stroke: REJECTION_COLOR,
+      strokeWidth: REJECTION_ARC_STROKE_WIDTH,
+      dasharray: REJECTION_ARC_DASHARRAY,
+    })
   })
 }
 
