@@ -37,6 +37,12 @@ import {
   REJECTION_ARC_DASHARRAY,
 } from './flowRejectionArc.js'
 import { isConstraintNode } from './nodeKind.js'
+import {
+  transformGlyphsFor,
+  TRANSFORM_GLYPH_STROKE,
+  TRANSFORM_GLYPH_STROKE_WIDTH,
+  TRANSFORM_GLYPH_OPACITY,
+} from './transformGlyph.js'
 
 // FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
 // else uses the smooth segmented layout's widthFn (shared with the engine).
@@ -152,6 +158,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildStageAnchors(ctx)
   buildSegmentMarkers(ctx)
   buildGhostMarkers(ctx)
+  buildTransformGlyphs(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -797,6 +804,33 @@ function buildGhostMarkers(ctx) {
       opacity: groupOpacity,
     })
   })
+}
+
+// ── Transform-node glyphs (split / combine) — FlowGraph.vue:383-396 ─────────
+// One hairline glyph per transform:'split'|'combine' node, translated to its
+// node anchor and stroked in the frozen ink/width/opacity register. Reuses the
+// already-pure transformGlyphsFor(flow) (transformGlyph.js) for the geometry —
+// no reimplementation. Painted AFTER the ghost markers (the last static family
+// before agents); inert when the flow has no transform nodes.
+function buildTransformGlyphs(ctx) {
+  const { flow, prims } = ctx
+  for (const g of transformGlyphsFor(flow)) {
+    prims.push({
+      kind: 'glyph',
+      key: `xform-${g.id}`,
+      d: g.d,
+      transform: `translate(${g.x} ${g.y})`,
+      // FlowGraph.vue:386 sets fill="none" explicitly; SVG <path> defaults to
+      // BLACK fill, so a naive Phase-2 renderer would fill the glyph's open
+      // stroke triangles solid black without it. Encode the nuance as data.
+      fill: 'none',
+      stroke: TRANSFORM_GLYPH_STROKE,
+      strokeWidth: TRANSFORM_GLYPH_STROKE_WIDTH,
+      opacity: TRANSFORM_GLYPH_OPACITY,
+      linecap: 'round',
+      linejoin: 'round',
+    })
+  }
 }
 
 /**

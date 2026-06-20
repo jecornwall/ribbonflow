@@ -631,3 +631,36 @@ test('buildFlowScene: no ghostMarkers → no ghost primitives', () => {
   const sim = createFlowSimulation(flow, { initialAgents: 0 })
   assert.equal(buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('ghost-')).length, 0)
 })
+
+// ── Task 11: transform glyphs (split / combine) ─────────────────────────────
+// n5-large-particles.v5 is RAW author data (split/combine transforms, colorScheme
+// 'green' nodes, no node.latency) — so, like the T3/T4 raw fixtures, normalize it
+// to feed buildFlowScene its production input contract (a raw flow NaN-crashes the
+// coloured-overlay builder before reaching the glyphs). transformGlyphsFor reads
+// node.transform, which survives normalization, so the glyph count is unaffected.
+import rawLargeParticleFlow from '../../test/fixtures/flows/n5-large-particles.v5.js'
+import { transformGlyphsFor, TRANSFORM_GLYPH_STROKE, TRANSFORM_GLYPH_OPACITY } from './transformGlyph.js'
+
+const largeParticleFlow = normalizeFlow(rawLargeParticleFlow)
+
+test('buildFlowScene: one glyph primitive per transform node', () => {
+  const sim = createFlowSimulation(largeParticleFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(largeParticleFlow, sim)
+  const glyphs = scene.static.filter((p) => p.kind === 'glyph')
+  const expected = transformGlyphsFor(largeParticleFlow)
+  assert.equal(glyphs.length, expected.length)
+  assert.ok(glyphs.length >= 1, 'n5 has split/combine transforms')
+  for (const g of glyphs) {
+    assert.ok(g.d.startsWith('M'), 'glyph path present')
+    assert.ok(/^translate\(-?\d/.test(g.transform), 'translated to node anchor')
+    assert.equal(g.fill, 'none', 'fill:none — SVG <path> defaults to black fill')
+    assert.equal(g.stroke, TRANSFORM_GLYPH_STROKE)
+    assert.equal(g.opacity, TRANSFORM_GLYPH_OPACITY)
+  }
+})
+
+test('buildFlowScene: a flow with no transform nodes emits no glyphs', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  assert.equal(buildFlowScene(flow, sim).static.filter((p) => p.kind === 'glyph').length, 0)
+})
