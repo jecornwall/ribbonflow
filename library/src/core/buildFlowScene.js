@@ -27,6 +27,8 @@ import {
   REJECTION_COLOR,
   PINCH_ROSE,
   CONSTRAINT_ROSE,
+  INK,
+  CONSTRAINT_INK,
 } from './flowCurve.js'
 import {
   rejectionArcPath,
@@ -34,6 +36,7 @@ import {
   REJECTION_ARC_STROKE_WIDTH,
   REJECTION_ARC_DASHARRAY,
 } from './flowRejectionArc.js'
+import { isConstraintNode } from './nodeKind.js'
 
 // FlowGraph.vue:638-655 — pinch flows use the wineglass width fn; everything
 // else uses the smooth segmented layout's widthFn (shared with the engine).
@@ -64,6 +67,29 @@ function branchLatencyArc(branch, flow) {
 // counter keeps headless tests stable and avoids the banned Math.random in
 // downstream tooling.
 let _sceneSeq = 0
+
+// Isometric station-box geometry — frozen against Station.vue defaults
+// (FlowGraph.vue:495-500). BOX_HALF_ISO is a module-scope constant (not inline)
+// because later marker tasks (T7-T9) reuse it for the fence-post boxTopY
+// (node.y − BOX_HALF_ISO).
+const BOX_HALF_ISO = 70
+const SKEW_ISO = 20
+
+// Parallelogram vertices for an isometric station box centred on a node —
+// FlowGraph.vue:509-520 (mirrors Station.vue#boxPoints, top-right-bottom-left
+// vertex order, rightward skew).
+function isoBoxPoints(node) {
+  const x = node.x
+  const y = node.y
+  const w = BOX_HALF_ISO
+  const h = BOX_HALF_ISO
+  const s = SKEW_ISO
+  const top = `${x - w},${y - h}`
+  const right = `${x + w + s},${y - h + s}`
+  const bot = `${x + w},${y + h}`
+  const left = `${x - w - s},${y + h - s}`
+  return `${top} ${right} ${bot} ${left}`
+}
 
 /**
  * Build the static Scene for a flow.
@@ -111,6 +137,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildJunctionDiscs(ctx)
   buildPinchRoses(ctx)
   buildRejectionArcs(ctx)
+  buildStationBoxes(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -336,6 +363,28 @@ function buildRejectionArcs(ctx) {
       dasharray: REJECTION_ARC_DASHARRAY,
     })
   })
+}
+
+// ── Station boxes (isometric, hairline outline only) — FlowGraph.vue:209-218 ─
+// One hairline-outline parallelogram per node when flow.showBoxes is set; no
+// fill, so the ribbon flows visibly through. Constraint nodes (isConstraintNode)
+// get the firebrick accent stroke at 1.8; everything else gets the ink stroke at
+// 1.2. INK/CONSTRAINT_INK are the palette's single source of truth (flowCurve.js)
+// — CONSTRAINT_INK === '#E2522B', INK === '#15171A'.
+function buildStationBoxes(ctx) {
+  const { flow, prims } = ctx
+  if (!flow.showBoxes) return
+  for (const node of flow.nodes) {
+    const constraint = isConstraintNode(node)
+    prims.push({
+      kind: 'polygon',
+      key: `box-${node.id}`,
+      points: isoBoxPoints(node),
+      fill: 'none',
+      stroke: constraint ? CONSTRAINT_INK : INK,
+      strokeWidth: constraint ? 1.8 : 1.2,
+    })
+  }
 }
 
 /**

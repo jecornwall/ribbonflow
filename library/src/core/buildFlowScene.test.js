@@ -333,3 +333,43 @@ test('buildFlowScene: a flow with no rejections emits no rejectionArc primitives
   const sim = createFlowSimulation(flow, { initialAgents: 0 })
   assert.equal(buildFlowScene(flow, sim).static.filter((p) => p.kind === 'rejectionArc').length, 0)
 })
+
+// ── Task 4: Station boxes (isometric hairline parallelograms) ────────────────
+// m3-coverage.v3 is raw author data; buildFlowScene's contract is a normalised
+// flow (it derives centerlines from engine-filled fields), so normalize it here
+// exactly as the T3 rejection fixture is normalised above.
+import rawM3Flow from '../../test/fixtures/flows/m3-coverage.v3.js'
+
+const m3Flow = normalizeFlow(rawM3Flow)
+
+test('buildFlowScene: showBoxes emits one hairline parallelogram per node', () => {
+  const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(forkFlow, sim)
+  const boxes = scene.static.filter((p) => p.kind === 'polygon' && p.key && p.key.startsWith('box-'))
+  // Guard against a vacuous 0 === 0 pass if the fixture's showBoxes flag is ever
+  // flipped: this test depends on n4-flow-a.js setting showBoxes:true.
+  assert.ok(forkFlow.showBoxes, 'fixture must have showBoxes set')
+  assert.equal(boxes.length, forkFlow.nodes.length, 'one box per node')
+  for (const box of boxes) {
+    assert.equal(box.fill, 'none', 'no fill — ribbon flows through')
+    assert.ok([1.2, 1.8].includes(box.strokeWidth))
+    assert.ok(['#15171A', '#E2522B'].includes(box.stroke))
+    // points: four "x,y" vertex pairs, space-separated.
+    assert.equal(box.points.trim().split(/\s+/).length, 4)
+  }
+})
+
+test('buildFlowScene: a constraint node box uses the firebrick stroke', () => {
+  // m3-coverage.v3 carries a colorScheme:'red' (constraint) node; add showBoxes.
+  const flow = { ...m3Flow, showBoxes: true }
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const boxes = buildFlowScene(flow, sim).static.filter((p) => p.kind === 'polygon' && p.key.startsWith('box-'))
+  assert.ok(boxes.some((b) => b.stroke === '#E2522B' && b.strokeWidth === 1.8), 'a constraint box is firebrick')
+})
+
+test('buildFlowScene: no showBoxes → no box polygons', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const boxes = buildFlowScene(flow, sim).static.filter((p) => p.kind === 'polygon' && (p.key || '').startsWith('box-'))
+  assert.equal(boxes.length, 0)
+})
