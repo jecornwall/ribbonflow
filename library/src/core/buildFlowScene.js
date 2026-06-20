@@ -75,6 +75,13 @@ let _sceneSeq = 0
 const BOX_HALF_ISO = 70
 const SKEW_ISO = 20
 
+// Segment-marker geometry — frozen against FlowSegmentMarker.vue:200-201.
+// Defined here in T7 (the marker family's first task); T8's ticks/leaders use
+// them. MARKER_TICK_HALF: half the perpendicular boundary-tick length;
+// MARKER_LEADER_PAD: the gap between a perpendicular leader end and the ribbon.
+const MARKER_TICK_HALF = 8
+const MARKER_LEADER_PAD = 14
+
 // Parallelogram vertices for an isometric station box centred on a node —
 // FlowGraph.vue:509-520 (mirrors Station.vue#boxPoints, top-right-bottom-left
 // vertex order, rightward skew).
@@ -140,6 +147,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildStationBoxes(ctx)
   buildSegmentDividers(ctx)
   buildStageAnchors(ctx)
+  buildSegmentMarkers(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -457,6 +465,177 @@ function buildStageAnchors(ctx) {
       strokeWidth: 2.5,
       linecap: 'round',
       opacity: 0.85,
+    })
+  }
+}
+
+// Fork-root / pre-merge id sets — FlowGraph.vue:940-946 (v1/v2 shape-tolerant).
+// A fork branch entry is either a bare id string (v1) or a {to} object (v2); a
+// merge declares its incoming ids as `from` (or legacy `branches`). These two
+// sets drive markerPropsFor's composed-flow node-anchor rule.
+function forkRootIdSet(flow) {
+  return new Set(
+    (flow.forks || []).flatMap((f) =>
+      (f.branches || []).map((b) => (typeof b === 'string' ? b : b.to))),
+  )
+}
+function preMergeIdSet(flow) {
+  return new Set((flow.merges || []).flatMap((m) => m.from || m.branches || []))
+}
+
+// markerLabelFor — FlowGraph.vue:1088-1092. showMetrics appends the cap/latency
+// suffix; otherwise the bare label.
+function markerLabelFor(node, showMetrics) {
+  return showMetrics
+    ? `${node.label} · cap ${node.capacity} · ${node.latency}s`
+    : node.label
+}
+
+// labelOffsetFor — FlowGraph.vue:1105-1127. Per-node labelDx/labelDy override
+// wins (default dy −60 when only one is set); else the hand-tuned N4 canonical
+// offset map keyed by node id; else a generic above-the-midpoint default.
+function labelOffsetFor(node) {
+  if (node.labelDx !== undefined || node.labelDy !== undefined) {
+    return { dx: node.labelDx ?? 0, dy: node.labelDy ?? -60 }
+  }
+  const offsetMap = {
+    intake: { dx: -80, dy: 100 },
+    design: { dx: -90, dy: -60 },
+    build: { dx: -20, dy: -80 },
+    'test-prep': { dx: 20, dy: 100 },
+    review: { dx: 90, dy: -90 },
+    ship: { dx: 60, dy: 100 },
+  }
+  return offsetMap[node.id] ?? { dx: 0, dy: -60 }
+}
+
+// markerPropsFor — FlowGraph.vue:948-1086. Faithful lift: props.flow → ctx.flow,
+// the render-branch list → ctx.renderBranches, widths → ctx.widths, the fork/
+// merge sets passed in. Returns the geometry props FlowSegmentMarker consumes.
+// The many branches encode hard-won label-placement nuance — do NOT simplify:
+//   • orphan node (on no render branch — a designer mid-edit, never in deck
+//     flows): anchor at its own xy with a horizontal tangent and zero band.
+//   • the per-node segment loop computes sStart/sEnd/sLabel and the midpoint
+//     labelPoint; hasComposition (any fork/merge declared) + non-entry → anchor
+//     the label at the node's own xy; a per-node labelX override wins over both.
+//   • fallthrough (shouldn't reach): full-branch span anchored at the midpoint.
+function markerPropsFor(node, ctx, forkRootIds, preMergeIds) {
+  const { flow, widths, renderBranches } = ctx
+  const branch = renderBranches.find((b) => b.nodeIds.includes(node.id))
+  if (!branch) {
+    return {
+      startPoint: { x: node.x, y: node.y },
+      endPoint: { x: node.x, y: node.y },
+      startTangent: { x: 1, y: 0 },
+      endTangent: { x: 1, y: 0 },
+      bandWidthAtStart: 0,
+      bandWidthAtEnd: 0,
+      bandWidthAtLabel: 0,
+      labelCenterlineY: node.y,
+      labelAnchorX: node.x,
+    }
+  }
+  const cl = branch.centerline
+  const segLens = branchLatencyArc(branch, flow)
+  const wfn = branchWidthFn(branch, flow, widths)
+  let sStart = 0
+  for (let i = 0; i < branch.nodeIds.length; i++) {
+    if (branch.nodeIds[i] === node.id) {
+      const sEnd = Math.min(sStart + segLens[i], cl.totalLength)
+      const sLabel = Math.min((sStart + sEnd) / 2, cl.totalLength)
+      const labelPoint = cl.pointAtArcLength(sLabel)
+      const hasComposition = forkRootIds.size > 0 || preMergeIds.size > 0
+      const useNodeAnchor = hasComposition && node.id !== flow.entryId
+      const hasLabelOverride = node.labelX !== undefined
+      const finalLabelAnchorX = hasLabelOverride
+        ? node.labelX
+        : (useNodeAnchor ? node.x : labelPoint.x)
+      const finalLabelCenterlineY = hasLabelOverride
+        ? (node.labelY ?? node.y)
+        : (useNodeAnchor ? node.y : labelPoint.y)
+      return {
+        startPoint: cl.pointAtArcLength(sStart),
+        endPoint: cl.pointAtArcLength(sEnd),
+        startTangent: cl.tangentAtArcLength(sStart),
+        endTangent: cl.tangentAtArcLength(sEnd),
+        bandWidthAtStart: wfn(sStart),
+        bandWidthAtEnd: wfn(sEnd),
+        bandWidthAtLabel: wfn(sLabel),
+        labelCenterlineY: finalLabelCenterlineY,
+        labelAnchorX: (useNodeAnchor || hasLabelOverride) ? finalLabelAnchorX : null,
+      }
+    }
+    sStart += segLens[i]
+  }
+  // Fallthrough (shouldn't reach) — FlowGraph.vue:1076-1085. FlowGraph omits
+  // labelAnchorX here (so the SFC prop defaults to null); we make that explicit.
+  return {
+    startPoint: cl.pointAtArcLength(0),
+    endPoint: cl.pointAtArcLength(cl.totalLength),
+    startTangent: cl.tangentAtArcLength(0),
+    endTangent: cl.tangentAtArcLength(cl.totalLength),
+    bandWidthAtStart: wfn(0),
+    bandWidthAtEnd: wfn(cl.totalLength),
+    bandWidthAtLabel: wfn(cl.totalLength / 2),
+    labelCenterlineY: cl.pointAtArcLength(cl.totalLength / 2).y,
+    labelAnchorX: null,
+  }
+}
+
+// Resolve a marker's label anchor point — FlowSegmentMarker.vue:236-260.
+// midpoint → anchorBase (labelAnchorX override) → labelAnchor (+ dx/dy, with
+// verticalLeader pinning x to anchorBase.x). Returns the trio so T8's leaders
+// can reuse anchorBase.
+function markerLabelAnchor(mp, labelDx, labelDy, verticalLeader) {
+  const midpoint = {
+    x: (mp.startPoint.x + mp.endPoint.x) / 2,
+    y: (mp.startPoint.y + mp.endPoint.y) / 2,
+  }
+  const anchorBase = mp.labelAnchorX != null
+    ? { x: mp.labelAnchorX, y: mp.labelCenterlineY || midpoint.y }
+    : midpoint
+  return {
+    midpoint,
+    anchorBase,
+    labelAnchor: {
+      x: verticalLeader ? anchorBase.x : anchorBase.x + labelDx,
+      y: anchorBase.y + labelDy,
+    },
+  }
+}
+
+// ── Segment markers — FlowGraph.vue:306-317 + FlowSegmentMarker.vue ─────────
+// One marker per LABELLED node. This task emits the label text only; ticks /
+// leaders (T8) and constraint hatching (T9) extend it. The marker-label colour
+// is firebrick (CONSTRAINT_INK) for constraint nodes, else marginalia grey;
+// showMetrics (from ctx.opts) appends the cap/latency suffix; fence-post style
+// (flow.fenceMarkers) renders the label lowercased (FlowSegmentMarker.vue:113).
+function buildSegmentMarkers(ctx) {
+  const { flow, opts, prims } = ctx
+  const forkRootIds = forkRootIdSet(flow)
+  const preMergeIds = preMergeIdSet(flow)
+  const fencePost = !!flow.fenceMarkers
+  for (const node of flow.nodes) {
+    if (!node.label) continue // skip empty-label nodes (e.g. _start) — :307/:1088
+    const mp = markerPropsFor(node, ctx, forkRootIds, preMergeIds)
+    const constraint = isConstraintNode(node)
+    const { dx, dy } = labelOffsetFor(node)
+    const { labelAnchor } = markerLabelAnchor(mp, dx, dy, !!flow.verticalLeaders)
+    // The grey '#555555' marginalia ink has no named export in flowCurve.js, so
+    // it stays inline — faithful to FlowGraph; CONSTRAINT_INK === '#E2522B'.
+    const tickColor = constraint ? CONSTRAINT_INK : '#555555'
+    prims.push({
+      kind: 'text',
+      key: `marker-${node.id}-label`,
+      x: labelAnchor.x,
+      y: labelAnchor.y,
+      text: markerLabelFor(node, !!opts.showMetrics),
+      font: 'ET Book, Georgia, serif',
+      fontStyle: 'italic',
+      fontSize: 24,
+      fill: tickColor,
+      anchor: 'middle',
+      textTransform: fencePost ? 'lowercase' : 'none',
     })
   }
 }

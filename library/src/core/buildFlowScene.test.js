@@ -229,7 +229,9 @@ test('buildFlowScene: a spine decoration emits a line + label, BEFORE the ribbon
   const sim = createFlowSimulation(flow, { initialAgents: 0 })
   const scene = buildFlowScene(flow, sim)
 
-  const lines = scene.static.filter((p) => p.kind === 'line')
+  // Key-scope to the decoration family: later paint-order families (segment
+  // markers, etc.) also emit kind:'line'/'text', so filter on the dec- key.
+  const lines = scene.static.filter((p) => p.kind === 'line' && (p.key || '').startsWith('dec-'))
   assert.equal(lines.length, 1, 'one spine line')
   const spine = lines[0]
   assert.deepEqual([spine.x1, spine.y1, spine.x2, spine.y2], [800, 120, 800, 780])
@@ -237,7 +239,7 @@ test('buildFlowScene: a spine decoration emits a line + label, BEFORE the ribbon
   assert.equal(spine.strokeWidth, 14)
   assert.equal(spine.opacity, 0.9)
 
-  const texts = scene.static.filter((p) => p.kind === 'text')
+  const texts = scene.static.filter((p) => p.kind === 'text' && (p.key || '').startsWith('dec-'))
   assert.equal(texts.length, 1, 'one spine label')
   assert.equal(texts[0].text, 'context layer')
   assert.deepEqual([texts[0].x, texts[0].y], [800, 100]) // y1 + labelDy = 120 + (−20)
@@ -252,8 +254,9 @@ test('buildFlowScene: no decorations → no decoration primitives', () => {
   const flow = linearFlow()
   const sim = createFlowSimulation(flow, { initialAgents: 0 })
   const scene = buildFlowScene(flow, sim)
-  assert.equal(scene.static.filter((p) => p.kind === 'line').length, 0)
-  assert.equal(scene.static.filter((p) => p.kind === 'text').length, 0)
+  // Key-scope to the decoration family — markers emit kind:'text' for the
+  // (labelled) linear-flow nodes, which is not a decoration primitive.
+  assert.equal(scene.static.filter((p) => (p.key || '').startsWith('dec-')).length, 0)
 })
 
 test('buildFlowScene: spine colour falls back to the ribbon scheme when no override', () => {
@@ -432,4 +435,55 @@ test('buildFlowScene: no stageAnchors flag → no notches', () => {
   const sim = createFlowSimulation(flow, { initialAgents: 0 })
   const notches = buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('anchor-'))
   assert.equal(notches.length, 0)
+})
+
+// ── Task 7: segment markers — geometry derivation + label text ──────────────
+
+test('buildFlowScene: one marker label per labelled node, firebrick on constraints', () => {
+  const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(forkFlow, sim)
+  const labels = scene.static.filter((p) => p.kind === 'text' && p.key && p.key.startsWith('marker-'))
+  const labelled = forkFlow.nodes.filter((n) => n.label)
+  assert.equal(labels.length, labelled.length, 'one label per labelled node')
+  for (const l of labels) {
+    assert.equal(l.font, 'ET Book, Georgia, serif')
+    assert.equal(l.fontStyle, 'italic')
+    assert.equal(l.fontSize, 24)
+    assert.equal(l.anchor, 'middle')
+    assert.ok(['#555555', '#E2522B'].includes(l.fill))
+  }
+})
+
+test('buildFlowScene: showMetrics appends the cap/latency suffix to marker labels', () => {
+  const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
+  const plain = buildFlowScene(forkFlow, sim).static.find((p) => (p.key || '').startsWith('marker-'))
+  const metric = buildFlowScene(forkFlow, sim, { showMetrics: true }).static.find(
+    (p) => (p.key || '').startsWith('marker-') && p.key === plain.key,
+  )
+  assert.ok(!plain.text.includes('· cap'))
+  assert.ok(metric.text.includes('· cap'), 'metric label carries the cap/latency suffix')
+})
+
+// A linear flow whose interior node carries NO label — exercises the
+// `if (!node.label) continue` guard in buildSegmentMarkers discriminatingly:
+// the unlabelled node must emit no marker label while its labelled siblings do.
+function mixedLabelFlow() {
+  return {
+    viewBox: { w: 1600, h: 900 },
+    baseSpeed: 200,
+    entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200, y: 450, label: 'a', capacity: 1, latency: 0.6, successors: ['b'] },
+      { id: 'b', x: 700, y: 450, /* intentionally no label */ capacity: 1, latency: 0.6, successors: ['c'] },
+      { id: 'c', x: 1200, y: 450, label: 'c', capacity: 1, latency: 0.6, successors: [] },
+    ],
+  }
+}
+
+test('buildFlowScene: an unlabelled flow node emits no marker label; labelled siblings do', () => {
+  const flow = mixedLabelFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const keys = new Set(buildFlowScene(flow, sim).static.filter((p) => p.kind === 'text').map((p) => p.key))
+  assert.ok(!keys.has('marker-b-label'), 'unlabelled node b is skipped (guard fires)')
+  assert.ok(keys.has('marker-a-label') && keys.has('marker-c-label'), 'labelled siblings still emit')
 })
