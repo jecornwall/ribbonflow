@@ -85,13 +85,33 @@ let _sceneSeq = 0
  * @param {object} sim  — a simulation from createFlowSimulation(flow, ...);
  *                        provides sim.branches (geometry) and, via agentsView,
  *                        sim.agents (per-frame positions).
+ * @param {{showMetrics?: boolean}} [opts] — render options (Phase 2 mountFlow
+ *        passes these through; default showMetrics:false, matching FlowGraph).
  * @returns {{viewBox, defs, static: object[]}}
  */
-export function buildFlowScene(flow, sim) {
+export function buildFlowScene(flow, sim, opts = {}) {
+  const ctx = makeSceneContext(flow, sim, opts)
+
+  // Builders run in paint order; each appends to ctx.prims. Phase 1b inserts
+  // additional builders at their correct call sites (decorations FIRST, etc.).
+  buildRibbons(ctx)
+  buildColoredOverlays(ctx)
+  buildJunctionDiscs(ctx)
+
+  return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
+}
+
+/**
+ * Build the shared, per-call context every family builder reads from. Holds the
+ * normalised viewBox, the defs (clip + optional wobble), the precomputed node
+ * widths and render-branch list (rejection branches excluded — they are routing
+ * artefacts with no painted ribbon), the resolved ribbon colour, and the push
+ * target `prims` (paint-ordered static primitive list).
+ */
+function makeSceneContext(flow, sim, opts) {
   const seq = _sceneSeq++
   const vb = flow.viewBox || { w: 0, h: 0 }
   const viewBox = { x: vb.x ?? 0, y: vb.y ?? 0, w: vb.w ?? 0, h: vb.h ?? 0 }
-
   const defs = {
     clipId: `flow-clip-${seq}`,
     clipRect: { x: viewBox.x, y: viewBox.y, width: viewBox.w, height: viewBox.h },
@@ -99,23 +119,37 @@ export function buildFlowScene(flow, sim) {
     wobble: flow.inkWobble
       ? { id: `flow-wobble-${seq}`, baseFrequency: 0.012, scale: 1.6 }
       : null,
+    // T9 — set when a perpendicular constraint marker needs the firebrick hatch.
+    hatch: null,
   }
+  return {
+    flow,
+    sim,
+    opts,
+    seq,
+    viewBox,
+    defs,
+    widths: computeNodeWidths(flow),
+    renderBranches: sim.branches.filter((b) => b.kind !== 'rejection'),
+    ribbonColor: flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral,
+    prims: [],
+  }
+}
 
-  const staticPrims = []
-  const widths = computeNodeWidths(flow)
-  const renderBranches = sim.branches.filter((b) => b.kind !== 'rejection')
-  const ribbonColor = flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral
-
-  // ── Ribbons (one per render branch) — FlowGraph.vue:108-114 ───────────────
-  for (const branch of renderBranches) {
-    staticPrims.push({
+// ── Ribbons (one per render branch) — FlowGraph.vue:108-114 ─────────────────
+function buildRibbons(ctx) {
+  for (const branch of ctx.renderBranches) {
+    ctx.prims.push({
       kind: 'ribbon',
-      d: ribbonOutlinePath(branch.centerline, branchWidthFn(branch, flow, widths)),
-      fill: ribbonColor,
+      d: ribbonOutlinePath(branch.centerline, branchWidthFn(branch, ctx.flow, ctx.widths)),
+      fill: ctx.ribbonColor,
     })
   }
+}
 
-  // ── Coloured-segment overlays — FlowGraph.vue:676-724 ─────────────────────
+// ── Coloured-segment overlays — FlowGraph.vue:676-724 ───────────────────────
+function buildColoredOverlays(ctx) {
+  const { flow, widths, renderBranches, prims } = ctx
   if (flow.pinchMode === 'constraint-only') {
     // Pinch flows: flat per-segment overlay over the latency-proportioned range.
     renderBranches.forEach((branch, bi) => {
@@ -133,32 +167,35 @@ export function buildFlowScene(flow, sim) {
         const color = RIBBON_SCHEME_COLORS[scheme]
         if (!color) continue
         const d = pinchZoneOutlinePath(branch.centerline, wfn, { sStart, sEnd })
-        if (d) staticPrims.push({ kind: 'path', key: `seg-${bi}-${i}`, d, fill: color })
+        if (d) prims.push({ kind: 'path', key: `seg-${bi}-${i}`, d, fill: color })
       }
     })
-  } else {
-    // Non-pinch flows: two-tone — plateau in full tone, wings in light tone.
-    renderBranches.forEach((branch, bi) => {
-      const { widthFn, segments } = segmentedRibbonLayout(branch, flow, widths)
-      segments.forEach((seg, i) => {
-        const node = flow.nodes.find((n) => n.id === seg.nodeId)
-        const scheme = (node && node.colorScheme) || 'neutral'
-        if (scheme === 'neutral') return
-        const full = RIBBON_SCHEME_COLORS[scheme]
-        const light = RIBBON_SCHEME_COLORS_LIGHT[scheme]
-        if (!full) return
-        const pd = pinchZoneOutlinePath(branch.centerline, widthFn, seg.plateau)
-        if (pd) staticPrims.push({ kind: 'path', key: `seg-${bi}-${i}-p`, d: pd, fill: full })
-        ;[['l', seg.leftWing], ['r', seg.rightWing]].forEach(([wk, wing]) => {
-          if (!wing) return
-          const wd = pinchZoneOutlinePath(branch.centerline, widthFn, wing)
-          if (wd) staticPrims.push({ kind: 'path', key: `seg-${bi}-${i}-w${wk}`, d: wd, fill: light })
-        })
+    return
+  }
+  // Non-pinch flows: two-tone — plateau in full tone, wings in light tone.
+  renderBranches.forEach((branch, bi) => {
+    const { widthFn, segments } = segmentedRibbonLayout(branch, flow, widths)
+    segments.forEach((seg, i) => {
+      const node = flow.nodes.find((n) => n.id === seg.nodeId)
+      const scheme = (node && node.colorScheme) || 'neutral'
+      if (scheme === 'neutral') return
+      const full = RIBBON_SCHEME_COLORS[scheme]
+      const light = RIBBON_SCHEME_COLORS_LIGHT[scheme]
+      if (!full) return
+      const pd = pinchZoneOutlinePath(branch.centerline, widthFn, seg.plateau)
+      if (pd) prims.push({ kind: 'path', key: `seg-${bi}-${i}-p`, d: pd, fill: full })
+      ;[['l', seg.leftWing], ['r', seg.rightWing]].forEach(([wk, wing]) => {
+        if (!wing) return
+        const wd = pinchZoneOutlinePath(branch.centerline, widthFn, wing)
+        if (wd) prims.push({ kind: 'path', key: `seg-${bi}-${i}-w${wk}`, d: wd, fill: light })
       })
     })
-  }
+  })
+}
 
-  // ── Junction discs (star-burst caps) — FlowGraph.vue:823-862 ──────────────
+// ── Junction discs (star-burst caps) — FlowGraph.vue:823-862 ────────────────
+function buildJunctionDiscs(ctx) {
+  const { flow, widths, renderBranches, prims } = ctx
   const junctionIds = junctionNodeIds(flow)
   for (const id of junctionIds) {
     const node = flow.nodes.find((n) => n.id === id)
@@ -189,13 +226,9 @@ export function buildFlowScene(flow, sim) {
         ? (flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral)
         : (RIBBON_SCHEME_COLORS[scheme] || RIBBON_SCHEME_COLORS.neutral)
     if (maxW > 0) {
-      staticPrims.push({ kind: 'disc', key: `junction-${id}`, cx: node.x, cy: node.y, r: maxW / 2, fill: color })
+      prims.push({ kind: 'disc', key: `junction-${id}`, cx: node.x, cy: node.y, r: maxW / 2, fill: color })
     }
   }
-
-  // Further primitive families are appended below in paint order.
-
-  return { viewBox, defs, static: staticPrims }
 }
 
 /**
