@@ -81,6 +81,9 @@ const SKEW_ISO = 20
 // MARKER_LEADER_PAD: the gap between a perpendicular leader end and the ribbon.
 const MARKER_TICK_HALF = 8
 const MARKER_LEADER_PAD = 14
+// T9 — constraint-hatch band width (viewBox units). FlowSegmentMarker.vue:153
+// prop default (hatchWidth).
+const MARKER_HATCH_WIDTH = 200
 
 // Parallelogram vertices for an isometric station box centred on a node —
 // FlowGraph.vue:509-520 (mirrors Station.vue#boxPoints, top-right-bottom-left
@@ -604,6 +607,25 @@ function markerLabelAnchor(mp, labelDx, labelDy, verticalLeader) {
   }
 }
 
+// Lazily mint the ONE shared constraint-hatch def — FlowSegmentMarker.vue:125-139
+// (a 6×6 tile rotated 45° with 0.6px firebrick lines). The SFC minted a
+// per-instance random pattern id purely for DOM-collision-avoidance across
+// markers; the scene uses one stable, deterministic id reused by every
+// constraint rect (plan "Known deviations" #3). Only set when a perpendicular
+// constraint marker actually needs it — flows without one keep defs.hatch null.
+function ensureHatchDef(ctx) {
+  if (!ctx.defs.hatch) {
+    ctx.defs.hatch = {
+      id: `flow-hatch-${ctx.seq}`,
+      tile: 6,
+      rotate: 45,
+      stroke: CONSTRAINT_INK, // === '#E2522B'
+      strokeWidth: 0.6,
+    }
+  }
+  return ctx.defs.hatch
+}
+
 // ── Segment markers — FlowGraph.vue:306-317 + FlowSegmentMarker.vue ─────────
 // One marker per LABELLED node, in two visual registers: perpendicular (default
 // — start/end boundary ticks + a hairline leader) and fence-post (a single
@@ -708,6 +730,25 @@ function buildSegmentMarkers(ctx) {
       anchor: 'middle',
       textTransform: fencePost ? 'lowercase' : 'none',
     })
+
+    // Constraint hatching paints LAST — FlowSegmentMarker.vue:125-139 (after the
+    // label at :108-118). Perpendicular + constraint ONLY; fence-post suppresses
+    // it (SFC v-if="isConstraint && markerStyle !== 'fence-post'"). One shared
+    // hatch def + a {kind:'rect'} per constraint marker; y offsets above the
+    // label when dy < 0, below when dy >= 0 (labelDy < 0 ? 8 : -28).
+    if (!fencePost && constraint) {
+      const hatch = ensureHatchDef(ctx)
+      prims.push({
+        kind: 'rect',
+        key: `hatch-${node.id}`,
+        x: labelAnchor.x - MARKER_HATCH_WIDTH / 2,
+        y: labelAnchor.y + (dy < 0 ? 8 : -28),
+        width: MARKER_HATCH_WIDTH,
+        height: 14,
+        fill: `url(#${hatch.id})`,
+        opacity: 0.6,
+      })
+    }
   }
 }
 

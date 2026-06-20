@@ -523,3 +523,65 @@ test('buildFlowScene: fence-post markers emit a single 1.0px leader, no ticks', 
     assert.equal(l.x1, l.x2, 'fence-post leader is vertical')
   }
 })
+
+// ── Task 9: Segment markers — constraint hatching ────────────────────────────
+
+test('buildFlowScene: a perpendicular constraint marker emits a hatch rect + shared hatch def', () => {
+  const sim = createFlowSimulation(m3Flow, { initialAgents: 0 })
+  const scene = buildFlowScene(m3Flow, sim)
+  const hatches = scene.static.filter((p) => p.kind === 'rect' && p.key && p.key.startsWith('hatch-'))
+  const constraints = m3Flow.nodes.filter((n) => isConstraintNodeTest(n) && n.label)
+  assert.ok(constraints.length >= 1, 'fixture must carry a labelled constraint node')
+  assert.equal(hatches.length, constraints.length, 'one hatch rect per constraint marker')
+  assert.ok(scene.defs.hatch, 'shared hatch def present')
+  assert.equal(scene.defs.hatch.stroke, '#E2522B')
+  for (const h of hatches) {
+    assert.equal(h.width, 200)
+    assert.equal(h.height, 14)
+    assert.equal(h.opacity, 0.6)
+    assert.equal(h.fill, `url(#${scene.defs.hatch.id})`)
+  }
+})
+
+test('buildFlowScene: fence-post mode suppresses constraint hatching; no constraints → no hatch def', () => {
+  const fence = { ...m3Flow, fenceMarkers: true }
+  const fsim = createFlowSimulation(fence, { initialAgents: 0 })
+  const fscene = buildFlowScene(fence, fsim)
+  assert.equal(fscene.static.filter((p) => (p.key || '').startsWith('hatch-')).length, 0)
+  assert.equal(fscene.defs.hatch, null)
+
+  const plain = buildFlowScene(linearFlow(), createFlowSimulation(linearFlow(), { initialAgents: 0 }))
+  assert.equal(plain.defs.hatch, null, 'no constraints → hatch def stays null')
+})
+
+// Inline flow with TWO labelled perpendicular constraint nodes — exercises the
+// ensureHatchDef REUSE branch (2nd constraint hits the already-set ctx.defs.hatch).
+// Every node carries latency, so it builds against the engine without normalizeFlow.
+function twoConstraintFlow() {
+  return {
+    viewBox: { w: 1600, h: 900 }, baseSpeed: 200, entryId: 'a',
+    nodes: [
+      { id: 'a', x: 200, y: 450, label: 'a', capacity: 1, latency: 0.6, successors: ['b'] },
+      { id: 'b', x: 600, y: 450, label: 'b', colorScheme: 'red', capacity: 1, latency: 0.6, successors: ['c'] },
+      { id: 'c', x: 1000, y: 450, label: 'c', colorScheme: 'red', capacity: 1, latency: 0.6, successors: [] },
+    ],
+  }
+}
+
+test('buildFlowScene: multiple constraint markers share ONE hatch def', () => {
+  const flow = twoConstraintFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const scene = buildFlowScene(flow, sim)
+  const hatches = scene.static.filter((p) => p.kind === 'rect' && (p.key || '').startsWith('hatch-'))
+  assert.equal(hatches.length, 2, 'two constraint nodes → two hatch rects')
+  assert.ok(scene.defs.hatch, 'one shared hatch def')
+  const fills = new Set(hatches.map((h) => h.fill))
+  assert.equal(fills.size, 1, 'both rects reference the SAME def id')
+  assert.equal(hatches[0].fill, `url(#${scene.defs.hatch.id})`)
+})
+
+// Local mirror of isConstraintNode for the test's expectation (kind:'constraint'
+// OR colorScheme:'red') — avoids importing the production predicate into asserts.
+function isConstraintNodeTest(n) {
+  return !!n && (n.kind === 'constraint' || n.colorScheme === 'red')
+}
