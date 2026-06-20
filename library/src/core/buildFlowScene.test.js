@@ -204,3 +204,63 @@ test('internals barrel re-exports buildFlowScene + agentsView', async () => {
   assert.equal(typeof impl.buildFlowScene, 'function')
   assert.equal(typeof impl.agentsView, 'function')
 })
+
+// ── Task 1: Decorations (spine) — FlowGraph.vue:64-101 ──────────────────────
+
+// A linear flow carrying one spine decoration (n14 context-layer register).
+function spineFlow(extra = {}) {
+  return {
+    viewBox: { w: 1600, h: 900 },
+    baseSpeed: 200,
+    entryId: 'a',
+    decorations: [
+      { kind: 'spine', x: 800, y1: 120, y2: 780, color: '#15171A', width: 14, opacity: 0.9, label: 'context layer', labelSide: 'above', labelDy: -20 },
+    ],
+    nodes: [
+      { id: 'a', x: 200, y: 450, label: 'a', capacity: 1, latency: 0.6, successors: ['b'] },
+      { id: 'b', x: 1200, y: 450, label: 'b', capacity: 1, latency: 0.6, successors: [] },
+    ],
+    ...extra,
+  }
+}
+
+test('buildFlowScene: a spine decoration emits a line + label, BEFORE the ribbons', () => {
+  const flow = spineFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const scene = buildFlowScene(flow, sim)
+
+  const lines = scene.static.filter((p) => p.kind === 'line')
+  assert.equal(lines.length, 1, 'one spine line')
+  const spine = lines[0]
+  assert.deepEqual([spine.x1, spine.y1, spine.x2, spine.y2], [800, 120, 800, 780])
+  assert.equal(spine.stroke, '#15171A')
+  assert.equal(spine.strokeWidth, 14)
+  assert.equal(spine.opacity, 0.9)
+
+  const texts = scene.static.filter((p) => p.kind === 'text')
+  assert.equal(texts.length, 1, 'one spine label')
+  assert.equal(texts[0].text, 'context layer')
+  assert.deepEqual([texts[0].x, texts[0].y], [800, 100]) // y1 + labelDy = 120 + (−20)
+
+  // Paint order: the decoration line precedes the first ribbon.
+  const firstLine = scene.static.findIndex((p) => p.kind === 'line')
+  const firstRibbon = scene.static.findIndex((p) => p.kind === 'ribbon')
+  assert.ok(firstLine < firstRibbon, 'decoration paints before ribbons')
+})
+
+test('buildFlowScene: no decorations → no decoration primitives', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const scene = buildFlowScene(flow, sim)
+  assert.equal(scene.static.filter((p) => p.kind === 'line').length, 0)
+  assert.equal(scene.static.filter((p) => p.kind === 'text').length, 0)
+})
+
+test('buildFlowScene: spine colour falls back to the ribbon scheme when no override', () => {
+  const flow = spineFlow({ decorations: [{ kind: 'spine', x: 800, y1: 120, y2: 780, colorScheme: 'neutral' }] })
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const spine = buildFlowScene(flow, sim).static.find((p) => p.kind === 'line')
+  assert.equal(spine.stroke, RIBBON_SCHEME_COLORS.neutral)
+  assert.equal(spine.strokeWidth, 14) // default width
+  assert.equal(spine.opacity, 0.9)    // default opacity
+})

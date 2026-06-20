@@ -94,6 +94,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
 
   // Builders run in paint order; each appends to ctx.prims. Phase 1b inserts
   // additional builders at their correct call sites (decorations FIRST, etc.).
+  buildDecorations(ctx)
   buildRibbons(ctx)
   buildColoredOverlays(ctx)
   buildJunctionDiscs(ctx)
@@ -134,6 +135,46 @@ function makeSceneContext(flow, sim, opts) {
     ribbonColor: flow.ribbonColor || RIBBON_SCHEME_COLORS.neutral,
     prims: [],
   }
+}
+
+// ── Decorations (spine) — FlowGraph.vue:64-101 ──────────────────────────────
+// Author-placed static chrome, drawn FIRST so ribbons/agents render over it.
+function buildDecorations(ctx) {
+  const decs = ctx.flow.decorations
+  if (!Array.isArray(decs) || decs.length === 0) return
+  decs.forEach((dec, i) => {
+    if (dec.kind !== 'spine') return
+    // Spine stroke — FlowGraph.vue:77-89. Opacity is data (UnoCSS-safe inline
+    // style in the SFC); dec.color (a raw hex) overrides the scheme palette.
+    ctx.prims.push({
+      kind: 'line',
+      key: `dec-${i}`,
+      x1: dec.x, y1: dec.y1,
+      x2: dec.x, y2: dec.y2,
+      stroke:
+        dec.color
+        || RIBBON_SCHEME_COLORS[dec.colorScheme || 'neutral']
+        || RIBBON_SCHEME_COLORS.neutral,
+      strokeWidth: dec.width ?? 14,
+      opacity: dec.opacity ?? 0.9,
+      linecap: 'round',
+    })
+    // Optional spine label — FlowGraph.vue:90-99.
+    if (dec.label) {
+      ctx.prims.push({
+        kind: 'text',
+        key: `dec-${i}-label`,
+        x: dec.x + (dec.labelDx ?? 0),
+        y: (dec.labelSide === 'below' ? dec.y2 : dec.y1) + (dec.labelDy ?? 0),
+        text: dec.label,
+        font: 'ET Book, Georgia, serif',
+        fontStyle: 'italic',
+        fontSize: 24,
+        fill: '#555555',
+        anchor: 'middle',
+      })
+    }
+  })
 }
 
 // ── Ribbons (one per render branch) — FlowGraph.vue:108-114 ─────────────────
