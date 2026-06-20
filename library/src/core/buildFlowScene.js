@@ -113,22 +113,70 @@ function isoBoxPoints(node) {
  * Build the static Scene for a flow.
  *
  * ── Scene primitive schema (canonical) ───────────────────────────────────────
- * `static[]` carries declarative SVG primitive descriptors, emitted in paint
- * order — ribbons → coloured-segment overlays → junction discs. Each primitive
- * uses SVG-native field names so the (Phase 2) imperative renderer maps 1:1 to
- * DOM attributes:
+ * `static[]` carries declarative SVG primitive descriptors, emitted once in
+ * paint order (see below). Each primitive uses SVG-native field names so the
+ * (Phase 2) imperative renderer maps 1:1 to DOM attributes. The complete
+ * vocabulary now emitted (every Phase 1 + Phase 1b family) is:
  *
- *   { kind: 'ribbon', d, fill }              — one per render branch; `d` is the
- *                                              full ribbon outline path.
- *   { kind: 'path',   d, fill, key }         — a coloured-segment overlay
- *                                              (pinch flat / non-pinch two-tone).
- *   { kind: 'disc',   cx, cy, r, fill, key } — a junction star-burst cap
- *                                              (one per fork/merge node).
+ *   { kind: 'ribbon', d, fill }                 — one per render branch; `d` is
+ *                                                 the full ribbon outline path.
+ *   { kind: 'path',   d, fill, key }            — a coloured-segment overlay
+ *                                                 (pinch flat / non-pinch two-
+ *                                                 tone) and the pinch-rose
+ *                                                 triangles/plateau.
+ *   { kind: 'disc',   cx, cy, r, fill, key }    — a junction star-burst cap.
+ *   { kind: 'line',   x1, y1, x2, y2, stroke, strokeWidth, linecap?, opacity?,
+ *                     key }                      — decoration spines, segment
+ *                                                 dividers, stage-anchor notches,
+ *                                                 marker boundary ticks/leaders.
+ *   { kind: 'text',   x, y, text, font, fontStyle, fontSize, fill, anchor?,
+ *                     baseline?, textTransform?, opacity?, key }
+ *                                                — decoration labels, marker and
+ *                                                 ghost labels, legend captions.
+ *   { kind: 'polygon', points, fill, stroke?, strokeWidth?, key }
+ *                                                — station boxes (isometric
+ *                                                 parallelograms), the legend
+ *                                                 swatch.
+ *   { kind: 'rect',   x, y, width, height, fill, opacity?, key }
+ *                                                — the constraint-hatch fill rect
+ *                                                 (paired with defs.hatch).
+ *   { kind: 'glyph',  d, transform, fill, stroke, strokeWidth, opacity,
+ *                     linecap?, linejoin?, key } — split / combine transform
+ *                                                 glyphs. `fill` is always
+ *                                                 'none' (mandatory — open
+ *                                                 stroke geometry; a fill would
+ *                                                 ink the glyph's triangles).
+ *   { kind: 'rejectionArc', d, arrowPoints, stroke, strokeWidth, dasharray, key }
+ *                                                — a dotted rejection bow + its
+ *                                                 arrowhead polygon points.
  *
- * Field convention: `d` for path geometry, `cx`/`cy`/`r` for circles, `fill`
- * for paint on every primitive — matching SVG `<path>` / `<circle>` attributes.
+ * Field convention: `d` for path geometry; `x1`/`y1`/`x2`/`y2` for lines;
+ * `cx`/`cy`/`r` for circles; `points` for polygons; `x`/`y`/`width`/`height`
+ * for rects; `font`(family)/`fontStyle`/`fontSize`(px number)/`anchor`(text-
+ * anchor)/`baseline`(dominant-baseline)/`textTransform` for text; `fill`/
+ * `stroke`/`strokeWidth`/`opacity` for paint. `key` is a stable, deterministic
+ * id (no Math.random) — matching SVG element attributes 1:1.
  *
- * `agentsView(sim)` (below) returns the per-frame layer: `{id, x, y, r, fill}[]`,
+ * `defs` carries the shared definitions the primitives reference:
+ *   { clipId, clipRect, wobble|null, hatch|null }
+ * where `clipRect` is `{x,y,width,height}`, `wobble` (set only for inkWobble
+ * flows) is `{id, baseFrequency, scale}`, and `hatch` (set only when a
+ * perpendicular constraint marker needs it) is the firebrick hatching pattern
+ * `{id, tile, rotate, stroke, strokeWidth}`.
+ *
+ * ── Paint order (the complete 13-family sequence) ────────────────────────────
+ * The builders run in this order, each appending to `static[]`:
+ *   1. decorations  2. ribbons  3. coloured-segment overlays  4. junction discs
+ *   5. pinch-zone roses  6. rejection arcs  7. station boxes  8. segment dividers
+ *   9. stage-anchor notches  10. segment markers  11. ghost markers
+ *   12. transform glyphs  13. legend (LAST).
+ * The agents layer (`agentsView`, below) is per-frame, not static, and paints on
+ * top of the whole `static[]` list. (One documented simplification: FlowGraph
+ * paints the legend after the agents; in this two-layer model the legend is the
+ * last static family and so sits just below the agents layer — visually inert,
+ * since agents never traverse the bottom-left legend swatch.)
+ *
+ * `agentsView(sim)` (below) returns that per-frame layer: `{id, x, y, r, fill}[]`,
  * where `fill: null` means "renderer default cream".
  *
  * This is the canonical schema the Phase 2 imperative renderer consumes.
