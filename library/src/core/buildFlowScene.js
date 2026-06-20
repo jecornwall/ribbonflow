@@ -29,6 +29,8 @@ import {
   CONSTRAINT_ROSE,
   INK,
   CONSTRAINT_INK,
+  MIN_RIBBON_WIDTH,
+  MAX_RIBBON_WIDTH,
 } from './flowCurve.js'
 import {
   rejectionArcPath,
@@ -159,6 +161,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildSegmentMarkers(ctx)
   buildGhostMarkers(ctx)
   buildTransformGlyphs(ctx)
+  buildLegend(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -829,6 +832,48 @@ function buildTransformGlyphs(ctx) {
       opacity: TRANSFORM_GLYPH_OPACITY,
       linecap: 'round',
       linejoin: 'round',
+    })
+  }
+}
+
+// ── Minard legend strip — FlowGraph.vue:425-452 + :559-582 ──────────────────
+// Width-encodes-throughput swatch + caption, painted LAST. The secondary line
+// shows the flow's actual throughput ratio when a kind:'constraint' node AND a
+// widest node are both derivable. Note: this legend uses the LEGACY literal
+// `n.kind === 'constraint'` test specifically (NOT isConstraintNode), matching
+// FlowGraph.vue:564 — a v3 colorScheme:'red' constraint lacking kind:'constraint'
+// yields no secondary line. INK (=== '#15171A') is the palette's single source
+// of truth (flowCurve.js); the caption greys '#333333'/'#777777' have no named
+// export, so they stay inline — faithful to FlowGraph.
+function buildLegend(ctx) {
+  const { flow, widths, prims } = ctx
+  if (flow.showLegend === false) return
+
+  const swatch = { kind: 'polygon', key: 'legend-swatch', points: '40,833 160,821 160,849 40,837', fill: INK }
+  const primary = {
+    kind: 'text', key: 'legend-primary',
+    x: 176, y: 835, text: 'width encodes throughput',
+    font: 'ET Book, Georgia, serif', fontStyle: 'italic', fontSize: 18,
+    fill: '#333333', baseline: 'middle',
+  }
+  prims.push(swatch, primary)
+
+  // Secondary ratio line — FlowGraph.vue:564-582.
+  const constraintNode = flow.nodes.find((n) => n.kind === 'constraint')
+  const widestEntry = Object.entries(widths)
+    .filter(([, w]) => typeof w === 'number')
+    .reduce((best, [id, w]) => (w > best[1] ? [id, w] : best), ['', 0])
+  const widestNode = widestEntry[0] ? flow.nodes.find((n) => n.id === widestEntry[0]) : null
+  const ratio = (constraintNode && widestEntry[1] && widths[constraintNode.id])
+    ? Math.round(widestEntry[1] / widths[constraintNode.id])
+    : Math.round(MAX_RIBBON_WIDTH / MIN_RIBBON_WIDTH)
+  if (constraintNode && widestNode) {
+    prims.push({
+      kind: 'text', key: 'legend-secondary',
+      x: 176, y: 853,
+      text: `${constraintNode.label} handles 1 unit · ${widestNode.label} handles ${ratio}`,
+      font: 'ET Book, Georgia, serif', fontStyle: 'italic', fontSize: 14,
+      fill: '#777777', baseline: 'middle',
     })
   }
 }

@@ -664,3 +664,38 @@ test('buildFlowScene: a flow with no transform nodes emits no glyphs', () => {
   const sim = createFlowSimulation(flow, { initialAgents: 0 })
   assert.equal(buildFlowScene(flow, sim).static.filter((p) => p.kind === 'glyph').length, 0)
 })
+
+// ── Task 12: Minard legend — paints last ────────────────────────────────────
+
+test('buildFlowScene: legend swatch + primary text emitted by default, LAST in paint order', () => {
+  const sim = createFlowSimulation(forkFlow, { initialAgents: 0 })
+  const scene = buildFlowScene(forkFlow, sim)
+  const swatch = scene.static.find((p) => p.kind === 'polygon' && p.key === 'legend-swatch')
+  assert.ok(swatch, 'legend swatch present')
+  assert.equal(swatch.points, '40,833 160,821 160,849 40,837')
+  assert.equal(swatch.fill, '#15171A')
+
+  const primary = scene.static.find((p) => p.kind === 'text' && p.key === 'legend-primary')
+  assert.ok(primary, 'primary legend text present')
+  assert.equal(primary.text, 'width encodes throughput')
+  assert.equal(primary.baseline, 'middle')
+
+  // Legend is the final static family.
+  const swatchIdx = scene.static.findIndex((p) => p.key === 'legend-swatch')
+  assert.equal(swatchIdx >= scene.static.length - 3, true, 'legend sits at the tail of static[]')
+})
+
+test('buildFlowScene: showLegend:false suppresses the legend entirely', () => {
+  const flow = { ...forkFlow, showLegend: false }
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const legend = buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('legend-'))
+  assert.equal(legend.length, 0)
+})
+
+test('buildFlowScene: no kind:constraint node → primary only, no secondary ratio line', () => {
+  const flow = linearFlow() // no kind:'constraint'
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const legend = buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('legend-'))
+  assert.ok(legend.some((p) => p.key === 'legend-primary'))
+  assert.ok(!legend.some((p) => p.key === 'legend-secondary'))
+})
