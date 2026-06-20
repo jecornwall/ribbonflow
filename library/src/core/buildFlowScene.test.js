@@ -585,3 +585,49 @@ test('buildFlowScene: multiple constraint markers share ONE hatch def', () => {
 function isConstraintNodeTest(n) {
   return !!n && (n.kind === 'constraint' || n.colorScheme === 'red')
 }
+
+// ── Task 10: ghost markers ──────────────────────────────────────────────────
+// Inline flow carrying two collapsed-stage ghost labels (no fixture carries
+// ghostMarkers — pure author data, like n18-after). One below-ribbon
+// (labelDy >= 0) and one above-ribbon (labelDy < 0).
+function ghostFlow() {
+  return {
+    viewBox: { w: 1600, h: 900 },
+    baseSpeed: 200,
+    entryId: 'a',
+    bandWidth: 70,
+    ghostOpacity: 0.3,
+    ghostMarkers: [
+      { x: 600, y: 450, labelDy: 120, label: 'legal' },
+      { x: 760, y: 450, labelDy: -120, label: 'sec' },
+    ],
+    nodes: [
+      { id: 'a', x: 200, y: 450, label: 'a', capacity: 1, latency: 0.6, successors: ['b'] },
+      { id: 'b', x: 1200, y: 450, label: 'b', capacity: 1, latency: 0.6, successors: [] },
+    ],
+  }
+}
+
+test('buildFlowScene: each ghost marker emits a leader + label at the group opacity', () => {
+  const flow = ghostFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  const scene = buildFlowScene(flow, sim)
+  const leaders = scene.static.filter((p) => p.kind === 'line' && (p.key || '').startsWith('ghost-'))
+  const labels = scene.static.filter((p) => p.kind === 'text' && (p.key || '').startsWith('ghost-'))
+  assert.equal(leaders.length, 2)
+  assert.equal(labels.length, 2)
+  for (const p of [...leaders, ...labels]) assert.equal(p.opacity, 0.3)
+
+  const below = leaders.find((l) => l.key.includes('legal'))
+  assert.equal(below.y1, 450 + 120 - 10) // below-ribbon: start just above text
+  assert.equal(below.y2, 450 + 35 + 2)   // down to band bottom (bandWidth/2 = 35)
+  const above = leaders.find((l) => l.key.includes('sec'))
+  assert.equal(above.y1, 450 - 120 + 10) // above-ribbon: start just below text
+  assert.equal(above.y2, 450 - 35 - 2)   // up to band top
+})
+
+test('buildFlowScene: no ghostMarkers → no ghost primitives', () => {
+  const flow = linearFlow()
+  const sim = createFlowSimulation(flow, { initialAgents: 0 })
+  assert.equal(buildFlowScene(flow, sim).static.filter((p) => (p.key || '').startsWith('ghost-')).length, 0)
+})

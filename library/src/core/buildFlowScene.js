@@ -151,6 +151,7 @@ export function buildFlowScene(flow, sim, opts = {}) {
   buildSegmentDividers(ctx)
   buildStageAnchors(ctx)
   buildSegmentMarkers(ctx)
+  buildGhostMarkers(ctx)
 
   return { viewBox: ctx.viewBox, defs: ctx.defs, static: ctx.prims }
 }
@@ -750,6 +751,52 @@ function buildSegmentMarkers(ctx) {
       })
     }
   }
+}
+
+// ── Ghost markers (collapsed-stage labels) — FlowGraph.vue:334-373 ──────────
+// Display-only labels for stages a flow has collapsed away (e.g. n18-after).
+// Each ghost emits a vertical fence-post leader + an italic ET Book label,
+// painted AFTER the live segment markers. FlowGraph wraps the whole family in a
+// single `<g :style="{opacity}">`; the flat scene bakes that group opacity onto
+// each primitive (plan "Known deviations" #1 — visually identical for the
+// non-overlapping leader+label pair). Leader geometry mirrors :346-371:
+//   below-ribbon (labelDy >= 0): from (y + labelDy) − 10 down to y + half + 2
+//   above-ribbon (labelDy < 0):  from (y + labelDy) + 10 up to y − half − 2
+// '#555555' is the marginalia grey (no named export — stays inline). Inert when
+// flow.ghostMarkers is absent/empty.
+function buildGhostMarkers(ctx) {
+  const { flow, prims } = ctx
+  const ghosts = flow.ghostMarkers
+  if (!Array.isArray(ghosts) || ghosts.length === 0) return
+  const groupOpacity = flow.ghostOpacity ?? 0.3 // group opacity baked per-prim
+  const half = (flow.bandWidth ?? 70) / 2
+  ghosts.forEach((gm) => {
+    prims.push({
+      kind: 'line',
+      key: `ghost-${gm.label}-leader`,
+      x1: gm.x,
+      y1: gm.labelDy >= 0 ? (gm.y + gm.labelDy) - 10 : (gm.y + gm.labelDy) + 10,
+      x2: gm.x,
+      y2: gm.labelDy >= 0 ? gm.y + half + 2 : gm.y - half - 2,
+      stroke: '#555555',
+      strokeWidth: 1.0,
+      linecap: 'round',
+      opacity: groupOpacity,
+    })
+    prims.push({
+      kind: 'text',
+      key: `ghost-${gm.label}-label`,
+      x: gm.x,
+      y: gm.y + gm.labelDy,
+      text: gm.label,
+      font: 'ET Book, Georgia, serif',
+      fontStyle: 'italic',
+      fontSize: 24,
+      fill: '#555555',
+      anchor: 'middle',
+      opacity: groupOpacity,
+    })
+  })
 }
 
 /**
