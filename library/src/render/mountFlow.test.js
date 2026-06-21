@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseHTML } from 'linkedom'
 import { mountFlow } from './mountFlow.js'
+import { AGENT_DEFAULT_FILL } from './agentsLayer.js'
 import { makeFakeScheduler, makeFakeIntersection } from '../../test/support/fakeEnv.js'
 
 function host() {
@@ -17,6 +18,12 @@ function bareV1Flow() {
     viewBox: { w: 1600, h: 900 },
     entryId: 'a',
     spawnRate: 1,
+    // Author initialAgents like every real deck flow does. normalizeFlowInput
+    // defaults the field to 0 (format/model.js:193), so a non-authoring flow
+    // would seed 0 agents. mountFlow seeds `normalized.initialAgents ?? 8`
+    // (parity-faithful to FlowGraph, which reads the same normalized field),
+    // so authoring 8 here makes the loop tests paint agents.
+    initialAgents: 8,
     nodes: [
       { id: 'a', x: 200, y: 450, label: 'a', capacity: 1, latency: 0.6, successors: ['b'] },
       { id: 'b', x: 1200, y: 450, label: 'b', capacity: 1, latency: 0.6, successors: [] },
@@ -33,7 +40,7 @@ function opts(h, extra = {}) {
     sched, inter,
     value: {
       document: h.document,
-      raf: sched.raf, caf: sched.caf, now: sched.now,
+      raf: sched.raf, caf: sched.caf,
       IntersectionObserver: inter.IntersectionObserver,
       visibilityDocument: inter.document,
       ...extra,
@@ -73,4 +80,81 @@ test('mountFlow: throws a clear error on a flow-set (Phase 2b not yet supported)
     /flow-set/i,
     'mountFlow rejects flow-sets with a clear message',
   )
+})
+
+function agentCircles(el) {
+  return [...el.querySelectorAll('g.flow-agents circle')]
+}
+
+test('mountFlow: on show, the loop steps the sim and paints agents that move', () => {
+  const h = host()
+  const { sched, inter, value } = (() => {
+    const o = opts(h)
+    return { sched: o.sched, inter: o.inter, value: o.value }
+  })()
+  const handle = mountFlow(h.el, bareV1Flow(), value)
+
+  // Not visible yet → no frames, no agents.
+  assert.equal(agentCircles(h.el).length, 0)
+
+  inter.setIntersecting(true) // show → startFresh → schedules first frame
+  sched.tick(16)              // run frame 1
+  sched.tick(16)              // run frame 2
+  const circles = agentCircles(h.el)
+  assert.ok(circles.length > 0, 'agents painted after the loop runs')
+  // Each agent circle carries a data-agent-id and a resolved fill.
+  for (const c of circles) {
+    assert.ok(c.getAttribute('data-agent-id') !== null)
+    assert.ok(c.getAttribute('fill'))
+  }
+  // bareV1Flow agents are normal (non-defective/non-revising), so agentsView
+  // yields fill:null → at least one circle must resolve to the cream default.
+  // Pins the null-fill→cream resolution end-to-end through reconcile + applySpec.
+  assert.ok(
+    circles.some((c) => c.getAttribute('fill') === AGENT_DEFAULT_FILL),
+    'a default-lifecycle agent paints the cream default',
+  )
+
+  // Capture a position, run more frames, assert at least one agent moved.
+  // 8 agents seeded on a ~1000px ribbon at baseSpeed 200 advance well within
+  // 10×16ms; notDeepEqual needs only one to move, so this is deterministic.
+  const before = circles.map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')}`)
+  for (let i = 0; i < 10; i++) sched.tick(16)
+  const after = agentCircles(h.el).map((c) => `${c.getAttribute('cx')},${c.getAttribute('cy')}`)
+  assert.notDeepEqual(after, before, 'agent positions advanced across frames')
+
+  handle.destroy()
+})
+
+test('mountFlow: on hide the loop stops (no further scheduled frames)', () => {
+  const h = host()
+  const o = opts(h)
+  const handle = mountFlow(h.el, bareV1Flow(), o.value)
+  o.inter.setIntersecting(true)
+  o.sched.tick(16)
+  assert.ok(o.sched.pendingCount() > 0, 'a frame is scheduled while visible')
+  o.inter.setIntersecting(false) // hide → stopLoop cancels the pending frame
+  assert.equal(o.sched.pendingCount(), 0, 'no frame scheduled after hide')
+  handle.destroy()
+})
+
+test('mountFlow: re-show rebuilds the sim fresh (pile-up fix)', () => {
+  const h = host()
+  const o = opts(h)
+  const handle = mountFlow(h.el, bareV1Flow(), o.value)
+  o.inter.setIntersecting(true)
+  for (let i = 0; i < 30; i++) o.sched.tick(16) // accumulate some sim state
+  o.inter.setIntersecting(false)                // hide → stopLoop
+  assert.equal(o.sched.pendingCount(), 0, 'no frame scheduled while hidden')
+  o.inter.setIntersecting(true)                 // re-show → startFresh
+  assert.ok(o.sched.pendingCount() > 0, 're-show restarted the loop')
+  o.sched.tick(16)
+  // startFresh rebuilds the sim clean + repaints; assert agents present rather
+  // than exact positions/counts (the sim's spawn jitter uses unseeded
+  // Math.random, so position-equality would flake).
+  assert.ok(
+    agentCircles(h.el).length > 0,
+    're-show repainted agents fresh (startFresh ran applyAgents)',
+  )
+  handle.destroy()
 })
