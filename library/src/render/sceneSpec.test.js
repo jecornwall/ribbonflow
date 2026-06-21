@@ -187,3 +187,56 @@ test('staticSpec: a line with no opacity emits no style attribute', () => {
   const l = specFor({ kind: 'line', x1: 0, y1: 0, x2: 0, y2: 10, stroke: '#555555', strokeWidth: 0.8, linecap: 'round' })
   assert.equal(l.attrs.style, undefined, 'no style attr when there is no opacity')
 })
+
+// ── Task 4: rootSpec(scene) → <svg> + clip group + paint/agents groups ────────
+import { rootSpec, AGENTS_GROUP_CLASS, PAINT_GROUP_CLASS } from './sceneSpec.js'
+
+function miniScene(over = {}) {
+  return {
+    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    defs: { clipId: 'flow-clip-0', clipRect: { x: 0, y: 0, width: 1600, height: 900 }, wobble: null, hatch: null },
+    static: [{ kind: 'ribbon', d: 'M0 0', fill: '#e8d8b0' }],
+    ...over,
+  }
+}
+
+test('rootSpec: svg root carries viewBox, preserveAspectRatio, class', () => {
+  const svg = rootSpec(miniScene())
+  assert.equal(svg.tag, 'svg')
+  assert.equal(svg.attrs.viewBox, '0 0 1600 900')
+  assert.equal(svg.attrs.preserveAspectRatio, 'xMidYMid meet')
+  assert.equal(svg.attrs.class, 'flow-graph')
+})
+
+test('rootSpec: defs, a clip group containing a paint group + an empty agents group', () => {
+  const svg = rootSpec(miniScene())
+  assert.ok(svg.children.find((c) => c.tag === 'defs'))
+  const clip = svg.children.find((c) => c.tag === 'g' && c.attrs['clip-path'] === 'url(#flow-clip-0)')
+  assert.ok(clip, 'clip group present')
+  const paint = clip.children.find((c) => c.attrs.class === PAINT_GROUP_CLASS)
+  const agents = clip.children.find((c) => c.attrs.class === AGENTS_GROUP_CLASS)
+  assert.ok(paint && agents)
+  // Paint BEFORE agents — SVG paint order is array order, so agents must be the
+  // later sibling to render on top (a swap could keep both present but break z-order).
+  assert.deepEqual(clip.children.map((c) => c.attrs.class), [PAINT_GROUP_CLASS, AGENTS_GROUP_CLASS])
+  // static[] painted inside the paint group, in order.
+  assert.equal(paint.children[0].tag, 'path')
+  // agents group starts empty (filled per frame by mountFlow).
+  assert.deepEqual(agents.children, [])
+})
+
+test('rootSpec: wobble filter is applied to the paint group iff defs.wobble', () => {
+  const plain = rootSpec(miniScene())
+  const plainPaint = plain.children
+    .find((c) => c.attrs['clip-path'])
+    .children.find((c) => c.attrs.class === PAINT_GROUP_CLASS)
+  assert.equal('filter' in plainPaint.attrs, false)
+
+  const wobbly = rootSpec(miniScene({
+    defs: { clipId: 'flow-clip-0', clipRect: { x: 0, y: 0, width: 1600, height: 900 }, wobble: { id: 'flow-wobble-0', baseFrequency: 0.012, scale: 1.6 }, hatch: null },
+  }))
+  const wobblyPaint = wobbly.children
+    .find((c) => c.attrs['clip-path'])
+    .children.find((c) => c.attrs.class === PAINT_GROUP_CLASS)
+  assert.equal(wobblyPaint.attrs.filter, 'url(#flow-wobble-0)')
+})

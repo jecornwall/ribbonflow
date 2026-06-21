@@ -177,3 +177,58 @@ function primSpec(p) {
       throw new Error(`sceneSpec: unknown primitive kind "${p.kind}"`)
   }
 }
+
+// ── rootSpec: the whole scene as ONE element-spec tree ───────────────────────
+// FlowGraph.vue:17-21 (svg root) / :51 (clip group) / :107 (wobble group).
+
+/** Class on the <g> that holds the static paint (so the wobble filter + tests target it). */
+export const PAINT_GROUP_CLASS = 'flow-paint'
+/** Class on the <g> mountFlow fills with agent circles each frame. */
+export const AGENTS_GROUP_CLASS = 'flow-agents'
+
+/**
+ * The whole scene as ONE element-spec tree: <svg> → <defs> + a clip group that
+ * holds the static paint group (optionally wobble-filtered) and an empty agents
+ * group. mountFlow paints this once, then fills the agents group per frame.
+ *
+ * DELIBERATE DOCUMENTED DEVIATION (2c parity candidate): the ink-wobble filter
+ * wraps the WHOLE paint group here, whereas FlowGraph.vue:107 wraps only the
+ * ribbon sub-group (rejection arcs / markers / boxes sit outside its wobble
+ * group). The visual difference — whether the draftsman wobble also displaces
+ * marker hairlines — is immaterial for the deck flows that enable inkWobble
+ * (ribbon-dominant figures), so this is the faithful-enough simplification.
+ * The agents group sits OUTSIDE the clip's paint group (agents are never
+ * wobbled — FlowGraph.vue:398-415 renders them after the filter group).
+ *
+ * FlowGraph.vue:17-21 (svg) / :51 (clip group) / :107 (wobble group).
+ */
+export function rootSpec(scene) {
+  const { viewBox, defs } = scene
+  const paintAttrs = { class: PAINT_GROUP_CLASS }
+  // Only set the filter key when wobble is present — a bare `filter: undefined`
+  // would still satisfy `'filter' in attrs`, so add it conditionally.
+  if (defs.wobble) paintAttrs.filter = `url(#${defs.wobble.id})`
+  const paintGroup = {
+    tag: 'g',
+    attrs: paintAttrs,
+    children: staticSpec(scene.static),
+  }
+  const agentsGroup = { tag: 'g', attrs: { class: AGENTS_GROUP_CLASS }, children: [] }
+
+  return {
+    tag: 'svg',
+    attrs: {
+      viewBox: `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`,
+      preserveAspectRatio: 'xMidYMid meet',
+      class: 'flow-graph',
+    },
+    children: [
+      defsSpec(defs),
+      {
+        tag: 'g',
+        attrs: { 'clip-path': `url(#${defs.clipId})` },
+        children: [paintGroup, agentsGroup],
+      },
+    ],
+  }
+}
