@@ -12,10 +12,12 @@
  *
  * Phase 2a is single-flow only — a flow-set throws (Phase 2b adds that branch).
  *
- * NOTE (Task 8 of the Phase 2a plan): this increment adds the visibility-gated
- * rAF loop + per-frame agent reconcile. `update` is still a deliberate stub
- * (Task 9 implements remount-on-identity); `destroy` now stops the loop and
- * disconnects the visibility observer before removing the svg.
+ * Render state that survives an update (the swappable svg + its agents group,
+ * the normalized flow, the live sim and loop bookkeeping) is held in mutable
+ * `let`s the closures share, so `buildStatic`/`applyAgents`/`frame`/`startFresh`
+ * all read the CURRENT bindings after `update` swaps the scene. The visibility
+ * observer is created ONCE over the stable host `el` (not the swappable svg) so
+ * it survives the swap — re-observing on every update would leak observers.
  */
 import { normalizeFlowInput } from '../format/index.js'
 import { isFlowSetEnvelope } from '../format/flowSet.js'
@@ -33,6 +35,12 @@ function isRawFlowSet(input) {
     input != null && typeof input === 'object' &&
     typeof input.formatVersion !== 'number' && Array.isArray(input.states)
   )
+}
+
+function assertSingleFlow(input, where) {
+  if (isFlowSetEnvelope(input) || isRawFlowSet(input)) {
+    throw new Error(`${where}: flow-sets are not supported in Phase 2a (single-flow only). See ribbonflow Phase 2b.`)
+  }
 }
 
 /**
@@ -57,37 +65,54 @@ function isRawFlowSet(input) {
  * @returns {{update: Function, destroy: Function}}
  */
 export function mountFlow(el, flow, opts = {}) {
-  if (isFlowSetEnvelope(flow) || isRawFlowSet(flow)) {
-    throw new Error('mountFlow: flow-sets are not supported in Phase 2a (single-flow only). See ribbonflow Phase 2b.')
-  }
+  assertSingleFlow(flow, 'mountFlow')
   const doc = opts.document || el.ownerDocument
   const showMetrics = !!opts.showMetrics
 
-  // Resolve input → render-ready normalized flow (migrate+normalize, M5 fix).
-  const normalized = normalizeFlowInput(flow)
-
-  // Build the simulation + paint the static scene once. Seed from the NORMALIZED
-  // flow (`?? 8`) — parity-faithful to FlowGraph.vue:541, which reads
-  // `props.flow.initialAgents ?? 8` where props.flow is itself the normalized
-  // flow (FlowEmbed.vue:60/86 normalizes before binding). A flow that authors
-  // initialAgents keeps its value; one that doesn't normalizes to 0 → seeds 0,
-  // exactly as FlowGraph does.
-  const sim = createFlowSimulation(normalized, { initialAgents: normalized.initialAgents ?? 8 })
-  const scene = buildFlowScene(normalized, sim, { showMetrics })
-  const svg = applySpec(el, rootSpec(scene), doc)
-
-  // rootSpec painted an empty agents group (g.flow-agents); the rAF loop below
-  // looks it up and fills it per frame.
-  const agentsGroup = svg.querySelector('g.' + AGENTS_GROUP_CLASS)
-
-  // ── scheduler + visibility env (injected for tests; real globals in prod) ──
+  // ── scheduler env (injected for tests; real globals in prod) ────────────────
   const raf = opts.raf || ((cb) => requestAnimationFrame(cb))
   const caf = opts.caf || ((id) => cancelAnimationFrame(id))
 
-  let liveSim = sim
+  // ── mutable render state shared by the closures below ───────────────────────
+  // Swappable bindings (rebuilt by buildStatic on mount + every update):
+  let normalized = null      // the migrate+normalized current flow
+  let svg = null             // the current <svg.flow-graph>
+  let agentsGroup = null     // the current <g.flow-agents> the loop fills
+  // Loop bookkeeping (the live sim + rAF state):
+  let liveSim = null
   let rafId = null
   let lastT = null
   let prevById = new Map()
+
+  // Build a fresh sim from the CURRENT normalized flow. Seed from the NORMALIZED
+  // flow (`?? 8`) — parity-faithful to FlowGraph.vue:542, which reads
+  // `props.flow.initialAgents ?? 8` where props.flow is itself the normalized
+  // flow (FlowEmbed.vue normalizes before binding). A flow that authors
+  // initialAgents keeps its value; one that doesn't normalizes to 0 → seeds 0,
+  // exactly as FlowGraph does. Reads the live `normalized` so a remount picks up
+  // the swapped flow.
+  function buildSim() {
+    return createFlowSimulation(normalized, { initialAgents: normalized.initialAgents ?? 8 })
+  }
+
+  // (Re)build the static scene for `inputFlow`: normalize → fresh sim →
+  // buildFlowScene → paint, replacing any PRIOR svg first, then rebind the
+  // swappable bindings. Returns the fresh sim it built the scene against (so the
+  // first frame after a build animates from a consistent state).
+  function buildStatic(inputFlow) {
+    const next = normalizeFlowInput(inputFlow)
+    const prevSvg = svg
+    normalized = next
+    const freshSim = buildSim()
+    const scene = buildFlowScene(next, freshSim, { showMetrics })
+    const nextSvg = applySpec(el, rootSpec(scene), doc)
+    // Remove the prior svg AFTER painting the new one (so the host is never
+    // momentarily empty); leaves exactly ONE svg in the host.
+    if (prevSvg && prevSvg.parentNode) prevSvg.parentNode.removeChild(prevSvg)
+    svg = nextSvg
+    agentsGroup = svg.querySelector('g.' + AGENTS_GROUP_CLASS)
+    return freshSim
+  }
 
   function applyAgents() {
     const view = agentsView(liveSim)
@@ -129,9 +154,10 @@ export function mountFlow(el, flow, opts = {}) {
 
   function startFresh() {
     // Rebuild the sim from a clean initial state, then (re)start the loop —
-    // the pile-up fix (FlowGraph.vue:1174-1180).
+    // the pile-up fix (FlowGraph.vue:1174-1180). Reads the CURRENT normalized/
+    // agentsGroup, so it works correctly after an update() swap.
     stopLoop()
-    liveSim = createFlowSimulation(normalized, { initialAgents: normalized.initialAgents ?? 8 })
+    liveSim = buildSim()
     prevById = new Map()
     // Clear any stale agent circles from a prior visit.
     while (agentsGroup.firstChild) agentsGroup.removeChild(agentsGroup.firstChild)
@@ -139,19 +165,38 @@ export function mountFlow(el, flow, opts = {}) {
     rafId = raf(frame)
   }
 
+  // Initial mount: paint the static scene + seed the live sim.
+  liveSim = buildStatic(flow)
+
   // Observe the stable host `el` (NOT the swappable `svg`) so the gate survives
-  // the svg swap a Task-9 update() performs.
+  // the svg swap an update() performs. Created ONCE — re-observing per update
+  // would leak observers / double-fire the gate.
   const visibility = observeVisibility(el, { onShow: startFresh, onHide: stopLoop }, {
     IntersectionObserver: opts.IntersectionObserver,
     document: opts.visibilityDocument,
   })
 
   return {
-    update() { /* Task 9: remount-on-identity */ },
+    /**
+     * Swap the rendered flow. The static scene is rebuilt from scratch (the
+     * deck's click idiom swaps the whole `flow` prop — FlowEmbed.vue remounts on
+     * identity change; rebuilding unconditionally is the simplest faithful match
+     * and avoids stale geometry on a topology swap). If the loop was running
+     * (visible), it restarts fresh on the new scene; otherwise it stays idle
+     * until the next onShow.
+     */
+    update(nextFlow) {
+      assertSingleFlow(nextFlow, 'mountFlow.update')
+      const wasRunning = rafId !== null
+      stopLoop()
+      liveSim = buildStatic(nextFlow)   // rebuild static + rebind svg/agentsGroup
+      prevById = new Map()
+      if (wasRunning) startFresh()      // keep loop semantics if it was live
+    },
     destroy() {
       stopLoop()
       visibility.disconnect()
-      if (svg.parentNode) svg.parentNode.removeChild(svg)
+      if (svg && svg.parentNode) svg.parentNode.removeChild(svg)
     },
   }
 }

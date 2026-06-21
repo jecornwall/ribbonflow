@@ -1,10 +1,14 @@
 // flow/library/src/render/mountFlow.test.js
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
 import { parseHTML } from 'linkedom'
 import { mountFlow } from './mountFlow.js'
 import { AGENT_DEFAULT_FILL } from './agentsLayer.js'
+import forkFlow from '../../test/fixtures/flows/n4-flow-a.js'
 import { makeFakeScheduler, makeFakeIntersection } from '../../test/support/fakeEnv.js'
+
+const require = createRequire(import.meta.url)
 
 function host() {
   const { document } = parseHTML('<!doctype html><html><body><div id="host"></div></body></html>')
@@ -157,4 +161,75 @@ test('mountFlow: re-show rebuilds the sim fresh (pile-up fix)', () => {
     're-show repainted agents fresh (startFresh ran applyAgents)',
   )
   handle.destroy()
+})
+
+test('mountFlow: update(nextFlow) rebuilds the static scene (topology swap safe)', () => {
+  const h = host()
+  const o = opts(h)
+  const handle = mountFlow(h.el, bareV1Flow(), o.value)
+  const before = h.el.querySelector('g.flow-paint').childNodes.length
+
+  // Swap to the richer fork flow — more families → different paint child count.
+  handle.update(forkFlow)
+  const svgs = h.el.querySelectorAll('svg.flow-graph')
+  assert.equal(svgs.length, 1, 'still exactly one svg (old one replaced, not duplicated)')
+  const after = h.el.querySelector('g.flow-paint').childNodes.length
+  assert.notEqual(after, before, 'static scene was rebuilt for the new flow')
+  assert.equal(h.el.querySelector('svg.flow-graph').outerHTML.includes('NaN'), false)
+  handle.destroy()
+})
+
+test('mountFlow: destroy removes the svg and stops scheduling', () => {
+  const h = host()
+  const o = opts(h)
+  const handle = mountFlow(h.el, bareV1Flow(), o.value)
+  o.inter.setIntersecting(true)
+  o.sched.tick(16)
+  handle.destroy()
+  assert.equal(h.el.querySelector('svg.flow-graph'), null, 'svg removed')
+  assert.equal(o.sched.pendingCount(), 0, 'destroy cancelled the pending frame')
+  o.sched.tick(16)
+  assert.equal(o.sched.pendingCount(), 0, 'and no frame re-armed after destroy')
+})
+
+test('mountFlow: update while visible keeps the loop running on the new scene', () => {
+  const h = host()
+  const o = opts(h)
+  const handle = mountFlow(h.el, bareV1Flow(), o.value)
+  o.inter.setIntersecting(true)   // show → loop running
+  o.sched.tick(16)
+  assert.ok(o.sched.pendingCount() > 0, 'loop running before the swap')
+
+  handle.update(forkFlow)         // swap while visible → wasRunning branch
+  assert.ok(o.sched.pendingCount() > 0, 'loop survived the swap')
+  o.sched.tick(16)
+  assert.ok(agentCircles(h.el).length > 0, 'agents repaint on the new scene after the swap')
+  handle.destroy()
+})
+
+test('mountFlow: end-to-end over n4-flow-a — static families painted once, agents animate, clean teardown', () => {
+  const h = host()
+  const o = opts(h)
+  const handle = mountFlow(h.el, forkFlow, o.value)
+
+  const svg = h.el.querySelector('svg.flow-graph')
+  // Static families present (ribbons + junction discs at least — n4-flow-a forks).
+  assert.ok(svg.querySelectorAll('g.flow-paint path').length > 0, 'ribbons/paths painted')
+  assert.ok(svg.querySelectorAll('g.flow-paint circle').length > 0, 'junction discs painted')
+
+  o.inter.setIntersecting(true)
+  for (let i = 0; i < 5; i++) o.sched.tick(16)
+  assert.ok([...svg.querySelectorAll('g.flow-agents circle')].length > 0, 'agents present after frames')
+
+  handle.destroy()
+  assert.equal(h.el.querySelector('svg.flow-graph'), null)
+  assert.equal(o.sched.pendingCount(), 0, 'loop stopped on destroy')
+})
+
+test('internals barrel re-exports mountFlow', () => {
+  // Source-text check (the internals barrel transitively imports .vue SFCs that
+  // bare node --test cannot load — same pattern as the buildFlowScene re-export test).
+  const fs = require('node:fs')
+  const src = fs.readFileSync(new URL('../internals.js', import.meta.url), 'utf8')
+  assert.ok(src.includes('mountFlow'), 'internals re-exports mountFlow')
 })
