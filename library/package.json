@@ -10,9 +10,12 @@
     "./src/*": "./src/*"
   },
   "scripts": {
-    "test": "node --test src/core/*.test.js test/*.test.js"
+    "test": "node --test src/core/*.test.js src/render/*.test.js test/*.test.js"
   },
   "peerDependencies": {
     "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.12"
   }
 }

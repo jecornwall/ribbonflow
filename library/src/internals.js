@@ -120,6 +120,13 @@ export { default as FlowRejectionArc } from './core/FlowRejectionArc.vue'
 // → the per-frame agents list. See core/buildFlowScene.js.
 export { buildFlowScene, agentsView } from './core/buildFlowScene.js'
 
+// ── Vanilla imperative renderer (Phase 2a — ribbonflow) ─────────────────────
+// mountFlow(el, flow, opts) → { update, destroy }: paints buildFlowScene's
+// static layer to SVG DOM once + runs the visibility-gated rAF loop, updating
+// agent circles per frame. The framework-free render face; Vue/React adapters
+// (Phase 3) and the deck's FlowEmbed swap (Phase 2d) wrap this.
+export { mountFlow } from './render/mountFlow.js'
+
 // The flow-set player (M4). The designer drives this directly for its
 // set-preview view; <FlowEmbed> wraps it for the slide face.
 export { default as FlowSetPlayer } from './embed/FlowSetPlayer.vue'
