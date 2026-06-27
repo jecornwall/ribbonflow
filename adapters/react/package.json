@@ -8,7 +8,7 @@
     ".": "./src/index.js"
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.json"
+    "build": "vite build && tsc -p tsconfig.json && cp src/index.d.ts dist/index.d.ts"
   },
   "peerDependencies": {
     "react": ">=18"
