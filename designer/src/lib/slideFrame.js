@@ -100,3 +100,33 @@ export function clampToFrame(x, y, frame, radius = 0) {
   const cy = Math.min(Math.max(y, frame.y + radius), frame.y + frame.h - radius)
   return { x: Math.round(cx), y: Math.round(cy) }
 }
+
+// ── named aspect-ratio presets (bd ai-engineer-zr7k §7.1) ────────────────────
+// The designer authors flows at any aspect ratio; these are the quick-pick
+// presets. They are HEIGHT-ANCHORED at 900 so 16:9 stays exactly the legacy
+// 1600×900 (existing deck flows must be unaffected). An aspect change only
+// rewrites a flow's viewBox — it never rescales or moves nodes; nodes that fall
+// outside the reshaped frame are caught by outOfBoundsNodeIds + bringInBounds.
+
+/** Named frame presets. Height-anchored at 900 so 16:9 == the legacy 1600×900. */
+export const FRAME_PRESETS = {
+  '16:9': { w: 1600, h: 900 },
+  '4:3': { w: 1200, h: 900 },
+  '1:1': { w: 900, h: 900 },
+}
+
+/** The zero-origin viewBox rect for a named preset, or null if unknown. */
+export function framePreset(name) {
+  const p = FRAME_PRESETS[name]
+  return p ? { x: 0, y: 0, w: p.w, h: p.h } : null
+}
+
+/** Which preset a viewBox's ASPECT RATIO matches (size-independent), else 'custom'. */
+export function presetForViewBox(viewBox) {
+  if (!viewBox || !(viewBox.w > 0) || !(viewBox.h > 0)) return 'custom'
+  const r = viewBox.w / viewBox.h
+  for (const [name, p] of Object.entries(FRAME_PRESETS)) {
+    if (Math.abs(r - p.w / p.h) < 1e-3) return name
+  }
+  return 'custom'
+}
