@@ -286,6 +286,22 @@ export function mountFlowSet(el, setInput, opts = {}) {
       for (const slot of slots) slot.renderer.destroy()
       if (root.parentNode) root.parentNode.removeChild(root)
     },
+    /**
+     * Live-tune the running transition WITHOUT a reset or remount. Merges
+     * `nextTransition` into the closure `transition` and recomputes `easingFn`
+     * in place — the next tick() naturally reads the new holdMs/durationMs and
+     * fadeT() the new easingFn. Does NOT touch active / phase / elapsed / the
+     * slots / the rAF loop.
+     *
+     * This is what the designer's set-preview sliders drive: update() would
+     * deep-re-resolve and reset the timeline (jarring on every slider tick),
+     * so transition tuning gets its own no-reset path. (Geometry / topology
+     * still change only via update().)
+     */
+    setTransition(nextTransition) {
+      transition = { ...transition, ...nextTransition }
+      easingFn = EASINGS[transition.easing] || EASINGS.linear
+    },
     // ── manual controls (the designer set-preview drives these) ──────────────
     play() {
       playing = true

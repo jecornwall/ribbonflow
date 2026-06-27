@@ -157,9 +157,12 @@ function primSpec(p) {
 
     case 'rejectionArc':
       // Dotted back-path bow + arrowhead — FlowGraph.vue:184-192 / FlowRejectionArc.vue.
+      // Carries the same `flow-rejection-arc` class hook FlowRejectionArc.vue did,
+      // so the imperative renderer is DOM-parity-faithful (the class is a hook only
+      // — the dotted-bow styling is the inline stroke/dasharray attrs below).
       return {
         tag: 'g',
-        attrs: {},
+        attrs: { class: 'flow-rejection-arc' },
         children: [
           {
             tag: 'path',

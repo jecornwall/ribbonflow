@@ -1,19 +1,29 @@
 <!--
   SetPreview.vue — the flow-SET preview view (M4, bd ai-engineer-nawa).
 
-  Plays a flow-set's animated transitions through the REAL library
-  <FlowSetPlayer> (the /internals face — the designer never imports the slide
-  face, M3 §2.4). Live transition controls tune the running preview; play /
-  pause / step drive the player's exposed timeline methods.
+  Plays a flow-set's animated transitions through the REAL library renderer —
+  the imperative mountFlow renderer (the /internals face; the designer never
+  imports the slide face, M3 §2.4). For a flow-set input, mountFlow delegates to
+  mountFlowSet and returns its FULL handle (update/destroy + the transport
+  controls play/pause/toggle/next/prev/jumpTo). Phase A (bd ai-engineer-cr1x)
+  swapped the Vue <FlowSetPlayer> for mountFlow so the set-preview rides the same
+  imperative renderer the deck/site embed.
 
-  Transition controls mutate `state.flowSet.transition` in place via v-model so
-  the player picks up duration / hold / easing changes without a timeline reset.
-  Transition persistence (save to set.json across sessions) landed in bd
-  ai-engineer-qwtp — the debounced watcher in useFlowSetPreview.js handles it.
+  Live transition controls mutate `state.flowSet.transition` in place via v-model.
+  A deep watch feeds those changes to handle.setTransition(), which tunes the
+  RUNNING player's hold / crossfade / easing without resetting its timeline.
+  Transition persistence (save to set.json across sessions) is independent — the
+  debounced watcher in useFlowSetPreview.js (bd ai-engineer-qwtp) handles it.
+
+  Set-identity lifecycle: `state.flowSet` starts null (loading) then becomes a
+  set, and can swap to a new set. We mount lazily when it first becomes present,
+  and on a set-identity change call handle.update(newSet) — a full reset onto the
+  new set (mirrors the prior `:key` remount). Play / pause / step drive the
+  handle's exposed timeline methods.
 -->
 <script setup>
-import { ref, computed } from 'vue'
-import { FlowSetPlayer, EASINGS } from '@flow-designer/library/internals'
+import { ref, computed, onBeforeUnmount, watch } from 'vue'
+import { mountFlow, EASINGS } from '@flow-designer/library/internals'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { useFlowSetPreview } from '../state/useFlowSetPreview.js'
 
@@ -21,11 +31,70 @@ const doc = useFlowDoc()
 const preview = useFlowSetPreview()
 const { state } = preview
 
-const player = ref(null)
+const host = ref(null)
+let handle = null
 const easings = Object.keys(EASINGS)
 
 const stateList = computed(() => state.flowSet?.states ?? [])
 const transition = computed(() => state.flowSet?.transition ?? null)
+
+// Mount lazily when the set first becomes present; full-reset onto a new set.
+// `mountFlowSet` throws on a 0-state set, but the load path always yields ≥1
+// flow (a 1-state set is fine), so a present `set` is always mountable.
+//
+// The `.sp-host` element is behind `v-if="state.flowSet && ..."`, so it does NOT
+// exist until the set is present — hence the watcher runs with `flush: 'post'`
+// (after Vue paints the host) and we guard on `host.value`.
+//
+// On a set-identity change we DESTROY + re-mount rather than update(): this is
+// the faithful equivalent of the prior `:key="setMeta.id"` remount, and it stays
+// correct even when load()'s null-flicker (flowSet → null → newSet) tears down
+// the old host element — a bare update() would target detached DOM.
+function mountOrUpdate(set) {
+  if (!set || !host.value) return
+  if (handle) {
+    handle.destroy()
+    handle = null
+  }
+  handle = mountFlow(host.value, set)
+}
+
+// Set-identity change (null → set, or set → a different set). v-model slider
+// edits mutate the transition object IN PLACE — they do NOT change the flowSet
+// reference, so this watcher does not fire on them (no spurious reset); the
+// transition watcher below handles live tuning. `immediate` covers a set that
+// is already present when the view mounts.
+watch(() => state.flowSet, (set) => mountOrUpdate(set), {
+  immediate: true,
+  flush: 'post',
+})
+
+// Live transition tuning: deep-watch the transition object so each slider / easing
+// change reaches the RUNNING player via setTransition — tunes hold / crossfade /
+// easing WITHOUT a timeline reset. (Persistence is handled independently by the
+// debounced watcher in useFlowSetPreview.js — left untouched.)
+watch(
+  () => state.flowSet?.transition,
+  (t) => {
+    if (handle && t) handle.setTransition(t)
+  },
+  { deep: true },
+)
+
+onBeforeUnmount(() => {
+  if (handle) handle.destroy()
+  handle = null
+})
+
+function onPrev() {
+  handle?.prev()
+}
+function onToggle() {
+  handle?.toggle()
+}
+function onNext() {
+  handle?.next()
+}
 
 function back() {
   preview.clear()
@@ -55,11 +124,7 @@ function back() {
           This set has {{ stateList.length }} state — add a second flow to the
           set to see an animated transition.
         </p>
-        <FlowSetPlayer
-          ref="player"
-          :key="state.setMeta?.id"
-          :flow-set="state.flowSet"
-        />
+        <div ref="host" class="sp-host"></div>
       </div>
 
       <aside class="sp-panel">
@@ -99,9 +164,9 @@ function back() {
         <section>
           <h3>Playback</h3>
           <div class="sp-transport">
-            <button class="sp-btn" @click="player?.prev()">‹ Prev</button>
-            <button class="sp-btn" @click="player?.toggle()">Play / Pause</button>
-            <button class="sp-btn" @click="player?.next()">Next ›</button>
+            <button class="sp-btn" @click="onPrev">‹ Prev</button>
+            <button class="sp-btn" @click="onToggle">Play / Pause</button>
+            <button class="sp-btn" @click="onNext">Next ›</button>
           </div>
         </section>
 
@@ -170,6 +235,15 @@ function back() {
   justify-content: center;
   padding: 16px;
   background: #fbfaf7;
+}
+.sp-host {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.sp-host :deep(svg) {
+  width: 100%;
+  height: 100%;
 }
 .sp-panel {
   width: 280px;
