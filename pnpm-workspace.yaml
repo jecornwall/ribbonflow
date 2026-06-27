@@ -9,3 +9,5 @@ packages:
   # renders the deck's real flows through the new library for the swap audit;
   # not a shipped artefact.
   - parity
+  # Phase 3 adapter packages — thin framework shells over mountFlowAuto.
+  - adapters/vue

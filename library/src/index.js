@@ -1,9 +1,9 @@
 /**
  * @flow-designer/library — public entry point (the SLIDE FACE).
  *
- * This barrel is deliberately SMALL. It exposes only what a slide needs:
- * <FlowEmbed>, the format-abstracted component, plus the serialization
- * helpers a slide-build step might use to load a flow from disk.
+ * This barrel is deliberately SMALL. It exposes only what a slide's build
+ * step needs: the serialization helpers to load and validate a flow from disk.
+ * The slide-facing component <FlowEmbed> has moved to @flow-designer/vue.
  *
  * A slide that imports from here cannot reach the simulation engine, the
  * curve maths, or the raw renderer — that breadth lives behind the separate
@@ -11,9 +11,6 @@
  * drives. The two faces are intentionally asymmetric (project charter
  * §Architecture): slides read, the designer manipulates.
  */
-
-// The slide-facing component.
-export { default as FlowEmbed } from './embed/FlowEmbed.vue'
 
 // The format layer. Slides only read; these let a build step load and
 // validate a flow file. The format is OWNED here — see src/format/index.js.
