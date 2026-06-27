@@ -11,3 +11,4 @@ packages:
   - parity
   # Phase 3 adapter packages — thin framework shells over mountFlowAuto.
   - adapters/vue
+  - adapters/react
