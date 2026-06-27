@@ -53,8 +53,11 @@ test('mountFlowAuto: update() across a KIND switch (single → flow-set) remount
   // No throw (mountFlow.update is mode-locked; mountFlowAuto remounts instead):
   assert.doesNotThrow(() => handle.update(rawSet()))
   // mountFlowSet creates two fsp-slot divs, each with its own svg.flow-graph
-  // (one per state in the crossfade player). Verify at least one is present.
-  assert.ok(h.el.querySelector('svg.flow-graph'), 'svgs mounted after kind switch to flow-set')
+  // (one per crossfade slot). Exact count catches a skipped destroy: a leaking
+  // single-flow svg would leave 3 elements, not 2.
+  assert.equal(h.el.querySelectorAll('svg.flow-graph').length, 2, 'flow-set mounts both slot svgs after kind switch')
+  // Scaffold presence confirms a flow-set was mounted, not just a single flow.
+  assert.ok(h.el.querySelector('.flow-set-player'), 'flow-set scaffold present after kind switch')
   handle.destroy()
 })
 
@@ -62,7 +65,11 @@ test('mountFlowAuto: update() back from flow-set → single also remounts', () =
   const h = host()
   const handle = mountFlowAuto(h.el, rawSet(), env(h))
   assert.doesNotThrow(() => handle.update(singleFlow()))
-  assert.ok(h.el.querySelector('svg.flow-graph'), 'single-flow svg after switching back')
+  // Exact count catches a skipped destroy: a leaked flow-set (2 slot svgs) + the
+  // new single-flow svg would leave 3 elements, not 1.
+  assert.equal(h.el.querySelectorAll('svg.flow-graph').length, 1, 'only the single-flow svg remains after switching back')
+  // Scaffold absence confirms the old flow-set player was torn down.
+  assert.equal(h.el.querySelector('.flow-set-player'), null, 'flow-set scaffold absent after switching back')
   handle.destroy()
 })
 
