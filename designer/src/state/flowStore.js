@@ -20,6 +20,17 @@
 
 import { reactive } from 'vue'
 import { makeServerBackend } from './backends/serverBackend.js'
+import { makeLocalStorageBackend } from './backends/localStorageBackend.js'
+import { selectBackend } from './backends/selectBackend.js'
+
+// Choose the backend ONCE at module init from the literal build flag
+// (VITE_FLOW_BACKEND === 'server' → file backend; anything else → localStorage,
+// the default). Synchronous — settled before the first refreshIndex.
+const { backend, kind } = selectBackend({
+  env: import.meta.env,
+  makeServer: makeServerBackend,
+  makeLocal: makeLocalStorageBackend,
+})
 
 const state = reactive({
   /** The machine-readable index, or null before the first load. */
@@ -28,12 +39,9 @@ const state = reactive({
   loading: false,
   /** Last error string (network / API), or null. */
   error: null,
-  /** Which backend is active: 'server' | 'local'. Set at B3; 'server' here. */
-  backend: 'server',
+  /** Which backend is active: 'server' | 'local'. */
+  backend: kind,
 })
-
-// B1 hard-wires the server backend; B3 replaces this with selectBackend().
-const backend = makeServerBackend()
 
 /** Reload the index from the backend. Surfaces failures on `state.error`. */
 async function refreshIndex() {
