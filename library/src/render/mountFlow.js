@@ -10,7 +10,8 @@
  * env are injectable via opts for headless tests; in production they default to
  * the real globals.
  *
- * Phase 2a is single-flow only — a flow-set throws (Phase 2b adds that branch).
+ * Phase 2b: a flow-set is detected at the entry and delegated to mountFlowSet
+ * (the crossfade player); this module owns the single-flow path it composes.
  *
  * Render state that survives an update (the swappable svg + its agents group,
  * the normalized flow, the live sim and loop bookkeeping) is held in mutable
@@ -27,6 +28,7 @@ import { applySpec } from './applySpec.js'
 import { rootSpec, AGENTS_GROUP_CLASS } from './sceneSpec.js'
 import { observeVisibility } from './visibilityWiring.js'
 import { reconcileAgents, agentCircleSpec } from './agentsLayer.js'
+import { mountFlowSet } from './mountFlowSet.js'
 
 // A raw flow-set object (no envelope) — matches FlowEmbed.vue's isRawFlowSet:
 // a `states` array with no numeric `formatVersion`.
@@ -37,16 +39,25 @@ function isRawFlowSet(input) {
   )
 }
 
+function isFlowSet(input) {
+  return isFlowSetEnvelope(input) || isRawFlowSet(input)
+}
+
+// The single-flow handle's update() is mode-locked: a flow-set cannot be
+// swapped into a single-flow renderer (different DOM + handle shape). A kind
+// switch is a remount — destroy + a fresh mountFlow — mirroring how FlowEmbed
+// remounts on a flow-identity change.
 function assertSingleFlow(input, where) {
-  if (isFlowSetEnvelope(input) || isRawFlowSet(input)) {
-    throw new Error(`${where}: flow-sets are not supported in Phase 2a (single-flow only). See ribbonflow Phase 2b.`)
+  if (isFlowSet(input)) {
+    throw new Error(`${where}: this is a single-flow renderer handle; a flow-set cannot be swapped in via update(). Destroy and re-mount to switch modes.`)
   }
 }
 
 /**
  * @param {Element} el — host element to mount the flow <svg> into.
- * @param {object|string} flow — a flow object / serialized flow (NOT a flow-set
- *   in Phase 2a). Same transparent single-flow union as <FlowEmbed>.
+ * @param {object|string} flow — the transparent <FlowEmbed> union: a flow
+ *   object / serialized flow (rendered here), OR a flow-set object / envelope
+ *   (delegated to mountFlowSet).
  * @param {object} [opts]
  * @param {boolean} [opts.showMetrics=false]
  * @param {Document} [opts.document] — owning document the svg is created in
@@ -65,7 +76,13 @@ function assertSingleFlow(input, where) {
  * @returns {{update: Function, destroy: Function}}
  */
 export function mountFlow(el, flow, opts = {}) {
-  assertSingleFlow(flow, 'mountFlow')
+  // Transparent union (spec §4): a flow-set delegates to the crossfade player,
+  // passing mountFlow itself as the nested single-flow renderer for its slots.
+  // The injection (not an import) keeps mountFlowSet free of an import cycle and
+  // makes its timeline unit-testable with a spy factory.
+  if (isFlowSet(flow)) {
+    return mountFlowSet(el, flow, { ...opts, mountFlow })
+  }
   const doc = opts.document || el.ownerDocument
   const showMetrics = !!opts.showMetrics
 

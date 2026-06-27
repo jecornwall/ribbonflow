@@ -75,15 +75,23 @@ test('mountFlow: builds an empty agents group (filled per frame, not at mount)',
   handle.destroy()
 })
 
-test('mountFlow: throws a clear error on a flow-set (Phase 2b not yet supported)', () => {
+test('mountFlow: delegates a flow-set to the crossfade player (Phase 2b — no longer throws)', () => {
   const h = host()
   const { value } = opts(h)
-  const flowSet = { states: [bareV1Flow(), bareV1Flow()] } // a raw flow-set
-  assert.throws(
-    () => mountFlow(h.el, flowSet, value),
-    /flow-set/i,
-    'mountFlow rejects flow-sets with a clear message',
-  )
+  // A properly-shaped raw flow-set ({ key, flow } states). Phase 2b plays it
+  // transparently via mountFlowSet rather than rejecting it.
+  const flowSet = {
+    states: [
+      { key: 's0', flow: bareV1Flow() },
+      { key: 's1', flow: bareV1Flow() },
+    ],
+  }
+  const handle = mountFlow(h.el, flowSet, value)
+  assert.ok(h.el.querySelector('.flow-set-player'), 'a flow-set mounts the crossfade player')
+  assert.equal(h.el.querySelectorAll('.fsp-slot').length, 2, 'two crossfade slots')
+  // single-flow svg is NOT painted directly into the host for a flow-set.
+  assert.equal(h.el.querySelector(':scope > svg.flow-graph'), null)
+  handle.destroy()
 })
 
 function agentCircles(el) {
