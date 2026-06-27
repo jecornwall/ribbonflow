@@ -5,7 +5,8 @@
   "type": "module",
   "description": "M5 parity harness — renders the deck's real flow definitions through the NEW shared library (@flow-designer/library) so the swap can be visually validated against the current deck/components/flow/* rendering. Scratch/validation tooling, NOT a shipped artefact.",
   "scripts": {
-    "dev": "vite"
+    "dev": "vite",
+    "test": "node --test src/diff/*.test.js"
   },
   "dependencies": {
     "@flow-designer/library": "workspace:*",
@@ -13,6 +14,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.0",
+    "linkedom": "^0.18.12",
     "vite": "^6.0.0"
   }
 }

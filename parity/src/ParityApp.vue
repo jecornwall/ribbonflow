@@ -1,85 +1,139 @@
 <!--
-  ParityApp.vue — M5 parity harness (bd ai-engineer-h6sn).
+  ParityApp.vue — ribbonflow Phase-2c parity GATE harness (bd ai-engineer-uttb).
 
-  Imports every deck flow definition (deck/flows/*.js) and renders it through
-  the NEW shared library's slide face, <FlowEmbed>. The deck flows are all
-  format v1 (top-level entryId / spawnRate, capacity / latency nodes); the
-  library reads v3, so each flow is run through migrateFlow(flow, 1) first —
-  exactly the forward-port deserializeFlow() applies to an older export.
+  Renders the canonical flow content (flow/flows/**/*.flow.json) through BOTH:
+    - the GOLDEN legacy Vue renderer, <FlowEmbed> → FlowGraph, and
+    - the CANDIDATE imperative renderer, mountFlow (via <MountFlowEmbed>),
+  so the Phase-2c capture script can extract each side's painted SVG and diff
+  them geometrically (extractScene + diffScenes). It only ever READS flow
+  content + the library; it edits nothing (the golden refs stay golden).
+
+  This SUPERSEDES the M5 harness, which globbed the now-retired deck/flows/*.js.
 
   URL contract (the Playwright capture drives these):
-    /                       → index: every flow case, one per row
-    /?flow=<key>            → a single case, full-bleed, for a clean capture
+    /                                  → index: every flow case, one per row
+    /?flow=<key>                       → solo, golden FlowEmbed, full-bleed
+    /?flow=<key>&mode=mountflow        → solo, candidate mountFlow, full-bleed
+    /?flow=<key>&compare=1             → both renderers, stacked, for extraction
+    &agents=off                        → hide agents (static-scene pixel backstop)
+  where <key> is the flow id, e.g. `n4-startup/before`.
 -->
 <script setup>
-import { computed } from 'vue'
+import { computed, onErrorCaptured, ref } from 'vue'
 import { FlowEmbed } from '@flow-designer/library'
-import { migrateFlow, normalizeFlow } from '@flow-designer/library/internals'
+import { normalizeFlowInput } from '@flow-designer/library/internals'
+import MountFlowEmbed from './MountFlowEmbed.vue'
 
-// Every deck flow definition. Eager glob — deck/flows/*.js are plain data
-// modules (export default <flow> | <flow[]>), no Vue, safe to import.
-const modules = import.meta.glob('../../../deck/flows/*.js', { eager: true })
+// Every canonical flow definition. Eager glob — *.flow.json are plain data
+// envelopes ({ formatVersion, flow }); set.json / index.json are excluded.
+const modules = import.meta.glob('../../flows/**/*.flow.json', { eager: true })
+// set.json manifests — for the flow-SET playback spot-check (FlowSetPlayer vs mountFlowSet).
+const setModules = import.meta.glob('../../flows/**/set.json', { eager: true })
 
-// Flatten into an ordered list of { key, source }. n4-year-walk exports an
-// ARRAY of three frozen states; each becomes its own case.
-const rawCases = []
-for (const path of Object.keys(modules).sort()) {
-  const name = path.split('/').pop().replace(/\.js$/, '')
-  const def = modules[path].default
-  if (Array.isArray(def)) {
-    def.forEach((flow, i) => rawCases.push({ key: `${name}#${i}`, source: flow }))
-  } else {
-    rawCases.push({ key: name, source: def })
-  }
-}
+// key = flow id (dir/slug), e.g. `n4-startup/before`. Sorted for stable order.
+const cases = Object.keys(modules)
+  .sort()
+  .map((path) => {
+    const key = path.replace(/^.*\/flows\//, '').replace(/\.flow\.json$/, '')
+    return { key, flow: modules[path].default }
+  })
 
-// Migrate each v1 flow forward to v3, then normalizeFlow() (default-fill +
-// engine-field derivation) so the flow is render-ready. <FlowEmbed> itself
-// does NOT normalize a bare flow object (normalizeFlowInput passes it through
-// untouched) — a documented M5 parity gap — so the harness does it explicitly,
-// mirroring what the M5 swap will have to arrange. Capture failures per-case
-// rather than crashing the harness — a failed case is itself a parity finding.
-const cases = rawCases.map(({ key, source }) => {
-  try {
-    const flow = normalizeFlow(migrateFlow(source, 1))
-    return { key, flow, error: null }
-  } catch (err) {
-    return { key, flow: null, error: String((err && err.message) || err) }
-  }
+const params = new URLSearchParams(location.search)
+const selectedKey = params.get('flow')
+const setId = params.get('set')
+const mode = params.get('mode') || 'flowgraph'
+const compare = params.get('compare') === '1'
+const agentsOff = params.get('agents') === 'off'
+
+const selected = computed(() =>
+  selectedKey ? cases.find((c) => c.key === selectedKey) : null,
+)
+
+// Assemble a raw flow-set ({ states:[{key,flow}], transition }) from a set.json
+// manifest + its sibling .flow.json states. Each state's flow is migrated/
+// normalized so both the golden FlowSetPlayer and the candidate mountFlowSet get
+// render-ready states. Both renderers transparently accept the flow-set object.
+const assembledSet = computed(() => {
+  if (!setId) return null
+  const setPath = Object.keys(setModules).find((p) => p.includes(`/flows/${setId}/set.json`))
+  if (!setPath) return null
+  const def = setModules[setPath].default
+  const states = (def.flows || []).map((f) => {
+    const fp = Object.keys(modules).find((p) => p.includes(`/flows/${setId}/${f.slug}.flow.json`))
+    return { key: f.slug, flow: normalizeFlowInput(modules[fp].default) }
+  })
+  // &slow=1 stretches the crossfade so a mid-fade A/B frame is easy to capture
+  // in sync across both players (both read this same transition).
+  const transition = params.get('slow') === '1'
+    ? { holdMs: 500, durationMs: 8000, easing: 'linear' }
+    : def.transition
+  return { id: def.id, states, transition, autoplay: true, loop: true }
 })
 
-const selectedKey = computed(() => new URLSearchParams(location.search).get('flow'))
-const selected = computed(() =>
-  selectedKey.value ? cases.find(c => c.key === selectedKey.value) : null,
-)
+// Per-render error capture — a 0-node / malformed flow that throws in one
+// renderer is itself a parity finding, not a harness crash.
+const renderError = ref(null)
+onErrorCaptured((err) => {
+  renderError.value = String((err && err.stack) || err)
+  return false // stop propagation; keep the harness alive
+})
+
+// Static-scene capture hides agents in BOTH renderers (both stamp data-agent-id).
+if (agentsOff) {
+  const style = document.createElement('style')
+  style.textContent = '[data-agent-id]{display:none !important}'
+  document.head.appendChild(style)
+}
 </script>
 
 <template>
-  <!-- Single-case view: clean, full-bleed, for a Playwright capture. -->
-  <div v-if="selected" class="case-solo">
-    <div class="case-label">{{ selected.key }} · via @flow-designer/library &lt;FlowEmbed&gt; (v1→v3 migrated)</div>
-    <div v-if="selected.error" class="case-error">migration failed: {{ selected.error }}</div>
-    <div v-else class="case-stage">
-      <FlowEmbed :flow="selected.flow" />
+  <!-- Flow-SET playback spot-check: FlowSetPlayer (golden) vs mountFlowSet. -->
+  <div v-if="assembledSet" class="solo is-compare">
+    <div v-if="renderError" class="case-error">render error: {{ renderError }}</div>
+    <div class="stage-wrap">
+      <div class="case-label">set:{{ setId }} · GOLDEN (FlowSetPlayer)</div>
+      <div class="stage stage-flowgraph"><FlowEmbed :flow="assembledSet" /></div>
+    </div>
+    <div class="stage-wrap">
+      <div class="case-label">set:{{ setId }} · CANDIDATE (mountFlowSet)</div>
+      <div class="stage stage-mountflow"><MountFlowEmbed :flow="assembledSet" /></div>
     </div>
   </div>
 
-  <!-- Index view: every case stacked. -->
+  <!-- Solo / compare capture view. -->
+  <div v-else-if="selected" class="solo" :class="{ 'is-compare': compare }">
+    <div v-if="renderError" class="case-error">render error: {{ renderError }}</div>
+
+    <template v-if="compare">
+      <div class="stage-wrap">
+        <div class="case-label">{{ selected.key }} · GOLDEN (FlowEmbed → FlowGraph)</div>
+        <div class="stage stage-flowgraph"><FlowEmbed :flow="selected.flow" /></div>
+      </div>
+      <div class="stage-wrap">
+        <div class="case-label">{{ selected.key }} · CANDIDATE (mountFlow)</div>
+        <div class="stage stage-mountflow"><MountFlowEmbed :flow="selected.flow" /></div>
+      </div>
+    </template>
+
+    <template v-else>
+      <div class="stage" :class="`stage-${mode}`">
+        <FlowEmbed v-if="mode === 'flowgraph'" :flow="selected.flow" />
+        <MountFlowEmbed v-else :flow="selected.flow" />
+      </div>
+    </template>
+  </div>
+
+  <!-- Index. -->
   <div v-else class="index">
-    <h1>Flow M5 parity harness — {{ cases.length }} deck flow cases via the new library</h1>
+    <h1>ribbonflow Phase-2c parity gate — {{ cases.length }} flow states</h1>
     <p class="note">
-      Each deck flow (format v1) migrated v1→v3 and rendered through
-      <code>&lt;FlowEmbed&gt;</code>. Open <code>/?flow=&lt;key&gt;</code> for a solo capture.
+      Open <code>/?flow=&lt;key&gt;&amp;compare=1</code> to render both renderers for one flow.
     </p>
-    <div v-for="c in cases" :key="c.key" class="case-row">
-      <div class="case-label">
-        <a :href="`/?flow=${encodeURIComponent(c.key)}`">{{ c.key }}</a>
-      </div>
-      <div v-if="c.error" class="case-error">migration failed: {{ c.error }}</div>
-      <div v-else class="case-stage">
-        <FlowEmbed :flow="c.flow" />
-      </div>
-    </div>
+    <ul>
+      <li v-for="c in cases" :key="c.key">
+        <a :href="`/?flow=${encodeURIComponent(c.key)}&compare=1`">{{ c.key }}</a>
+      </li>
+    </ul>
   </div>
 </template>
 
@@ -88,21 +142,17 @@ const selected = computed(() =>
 h1 { font-size: 20px; font-weight: normal; }
 .note { color: #666; font-size: 14px; }
 code { background: #f0ecdd; padding: 1px 4px; border-radius: 3px; }
-.case-row { margin: 28px 0; }
-.case-solo { padding: 40px; }
-.case-label { font-size: 14px; color: #444; margin-bottom: 8px; font-family: Georgia, serif; }
-.case-stage {
+.solo { padding: 24px; }
+.solo.is-compare { display: flex; flex-direction: column; gap: 24px; }
+.case-label { font-size: 13px; color: #444; margin-bottom: 6px; font-family: Georgia, serif; }
+.stage {
   width: 1280px;
   height: 720px;
   border: 1px solid #ddd6c0;
   background: #fffdf5;
 }
 .case-error {
-  color: #b03030;
-  font-family: monospace;
-  font-size: 13px;
-  padding: 12px;
-  border: 1px solid #e0b0b0;
-  background: #fdf0f0;
+  color: #b03030; font-family: monospace; font-size: 13px; padding: 12px;
+  border: 1px solid #e0b0b0; background: #fdf0f0; white-space: pre-wrap;
 }
 </style>
