@@ -408,6 +408,19 @@ test('pinchZoneOutlinePath — empty string for null range', () => {
   assert.equal(pinchZoneOutlinePath(branches[0].centerline, wfn, null), '')
 })
 
+test('pinchZoneOutlinePath — empty string for NaN / inverted / equal range, no sampling', () => {
+  // A stub centerline/widthFn that throws if ever sampled — proves the guard
+  // short-circuits before any pointAtArcLength(NaN) call (un-normalized flows
+  // yield NaN bounds via segmentBoundsByLatency).
+  const tripwire = () => { throw new Error('pinchZoneOutlinePath must not sample on a bad range') }
+  const centerline = { pointAtArcLength: tripwire, tangentAtArcLength: tripwire }
+  const wfn = tripwire
+  assert.equal(pinchZoneOutlinePath(centerline, wfn, { sStart: NaN, sEnd: NaN }), '')
+  assert.equal(pinchZoneOutlinePath(centerline, wfn, { sStart: 10, sEnd: NaN }), '')
+  assert.equal(pinchZoneOutlinePath(centerline, wfn, { sStart: 50, sEnd: 20 }), '') // inverted
+  assert.equal(pinchZoneOutlinePath(centerline, wfn, { sStart: 30, sEnd: 30 }), '') // equal
+})
+
 test('DEFAULT_BAND_WIDTH and DEFAULT_CONSTRAINT_WIDTH are exported and match spec', () => {
   // Spec §3.0.3.LOCKED-V2: 70 SVG-units at full width, 22 at constraint plateau.
   assert.equal(DEFAULT_BAND_WIDTH, 70)

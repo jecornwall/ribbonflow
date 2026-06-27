@@ -5,10 +5,13 @@
   "type": "module",
   "description": "Thin Vue <FlowEmbed> adapter over @flow-designer/library's mountFlowAuto. Becomes @ribbonflow/vue at the repo split.",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.json && cp src/index.d.ts dist/index.d.ts"
+    "build": "vite build && node -e \"require('fs').copyFileSync('src/index.d.ts','dist/index.d.ts')\""
   },
   "peerDependencies": {
     "vue": "^3.4.0"

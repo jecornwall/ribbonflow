@@ -16,6 +16,9 @@ test('isRawFlowSet: a single flow / null / string is not a raw flow-set', () => 
 test('isFlowSet: true for a raw set', () => {
   assert.equal(isFlowSet({ states: [{ key: 's0', flow: {} }] }), true)
 })
+test('isFlowSet: true for an enveloped flow-set', () => {
+  assert.equal(isFlowSet({ formatVersion: 1, flowSet: { states: [] } }), true)
+})
 test('isFlowSet: false for a single flow object', () => {
   assert.equal(isFlowSet({ nodes: [], viewBox: { w: 100, h: 100 } }), false)
 })
