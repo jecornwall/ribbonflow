@@ -13,25 +13,25 @@ import { mountFlowAuto } from '@flow-designer/library/render'
 export function FlowEmbed({ flow, showMetrics = false }) {
   const rootEl = useRef(null)
   const handle = useRef(null)
-  const mounted = useRef(false)
+  const skipFirst = useRef(true)
 
   // Mount once; tear down on unmount. showMetrics is read at mount (matches the
   // Vue adapter, which watches only `flow`).
   useEffect(() => {
     handle.current = mountFlowAuto(rootEl.current, flow, { showMetrics })
-    mounted.current = true
     return () => {
       if (handle.current) handle.current.destroy()
       handle.current = null
-      mounted.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Swap on `flow` identity change — skip the initial run (mount already
   // rendered the first flow), so this fires only on a real prop swap.
+  // skipFirst starts true so the first invocation always skips, regardless
+  // of effect execution order relative to the mount effect.
   useEffect(() => {
-    if (!mounted.current) return
+    if (skipFirst.current) { skipFirst.current = false; return }
     if (handle.current) handle.current.update(flow)
   }, [flow])
 
