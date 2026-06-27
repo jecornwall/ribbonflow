@@ -18,6 +18,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
+import { framePreset } from '../lib/slideFrame.js'
 import {
   LENGTH_RANGE,
   SPEED_CONTROL_RANGE,
@@ -149,6 +150,28 @@ function setFlowNum(key, value) {
 /** Read-out for a slider value — short, fixed-precision. */
 function fmt(v, decimals = 2) {
   return typeof v === 'number' ? v.toFixed(decimals) : '—'
+}
+
+// ── flow FRAME / aspect ratio (bd ai-engineer-zr7k §7.1) ─────────────────────
+// The frame is the flow's own viewBox; presets are height-anchored at 900 so
+// 16:9 stays 1600×900. Picking a preset or editing W/H rewrites the viewBox via
+// doc.setFrame — no node is rescaled or moved (the out-of-bounds ring + the
+// status-strip "bring in bounds" action handle nodes the reshape pushes out).
+const FRAME_PRESET_NAMES = ['16:9', '4:3', '1:1']
+
+/** Commit a new frame WIDTH, keeping the current height. */
+function setFrameW(value) {
+  const w = num(value)
+  if (Number.isFinite(w) && w > 0) {
+    doc.setFrame({ x: 0, y: 0, w, h: doc.frameViewBox.value.h })
+  }
+}
+/** Commit a new frame HEIGHT, keeping the current width. */
+function setFrameH(value) {
+  const h = num(value)
+  if (Number.isFinite(h) && h > 0) {
+    doc.setFrame({ x: 0, y: 0, w: doc.frameViewBox.value.w, h })
+  }
 }
 
 // ── per-node CAPACITY override (bd ai-engineer-ey0b) ─────────────────────────
@@ -539,6 +562,48 @@ const derivedCapacity = computed(() =>
           @change="setFlowNum('initialAgents', $event.target.value)"
         />
       </label>
+
+      <!-- ── frame / aspect ratio (bd ai-engineer-zr7k §7.1) ───────────────── -->
+      <!-- The flow's slide-scope frame is its viewBox. Pick a preset or set a
+           custom W×H. Changing the aspect only rewrites the viewBox — no node
+           moves; nodes pushed outside light up the out-of-bounds ring and can
+           be pulled back via the status strip's "bring in bounds". -->
+      <h4>frame</h4>
+      <div class="row">
+        <span>aspect</span>
+        <div class="seg">
+          <button
+            v-for="name in FRAME_PRESET_NAMES"
+            :key="name"
+            :data-testid="`frame-preset-${name}`"
+            :class="{ active: doc.activePreset.value === name }"
+            :title="`set the frame to a ${name} aspect ratio`"
+            @click="doc.setFrame(framePreset(name))"
+          >{{ name }}</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>size W×H</span>
+        <div class="frame-size">
+          <input
+            type="number" min="1" step="10"
+            data-testid="frame-w"
+            :value="doc.frameViewBox.value.w"
+            title="frame width (slide-scope units)"
+            @change="setFrameW($event.target.value)"
+          />
+          <span class="frame-x">×</span>
+          <input
+            type="number" min="1" step="10"
+            data-testid="frame-h"
+            :value="doc.frameViewBox.value.h"
+            title="frame height (slide-scope units)"
+            @change="setFrameH($event.target.value)"
+          />
+          <code v-if="doc.activePreset.value === 'custom'" class="frame-custom">custom</code>
+        </div>
+      </div>
+
       <p class="hint">
         Select a node or edge on the canvas to edit it.
         {{ state.flow.nodes.length }} nodes.
@@ -717,5 +782,26 @@ button.danger:hover {
   margin: 4px 0 0;
   color: #9ca3af;
   font-size: 12px;
+}
+/* frame size W×H inputs */
+.frame-size {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.frame-size input {
+  flex: 1;
+  min-width: 0;
+}
+.frame-x {
+  flex: 0 0 auto;
+  color: #9ca3af;
+}
+.frame-custom {
+  flex: 0 0 auto;
+  color: #9ca3af;
+  font-size: 11px;
 }
 </style>
