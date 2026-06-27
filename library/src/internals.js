@@ -104,16 +104,6 @@ export {
   transformGlyphsFor,
 } from './core/transformGlyph.js'
 
-// ── Render components ───────────────────────────────────────────────────────
-// The raw renderer and its parts. The designer drives FlowGraph directly for
-// live preview; FlowRibbon / FlowAgent / FlowSegmentMarker are exposed for
-// finer-grained designer surfaces (e.g. previewing a single ribbon).
-export { default as FlowGraph } from './core/FlowGraph.vue'
-export { default as FlowRibbon } from './core/FlowRibbon.vue'
-export { default as FlowAgent } from './core/FlowAgent.vue'
-export { default as FlowSegmentMarker } from './core/FlowSegmentMarker.vue'
-export { default as FlowRejectionArc } from './core/FlowRejectionArc.vue'
-
 // ── Pure scene model (Phase 1 — ribbonflow extraction) ──────────────────────
 // The framework-free render model the imperative renderer (Phase 2) and the
 // designer drive. buildFlowScene(flow, sim) → static primitives; agentsView(sim)
@@ -127,10 +117,6 @@ export { buildFlowScene, agentsView } from './core/buildFlowScene.js'
 // (Phase 3) and the deck's FlowEmbed swap (Phase 2d) wrap this.
 export { mountFlow } from './render/mountFlow.js'
 export { mountFlowAuto } from './render/mountFlowAuto.js'
-
-// The flow-set player (M4). The designer drives this directly for its
-// set-preview view; <FlowEmbed> wraps it for the slide face.
-export { default as FlowSetPlayer } from './embed/FlowSetPlayer.vue'
 
 // ── Format layer (also on the slide face) ───────────────────────────────────
 // The designer reads AND writes the format; slides only read it. Both faces

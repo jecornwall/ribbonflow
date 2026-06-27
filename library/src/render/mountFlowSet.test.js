@@ -474,3 +474,73 @@ test('mountFlowSet: a 0-state flow-set throws a clear error at mount (not an opa
     'an empty flow-set is rejected with a clear message, not states[0] undefined',
   )
 })
+
+// ── setTransition(): live transition tuning without a reset (Phase A, cr1x) ────
+//
+// The designer set-preview tunes hold / crossfade / easing on the RUNNING
+// player. update() would deep-re-resolve + reset the timeline (jarring on every
+// slider tick), so setTransition merges the new transition into the closure in
+// place: the next tick() reads the new holdMs/durationMs, fadeT() the new
+// easingFn — no reset, no remount.
+
+test('mountFlowSet: setTransition({holdMs}) auto-advances on the NEW holdMs (live, no reset)', () => {
+  const h = host()
+  const { sched, inter, value } = unitOpts(h)
+  // HOLD_PAUSED = a huge holdMs, so the timeline never auto-advances on its own.
+  const handle = mountFlowSet(h.el, rawSet(['a', 'b'], HOLD_PAUSED), value)
+  inter.setIntersecting(true)
+  for (let i = 0; i < 40; i++) sched.tick(16)
+  assert.equal(handle.currentIndex, 0, 'stays on state 0 under the huge holdMs')
+
+  // Shrink the hold live — the next tick reads the new holdMs and advances.
+  handle.setTransition({ holdMs: 30 })
+  let guard = 0
+  while (handle.currentIndex === 0 && guard++ < 80) sched.tick(16)
+  assert.equal(handle.currentIndex, 1, 'auto-advanced on the new holdMs after setTransition')
+  handle.destroy()
+})
+
+test('mountFlowSet: setTransition does NOT reset/remount — index, playing, slots preserved', () => {
+  const h = host()
+  const { sched, inter, mf, value } = unitOpts(h)
+  const handle = mountFlowSet(h.el, rawSet(['a', 'b', 'c'], HOLD_PAUSED), value)
+  inter.setIntersecting(true)
+  // Drive to state 1 so a reset (back to state 0) would be observable.
+  handle.next()
+  let guard = 0
+  while (handle.currentIndex === 0 && guard++ < 80) sched.tick(16)
+  assert.equal(handle.currentIndex, 1, 'advanced to state 1 before tuning')
+
+  const mountsBefore = mf.instances.length // remount would grow this
+  const playingBefore = handle.playing
+  handle.setTransition({ holdMs: 1234, durationMs: 222, easing: 'linear' })
+
+  assert.equal(mf.instances.length, mountsBefore, 'no new nested renderer mounted (no remount)')
+  assert.equal(handle.currentIndex, 1, 'currentIndex unchanged by setTransition (no reset to 0)')
+  assert.equal(handle.playing, playingBefore, 'playing flag unchanged by setTransition')
+  // The timeline is still live and in hold — a manual next() still steps forward.
+  handle.next()
+  guard = 0
+  while (handle.currentIndex === 1 && guard++ < 80) sched.tick(16)
+  assert.equal(handle.currentIndex, 2, 'timeline still drivable after setTransition (phase intact)')
+  handle.destroy()
+})
+
+test('mountFlowSet: setTransition({easing}) changes the opacity ramp on the next transition', () => {
+  const h = host()
+  const { sched, inter, value } = unitOpts(h)
+  // EASE = easeInOut over 64ms; easeInOut(0.25) = 0.0625 (well below a linear 0.25).
+  const handle = mountFlowSet(h.el, rawSet(['a', 'b'], EASE), value)
+  inter.setIntersecting(true)
+  const slots = [...h.el.querySelectorAll('.fsp-slot')]
+
+  handle.setTransition({ easing: 'linear' }) // swap easing live, before the transition
+  handle.next() // begin 0 → 1 (incoming = slot 1)
+  sched.tick(16) // elapsed 0 (first frame dt = 0)
+  sched.tick(16) // elapsed 16 = 25% of 64ms
+  const incoming = opacityOf(slots[1])
+  // linear(0.25) = 0.25 — distinctly ABOVE easeInOut's 0.0625. Proves the new
+  // easing FUNCTION is in effect after setTransition (not the original eased shape).
+  assert.ok(incoming > 0.2, `linear ramp gives ~0.25 at 25% after setTransition (got ${incoming})`)
+  handle.destroy()
+})
