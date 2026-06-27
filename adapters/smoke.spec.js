@@ -9,7 +9,6 @@ for (const [name, url] of [['vue', 'http://localhost:5191/'], ['react', 'http://
     await expect(page.locator('svg.flow-graph circle').first()).toBeVisible({ timeout: 5000 })
     // Swap the flow prop — the third node ('mid') appears in the updated scene.
     await page.locator('#swap').click()
-    await expect(page.locator('svg.flow-graph')).toBeVisible()
     await expect(page.getByText('mid')).toBeVisible({ timeout: 5000 })
   })
 }

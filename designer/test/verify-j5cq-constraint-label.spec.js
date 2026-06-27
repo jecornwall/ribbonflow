@@ -30,8 +30,8 @@ const FIREBRICK = '#E2522B'
 const CASES = [
   { slide: 'N3',  file: 'n3-baseline/baseline.flow.json',          label: 'implementation' },
   { slide: 'N8',  file: 'n9-multilane/multilane.flow.json',        label: 'cross-team review' },
-  { slide: 'N16', file: 'n16-review-turnaround/before.flow.json',  label: 'code review' },
-  { slide: 'N18', file: 'n18-speckit-alignment/before.flow.json',  label: 'arch' },
+  { slide: 'N16', file: 'n12-review-turnaround/before.flow.json',  label: 'code review' },
+  { slide: 'N18', file: 'n13-speckit-alignment/before.flow.json',  label: 'arch' },
 ]
 
 async function importFlow(page, relFile) {

@@ -1220,7 +1220,12 @@ export function pinchZoneArcRanges(branch, flow) {
  * Returns '' if the range is null or empty.
  */
 export function pinchZoneOutlinePath(centerline, widthFn, range, opts = {}) {
-  if (!range || range.sStart >= range.sEnd) return ''
+  // NaN-safe guard: the `!(sEnd > sStart)` form is FALSE only for a strictly
+  // positive (finite) range; it returns '' for null, empty, inverted, AND
+  // NaN ranges (un-normalized flows yield NaN bounds via segmentBoundsByLatency).
+  // A bare `sStart >= sEnd` would let NaN through (NaN >= NaN is false) and crash
+  // in centerline.pointAtArcLength(NaN).
+  if (!range || !(range.sEnd > range.sStart)) return ''
   const step = opts.step || 3
   const arcLen = range.sEnd - range.sStart
   const samples = Math.max(6, Math.ceil(arcLen / step))
