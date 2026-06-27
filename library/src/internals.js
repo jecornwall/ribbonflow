@@ -126,6 +126,7 @@ export { buildFlowScene, agentsView } from './core/buildFlowScene.js'
 // agent circles per frame. The framework-free render face; Vue/React adapters
 // (Phase 3) and the deck's FlowEmbed swap (Phase 2d) wrap this.
 export { mountFlow } from './render/mountFlow.js'
+export { mountFlowAuto } from './render/mountFlowAuto.js'
 
 // The flow-set player (M4). The designer drives this directly for its
 // set-preview view; <FlowEmbed> wraps it for the slide face.
