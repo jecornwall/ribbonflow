@@ -27,6 +27,7 @@
  * defaults + easings) and render/visibilityWiring.js (the vanilla gate) whole.
  */
 import {
+  isFlowSet,
   isFlowSetEnvelope,
   deserializeFlowSet,
   normalizeFlowSet,
@@ -40,24 +41,12 @@ const SLOT_BASE_STYLE =
   'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;'
 const SVG_FILL_STYLE = 'width:100%;height:100%;display:block;'
 
-// A raw flow-set object (no envelope) — matches mountFlow.js / FlowEmbed.vue's
-// isRawFlowSet: a `states` array with no numeric `formatVersion`. Kept local to
-// avoid importing from mountFlow.js (which would reintroduce the import cycle).
-function isRawFlowSet(input) {
-  return (
-    input != null && typeof input === 'object' &&
-    typeof input.formatVersion !== 'number' && Array.isArray(input.states)
-  )
-}
-function isFlowSetInput(input) {
-  return isFlowSetEnvelope(input) || isRawFlowSet(input)
-}
-
 // The flow-set handle's update() is mode-locked, symmetric to the single-flow
 // handle's assertSingleFlow: a single flow cannot be swapped into a flow-set
 // renderer (different DOM + timeline). A kind switch is a remount.
+// isFlowSet is the format-layer owner in ../format/flowSet.js.
 function assertFlowSet(input, where) {
-  if (!isFlowSetInput(input)) {
+  if (!isFlowSet(input)) {
     throw new Error(`${where}: this is a flow-set renderer handle; a single flow cannot be swapped in via update(). Destroy and re-mount to switch modes.`)
   }
 }

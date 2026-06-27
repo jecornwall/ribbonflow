@@ -7,7 +7,7 @@
 -->
 <script setup>
 import { ref, onMounted } from 'vue'
-import { FlowEmbed } from '@flow-designer/library'
+import { FlowEmbed } from '@flow-designer/vue'
 
 const flows = import.meta.glob('../../flows/**/*.flow.json')
 const envelope = ref(null)

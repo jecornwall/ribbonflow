@@ -81,6 +81,31 @@ export function isFlowSetEnvelope(input) {
 }
 
 /**
+ * A RAW flow-set object (no envelope): a `states` array and no numeric
+ * `formatVersion`. The transparent-union counterpart to a raw single flow.
+ * @param {*} input
+ * @returns {boolean}
+ */
+export function isRawFlowSet(input) {
+  return (
+    input != null && typeof input === 'object' &&
+    typeof input.formatVersion !== 'number' && Array.isArray(input.states)
+  )
+}
+
+/**
+ * True when `input` is a flow-set in EITHER form — a serialized envelope or a
+ * raw `states[]` object. The single owner of the kind test the renderer and
+ * the framework adapters all branch on (single flow → scene path; flow-set →
+ * crossfade player). Was previously duplicated in mountFlow.js + FlowEmbed.vue.
+ * @param {*} input
+ * @returns {boolean}
+ */
+export function isFlowSet(input) {
+  return isFlowSetEnvelope(input) || isRawFlowSet(input)
+}
+
+/**
  * Assemble a flow-set object from an ordered list of states + a transition.
  *
  * The designer's persistence stores a set as a directory of per-flow files;

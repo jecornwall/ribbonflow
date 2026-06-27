@@ -20,7 +20,7 @@
 -->
 <script setup>
 import { computed, onErrorCaptured, ref } from 'vue'
-import { FlowEmbed } from '@flow-designer/library'
+import { FlowEmbed } from '@flow-designer/vue'
 import { normalizeFlowInput } from '@flow-designer/library/internals'
 import MountFlowEmbed from './MountFlowEmbed.vue'
 

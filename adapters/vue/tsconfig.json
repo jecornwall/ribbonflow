@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "esnext",
+    "skipLibCheck": true
+  },
+  "include": ["src/index.d.ts"]
+}

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@flow-designer/library": "workspace:*",
+    "@flow-designer/vue": "workspace:*",
     "vue": "^3.4.0"
   },
   "devDependencies": {

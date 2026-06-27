@@ -21,7 +21,7 @@
  * it survives the swap — re-observing on every update would leak observers.
  */
 import { normalizeFlowInput } from '../format/index.js'
-import { isFlowSetEnvelope } from '../format/flowSet.js'
+import { isFlowSet } from '../format/flowSet.js'
 import { createFlowSimulation } from '../core/useFlowSimulation.js'
 import { buildFlowScene, agentsView } from '../core/buildFlowScene.js'
 import { applySpec } from './applySpec.js'
@@ -29,19 +29,6 @@ import { rootSpec, AGENTS_GROUP_CLASS } from './sceneSpec.js'
 import { observeVisibility } from './visibilityWiring.js'
 import { reconcileAgents, agentCircleSpec } from './agentsLayer.js'
 import { mountFlowSet } from './mountFlowSet.js'
-
-// A raw flow-set object (no envelope) — matches FlowEmbed.vue's isRawFlowSet:
-// a `states` array with no numeric `formatVersion`.
-function isRawFlowSet(input) {
-  return (
-    input != null && typeof input === 'object' &&
-    typeof input.formatVersion !== 'number' && Array.isArray(input.states)
-  )
-}
-
-function isFlowSet(input) {
-  return isFlowSetEnvelope(input) || isRawFlowSet(input)
-}
 
 // The single-flow handle's update() is mode-locked: a flow-set cannot be
 // swapped into a single-flow renderer (different DOM + handle shape). A kind
