@@ -15,26 +15,27 @@
     - a serialized single flow — the JSON envelope string OR a parsed object,
     - a flow-SET — an ordered set of flow states with animated transitions,
       again either a flow-set object or a serialized flow-set envelope.
-  The single-flow forms render through <FlowGraph>; a flow-set plays through
-  <FlowSetPlayer>. The slide does not have to know which it handed in.
+  The slide does not have to know which it handed in: mountFlow resolves the
+  input (migrate + normalize, Finding-0) and routes a single flow to the scene
+  renderer and a flow-set to mountFlowSet's crossfade player.
 
-  M1 scope: a clean pass-through to the copied core renderer. M4 (bd
-  ai-engineer-nawa): flow-set playback added — see
-  docs/superpowers/specs/2026-05-20-flow-M4-design.md §2.5. The deck is NOT
-  swapped onto this component until M5.
+  Phase 2d (ribbonflow, bd ai-engineer-bu5t): this is now a THIN Vue wrapper
+  around the framework-free imperative renderer `mountFlow` — the deck's slide
+  face renders through the new engine. The legacy Vue FlowGraph / FlowSetPlayer
+  remain in the library (the designer's PreviewPane / SetPreview still consume
+  them via /internals) but are off the slide path. mountFlow owns input
+  resolution, the visibility-gated rAF loop, and the remount-on-identity rebuild.
 -->
 <script setup>
-import { computed, ref, watch } from 'vue'
-import FlowGraph from '../core/FlowGraph.vue'
-import FlowSetPlayer from './FlowSetPlayer.vue'
-import { normalizeFlowInput } from '../format/index.js'
-import { isFlowSetEnvelope, deserializeFlowSet } from '../format/flowSet.js'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { mountFlow } from '../render/mountFlow.js'
+import { isFlowSetEnvelope } from '../format/flowSet.js'
 
 const props = defineProps({
   // A flow object / serialized flow, OR a flow-set / serialized flow-set.
   flow: { type: [Object, String], required: true },
-  // Surface the one read-only display knob the core renderer exposes.
-  // Pure cosmetics stay library defaults (charter: out of scope for v1).
+  // Surface the one read-only display knob the renderer exposes. Pure cosmetics
+  // stay library defaults (charter: out of scope for v1).
   showMetrics: { type: Boolean, default: false },
 })
 
@@ -47,43 +48,61 @@ function isRawFlowSet(input) {
     Array.isArray(input.states)
   )
 }
+// Which face of the transparent union an input is — single flow vs flow-set.
+// Used ONLY to decide update() (same kind, in-place) vs remount (kind switch).
+const isFlowSet = (input) => isFlowSetEnvelope(input) || isRawFlowSet(input)
 
-// Resolve whatever the slide handed us into { kind, value } exactly once.
-const resolved = computed(() => {
-  const f = props.flow
-  if (isFlowSetEnvelope(f)) {
-    return { kind: 'flow-set', value: deserializeFlowSet(f) }
-  }
-  if (isRawFlowSet(f)) {
-    return { kind: 'flow-set', value: f }
-  }
-  return { kind: 'flow', value: normalizeFlowInput(f) }
+const rootEl = ref(null)
+let handle = null
+let mountedIsSet = false
+
+function mount(flow) {
+  mountedIsSet = isFlowSet(flow)
+  handle = mountFlow(rootEl.value, flow, { showMetrics: props.showMetrics })
+}
+
+onMounted(() => mount(props.flow))
+
+// The deck's click idiom swaps the WHOLE `flow` prop to a different imported
+// object (`:flow="$clicks > 0 ? after : before"` — S4/S5/S11/S12, S6's state
+// walk). On that identity change, handle.update() re-runs buildFlowScene and
+// rebuilds the static scene wholesale (the faithful match for the old
+// remount-on-identity key bump), keeping the ONE visibility observer over the
+// stable host el so the gate survives the svg swap. If the input changes KIND
+// (single ↔ flow-set — the transparent union across renders), update() is
+// mode-locked, so we destroy + re-mount instead, exactly as the old key bump
+// remounted the child regardless of kind. (No deck slide changes kind; this
+// preserves the documented contract for other consumers.)
+watch(
+  () => props.flow,
+  (next) => {
+    if (!handle) return
+    if (isFlowSet(next) === mountedIsSet) {
+      handle.update(next)
+    } else {
+      handle.destroy()
+      mount(next)
+    }
+  },
+)
+
+onBeforeUnmount(() => {
+  if (handle) handle.destroy()
+  handle = null
 })
-
-// Remount key (bd ai-engineer-5ws4). <FlowGraph> builds its branches / widths /
-// simulation ONCE at setup — deterministic geometry it deliberately does NOT
-// rebuild on a `flow` prop change (see FlowGraph.vue §buildSim). That holds
-// while a slide keeps one flow per <FlowEmbed>, but the deck's click idiom
-// swaps the `flow` prop on a SINGLE embed (`$clicks > 0 ? after : before` —
-// S4/S5/S11/S12). Without a remount FlowGraph keeps the previous flow's
-// topology: a width-only swap renders stale geometry, and a topology swap
-// (solo→team) throws on a stale node id. Bumping a key whenever the input
-// flow identity changes remounts the child with a clean build, so a slide
-// never has to remember its own `:key`.
-const remountKey = ref(0)
-watch(() => props.flow, () => { remountKey.value++ })
 </script>
 
 <template>
-  <FlowSetPlayer
-    v-if="resolved.kind === 'flow-set'"
-    :key="remountKey"
-    :flow-set="resolved.value"
-  />
-  <FlowGraph
-    v-else
-    :key="remountKey"
-    :flow="resolved.value"
-    :show-metrics="showMetrics"
-  />
+  <div ref="rootEl" class="flow-embed"></div>
 </template>
+
+<style scoped>
+.flow-embed {
+  width: 100%;
+  height: 100%;
+}
+.flow-embed :deep(svg) {
+  width: 100%;
+  height: 100%;
+}
+</style>
