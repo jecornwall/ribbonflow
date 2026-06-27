@@ -10,10 +10,16 @@
  * (v1.1, beads ai-engineer-t0c8 / wec5).
  *
  * Returns a FRESH object each call so the designer can "new document" cleanly.
+ *
+ * @param {{x?:number,y?:number,w:number,h:number}} [viewBox] — the new flow's
+ *   slide-scope frame. Defaults to the legacy 16:9 1600×900 so every existing
+ *   call site (`makeSampleFlow()`) is unchanged; the designer passes the
+ *   remembered preset's viewBox to seed new flows at the last-chosen aspect
+ *   (bd ai-engineer-zr7k §7.1).
  */
-export function makeSampleFlow() {
+export function makeSampleFlow(viewBox = { x: 0, y: 0, w: 1600, h: 900 }) {
   return {
-    viewBox: { x: 0, y: 0, w: 1600, h: 900 },
+    viewBox: { x: 0, y: 0, ...viewBox },
     baseSpeed: 200,
     initialAgents: 6,
     forks: [],

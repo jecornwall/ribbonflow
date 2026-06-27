@@ -360,7 +360,7 @@ function onUp(e) {
         :x="frame.x + 14"
         :y="frame.y + 30"
         pointer-events="none"
-      >16:9 slide · {{ frame.w }}×{{ frame.h }}</text>
+      >{{ doc.activePreset.value }} slide · {{ frame.w }}×{{ frame.h }}</text>
 
       <!-- snap grid overlay (only while snap mode is on; pointer-transparent
            so it does not steal the add-node / clear-selection click) -->

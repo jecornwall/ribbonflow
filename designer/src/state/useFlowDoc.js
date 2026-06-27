@@ -28,7 +28,14 @@ import {
 } from '@flow-designer/library/internals'
 import { makeSampleFlow } from './sampleFlow.js'
 import { GRID_SIZE, NODE_RADIUS } from '../lib/constants.js'
-import { slideFrame, outOfBoundsNodeIds, clampToFrame } from '../lib/slideFrame.js'
+import {
+  slideFrame,
+  outOfBoundsNodeIds,
+  clampToFrame,
+  presetForViewBox,
+  framePreset,
+} from '../lib/slideFrame.js'
+import { readFramePref, writeFramePref } from '../lib/framePref.js'
 import { resolveLabelCollisions } from '../lib/labelLayout.js'
 import { createHistory } from './flowHistory.js'
 import * as M from './flowMutations.js'
@@ -128,6 +135,14 @@ const previewFlow = computed(() => M.withNodeAnchoredLabels(normalized.value))
 const outOfBoundsIds = computed(() =>
   outOfBoundsNodeIds(state.flow, slideFrame(state.flow), NODE_RADIUS),
 )
+
+/**
+ * The open flow's slide-scope frame (its viewBox, with the 16:9 fallback) and
+ * which named preset that frame's ratio matches — read by the inspector's
+ * Frame control (bd ai-engineer-zr7k §7.1).
+ */
+const frameViewBox = computed(() => slideFrame(state.flow))
+const activePreset = computed(() => presetForViewBox(state.flow.viewBox))
 
 /** Advisory structural validation, surfaced in the status strip. */
 const validation = computed(() => {
@@ -418,6 +433,27 @@ function setFlowField(key, value) {
   bumpPreview()
 }
 
+/**
+ * Set the flow's slide-scope frame / aspect ratio (bd ai-engineer-zr7k §7.1).
+ *
+ * Writes a normalized zero-origin viewBox into the authored flow as ONE
+ * undoable edit, and remembers the matching named preset so the NEXT new flow
+ * seeds at the same aspect. The change does NOT rescale or move any node — only
+ * the viewBox changes; outOfBoundsIds (which reads slideFrame(state.flow))
+ * recomputes for free, so nodes that now fall outside the reshaped frame light
+ * up the warning ring and can be pulled back in via bringInBounds().
+ *
+ * @param {{x?:number,y?:number,w:number,h:number}} viewBox
+ */
+function setFrame(viewBox) {
+  if (!viewBox || !(viewBox.w > 0) || !(viewBox.h > 0)) return
+  const next = { x: 0, y: 0, w: viewBox.w, h: viewBox.h }
+  M.setFlowField(state.flow, 'viewBox', next)
+  const preset = presetForViewBox(next)
+  if (preset !== 'custom') writeFramePref(preset)
+  bumpPreview()
+}
+
 /** Delete whatever is selected (a node + its edges, or a single edge). */
 function deleteSelection() {
   const sel = state.selection
@@ -486,9 +522,9 @@ function importFlow(input) {
   resetHistory()
 }
 
-/** Reset to the sample flow. */
+/** Reset to the sample flow, seeded at the remembered aspect-ratio preset. */
 function newFlow() {
-  state.flow = makeSampleFlow()
+  state.flow = makeSampleFlow(framePreset(readFramePref()))
   state.selection = { kind: 'flow' }
   state.pendingEdgeFrom = null
   suppressHistory = true
@@ -645,7 +681,7 @@ async function openFlow(id, title) {
 async function createFlow(setId, title, existingSlugs = []) {
   const slug = uniqueSlug(slugify(title), existingSlugs)
   const id = `${setId}/${slug}`
-  const flow = makeSampleFlow()
+  const flow = makeSampleFlow(framePreset(readFramePref()))
   await store.saveFlow(id, JSON.parse(serializeFlow(flow)), title)
   state.justLoaded = true
   state.flow = flow
@@ -668,6 +704,9 @@ const api = {
   previewFlow,
   validation,
   outOfBoundsIds,
+  frameViewBox,
+  activePreset,
+  setFrame,
   bringInBounds,
   select,
   selectEdge,

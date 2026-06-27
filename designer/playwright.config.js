@@ -14,6 +14,10 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './test',
   testMatch: '*.spec.js',
+  // persistence.spec.js exercises the localStorage backend on port 5175 via
+  // playwright.local.config.js (npm run test:e2e:local). This server-backed
+  // run (npm run dev, VITE_FLOW_BACKEND=server) must NOT pick it up.
+  testIgnore: 'persistence.spec.js',
 
   /* Global timeout per test */
   timeout: 30_000,

@@ -17,6 +17,9 @@ import {
   isNodeInBounds,
   outOfBoundsNodeIds,
   clampToFrame,
+  FRAME_PRESETS,
+  framePreset,
+  presetForViewBox,
 } from '../src/lib/slideFrame.js'
 
 // ── slideFrame ───────────────────────────────────────────────────────────────
@@ -116,4 +119,44 @@ test('clampToFrame returns integer coordinates', () => {
   const p = clampToFrame(12.7, 33.2, FRAME)
   assert.equal(Number.isInteger(p.x), true)
   assert.equal(Number.isInteger(p.y), true)
+})
+
+// ── FRAME_PRESETS / framePreset / presetForViewBox (zr7k §7.1) ───────────────
+
+test('FRAME_PRESETS: 16:9 stays exactly 1600×900', () => {
+  assert.deepEqual(FRAME_PRESETS['16:9'], { w: 1600, h: 900 })
+})
+
+test('framePreset returns a zero-origin viewBox for a known preset', () => {
+  assert.deepEqual(framePreset('4:3'), { x: 0, y: 0, w: 1200, h: 900 })
+  assert.deepEqual(framePreset('1:1'), { x: 0, y: 0, w: 900, h: 900 })
+})
+
+test('framePreset returns null for an unknown preset', () => {
+  assert.equal(framePreset('21:9'), null)
+})
+
+test('presetForViewBox identifies the matching preset by ratio', () => {
+  assert.equal(presetForViewBox({ w: 1600, h: 900 }), '16:9')
+  assert.equal(presetForViewBox({ w: 800, h: 600 }), '4:3') // ratio match, any size
+  assert.equal(presetForViewBox({ w: 500, h: 500 }), '1:1')
+})
+
+test('presetForViewBox returns "custom" for a non-preset ratio', () => {
+  assert.equal(presetForViewBox({ w: 2100, h: 900 }), 'custom')
+})
+
+// out-of-bounds against a NON-16:9 frame (the aspect change's real ripple): a
+// node that fits the wide 16:9 frame falls outside the narrower 1:1 frame.
+test('outOfBoundsNodeIds flags a node that fit 16:9 but not a 1:1 frame', () => {
+  const frame169 = framePreset('16:9') // 1600×900
+  const frame11 = framePreset('1:1') // 900×900
+  const flow = { nodes: [{ id: 'a', x: 1000, y: 450 }] }
+  assert.deepEqual(outOfBoundsNodeIds(flow, frame169), []) // fits the wide frame
+  assert.deepEqual(outOfBoundsNodeIds(flow, frame11), ['a']) // outside the square
+})
+
+test('clampToFrame respects a 4:3 frame width', () => {
+  const frame43 = framePreset('4:3') // 1200×900
+  assert.deepEqual(clampToFrame(5000, 100, frame43, 0), { x: 1200, y: 100 })
 })
