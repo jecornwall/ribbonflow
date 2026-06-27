@@ -7,10 +7,18 @@
   docs/superpowers/specs/2026-05-20-flow-persistence-design.md §2.6.
 -->
 <script setup>
-import { onMounted, reactive } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { useFlowStore } from '../state/flowStore.js'
 import { useFlowSetPreview } from '../state/useFlowSetPreview.js'
+import {
+  serializeFlow,
+  deserializeFlow,
+  serializeFlowSet,
+  deserializeFlowSet,
+  assembleFlowSet,
+} from '@flow-designer/library/internals'
+import { slugify, uniqueSlug } from '../../server/indexBuilder.js'
 
 const doc = useFlowDoc()
 const store = useFlowStore()
@@ -18,6 +26,88 @@ const preview = useFlowSetPreview()
 const { state } = store
 
 onMounted(() => store.refreshIndex())
+
+// ── backend-aware landing copy (bd ai-engineer-zr7k §7.2) ─────────────────────
+// The static app runs on the localStorage backend by default; the maintainer's
+// dev server runs the file backend (VITE_FLOW_BACKEND=server). The header copy
+// and the error note adapt: localStorage persistence is EXPECTED, not an error,
+// so the red "API unavailable" note only shows for the server backend.
+const isLocal = computed(() => state.backend === 'local')
+
+// ── set export / import (bd ai-engineer-zr7k §7.2) ────────────────────────────
+// The static app moves whole flow-sets in and out of localStorage as portable
+// .flowset.json envelopes (the library's serializeFlowSet / deserializeFlowSet),
+// reusing assembleFlowSet to bundle a set's per-flow files into one document.
+const setFileInput = ref(null)
+
+/** Trigger a text-blob download (the Toolbar's export idiom). */
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** Export a whole flow-set as a portable `<set>.flowset.json`. */
+async function exportSet(set) {
+  try {
+    const states = []
+    for (const flow of set.flows) {
+      const envelope = await store.loadFlow(flow.id)
+      states.push({ key: flow.slug, title: flow.title, flow: deserializeFlow(envelope) })
+    }
+    const flowSet = assembleFlowSet(states, {
+      id: set.id,
+      title: set.title,
+      transition: set.transition,
+    })
+    downloadText(`${set.id}.flowset.json`, serializeFlowSet(flowSet))
+  } catch (err) {
+    window.alert(`Could not export set: ${err.message || err}`)
+  }
+}
+
+function triggerImportSet() {
+  setFileInput.value?.click()
+}
+
+/**
+ * Import a `.flowset.json`: create a fresh set, write each state as a flow, and
+ * carry the transition + order. The slug from each state key is preserved
+ * (de-duplicated within the new set) so the imported set mirrors the original.
+ */
+async function onSetFileChosen(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const flowSet = deserializeFlowSet(text)
+    const { id: setId } = await store.createSet(flowSet.title || 'Imported set')
+    const used = []
+    const order = []
+    for (const st of flowSet.states || []) {
+      const slug = uniqueSlug(slugify(st.key || st.title || 'flow'), used)
+      used.push(slug)
+      order.push(slug)
+      await store.saveFlow(
+        `${setId}/${slug}`,
+        JSON.parse(serializeFlow(st.flow)),
+        st.title || slug,
+      )
+    }
+    await store.saveSetMeta(setId, { transition: flowSet.transition, flows: order })
+    await store.refreshIndex()
+  } catch (err) {
+    window.alert(`Could not import set: ${err.message || err}`)
+  } finally {
+    e.target.value = ''
+  }
+}
 
 // ── drag-to-reorder flows within a set (bd ai-engineer-soln) ──────────────────
 // A flow-set is an ordered list of states — the order IS the animation
@@ -140,15 +230,32 @@ async function removeFlow(flow) {
   <div class="index-page">
     <header class="ix-head">
       <h1>Flow Designer</h1>
-      <p class="ix-sub">
+      <p v-if="isLocal" class="ix-sub">
+        Flow-sets persisted in your browser (<code>localStorage</code>). Pick a
+        flow to edit — every change auto-saves. Export a set to share it or back
+        it up.
+      </p>
+      <p v-else class="ix-sub">
         A directory of flow-sets, persisted to <code>flow/flows/</code>. Pick a
         flow to edit — every change auto-saves.
       </p>
-      <button class="ix-btn primary" @click="newSet">+ New flow-set</button>
+      <div class="ix-head-actions">
+        <button class="ix-btn" data-testid="import-set" @click="triggerImportSet">
+          ⇧ Import set
+        </button>
+        <button class="ix-btn primary" @click="newSet">+ New flow-set</button>
+      </div>
+      <input
+        ref="setFileInput"
+        type="file"
+        accept=".json,application/json"
+        class="ix-set-file"
+        @change="onSetFileChosen"
+      />
     </header>
 
     <p v-if="state.loading" class="ix-note">Loading index…</p>
-    <p v-if="state.error" class="ix-note ix-error">
+    <p v-if="state.error && !isLocal" class="ix-note ix-error">
       Persistence API unavailable — {{ state.error }}.
       The directory-of-files store needs the designer running on <code>vite dev</code>.
     </p>
@@ -169,6 +276,12 @@ async function removeFlow(flow) {
           class="ix-btn ix-preview"
           @click="previewSet(set)"
         >▶ Preview</button>
+        <button
+          v-if="set.flows.length"
+          class="ix-btn ix-export"
+          title="export this flow-set as a .flowset.json"
+          @click="exportSet(set)"
+        >⇩ Export</button>
         <button class="ix-btn" @click="newFlow(set)">+ New flow</button>
       </div>
       <p v-if="set.flows.length === 0" class="ix-empty">No flows in this set yet.</p>
@@ -372,6 +485,20 @@ async function removeFlow(flow) {
 }
 .ix-preview:hover {
   background: #2563eb;
+}
+.ix-export {
+  background: #4a4636;
+  border-color: #4a4636;
+}
+.ix-export:hover {
+  background: #5a5544;
+}
+.ix-head-actions {
+  display: flex;
+  gap: 8px;
+}
+.ix-set-file {
+  display: none;
 }
 code {
   font: 11px/1 ui-monospace, monospace;

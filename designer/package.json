@@ -5,11 +5,13 @@
   "type": "module",
   "description": "Interactive flow designer app — place/move nodes & edges, label & width editing, source rates, live preview through @flow-designer/library, export/import a single flow.",
   "scripts": {
-    "dev": "vite",
+    "dev": "VITE_FLOW_BACKEND=server vite",
+    "dev:local": "vite --port 5175",
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.js",
-    "test:e2e": "playwright test --config=playwright.config.js"
+    "test:e2e": "playwright test --config=playwright.config.js",
+    "test:e2e:local": "playwright test --config=playwright.local.config.js"
   },
   "dependencies": {
     "@flow-designer/library": "workspace:*",
