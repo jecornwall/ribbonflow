@@ -1,0 +1,82 @@
+{
+  "formatVersion": 5,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 270,
+      "w": 1600,
+      "h": 310
+    },
+    "baseSpeed": 200,
+    "initialAgents": 14,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "segmentDividers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "weekend-ideas",
+        "x": 250,
+        "y": 450,
+        "label": "weekend ideas",
+        "kind": "source",
+        "rate": 4,
+        "length": 0.3,
+        "speed": 1,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "implementation"
+        ],
+        "transform": "none",
+        "particleSize": "small"
+      },
+      {
+        "id": "implementation",
+        "x": 800,
+        "y": 450,
+        "label": "coding",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 0.4,
+        "width": 30,
+        "capacity": 1,
+        "coupleSpeedWidth": true,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [
+          "shipped"
+        ],
+        "transform": "none"
+      },
+      {
+        "id": "shipped",
+        "x": 1350,
+        "y": 450,
+        "label": "shipped",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -100,
+        "successors": [],
+        "transform": "none"
+      }
+    ],
+    "rejections": []
+  }
+}

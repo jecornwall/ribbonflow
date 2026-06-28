@@ -1,0 +1,20 @@
+{
+  "sets": [
+    { "dir": "s12-define-implement-deploy", "title": "Define → Implement → Deploy",
+      "caption": "A clean three-stage pipeline. The ribbon pinches where \"implement\" can't keep up — the bottleneck is visible, not annotated." },
+    { "dir": "n4-startup", "title": "Startup under load",
+      "caption": "Before and after: what happens to flow when a small team scales past its constraint." },
+    { "dir": "n11-build-and-test", "title": "Build & test environment",
+      "caption": "Slow, shared build-and-test turned fast and parallel — step between the two states." },
+    { "dir": "n12-review-turnaround", "title": "Review turnaround",
+      "caption": "Code review as a queue, before and after the wait is cut." },
+    { "dir": "n9-multilane", "title": "Many lanes at once",
+      "caption": "Forks, merges, and parallel lanes converging through shared stages." },
+    { "dir": "n7-enterprise-gates", "title": "Coordination & gates",
+      "caption": "Enterprise gates and rejection edges — work that loops back instead of flowing through." },
+    { "dir": "n3-constraint-shift", "title": "The moving constraint",
+      "caption": "Three states: widen the real constraint, then widen the wrong stage and watch nothing improve." },
+    { "dir": "n14-context-layer", "title": "A shared AI context layer",
+      "caption": "Before and after a shared context layer unblocks parallel AI-assisted delivery." }
+  ]
+}

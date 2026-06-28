@@ -35,7 +35,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const FLOWS_ROOT = join(HERE, '..', '..', 'examples')
 const SMOKE_ID = 'smoke-e2e'
 const SMOKE_DIR = join(FLOWS_ROOT, SMOKE_ID)
-const SAMPLE_FLOW = join(FLOWS_ROOT, 'sample', 'intake-to-ship.flow.json')
+const SAMPLE_FLOW = join(HERE, 'fixtures', 'intake-to-ship.flow.json')
 
 /** Seed a 2-state throwaway set by copying the sample flow into two slugs. */
 function seedSmokeSet() {
