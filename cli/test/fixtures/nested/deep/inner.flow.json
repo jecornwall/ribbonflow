@@ -1,0 +1,26 @@
+{
+  "formatVersion": 5,
+  "flow": {
+    "viewBox": { "x": 0, "y": 0, "w": 1600, "h": 900 },
+    "baseSpeed": 200,
+    "rejections": [],
+    "nodes": [
+      {
+        "id": "n",
+        "x": 800,
+        "y": 450,
+        "label": "n",
+        "kind": "source",
+        "rate": 1,
+        "particleSize": "small",
+        "length": 1,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "transform": "none",
+        "successors": []
+      }
+    ]
+  }
+}

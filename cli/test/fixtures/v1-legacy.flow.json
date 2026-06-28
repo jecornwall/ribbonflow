@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "flow": {
+    "entryId": "start",
+    "spawnRate": 1,
+    "viewBox": { "x": 0, "y": 0, "w": 1600, "h": 900 },
+    "baseSpeed": 200,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "start",
+        "x": 200,
+        "y": 450,
+        "label": "start",
+        "kind": "normal",
+        "latency": 0.8,
+        "successors": ["work"]
+      },
+      {
+        "id": "work",
+        "x": 700,
+        "y": 450,
+        "label": "work",
+        "kind": "constraint",
+        "latency": 1.4,
+        "successors": ["done"]
+      },
+      {
+        "id": "done",
+        "x": 1200,
+        "y": 450,
+        "label": "done",
+        "kind": "normal",
+        "latency": 0.8,
+        "successors": []
+      }
+    ]
+  }
+}

@@ -186,6 +186,12 @@ export {
   serializeFlowSet,
   deserializeFlowSet,
   isFlowSetEnvelope,
+  // The canonical "is this a flow-set in EITHER form (serialized envelope OR a
+  // raw states[] object)" test — the same one mountFlow/mountFlowAuto branch on
+  // internally. Surfaced on the designer/tooling face so the collection-build
+  // CLI (@flow-designer/cli) routes a *.flow.json to the flow-set path without
+  // reaching around the library. Additive, non-visual.
+  isFlowSet,
   assembleFlowSet,
   normalizeFlowSet,
   validateFlowSet,

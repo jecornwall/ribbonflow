@@ -1,0 +1,5 @@
+{
+  "id": "fixtures",
+  "title": "Fixtures manifest — present to prove the collector ignores non-*.flow.json files",
+  "flows": []
+}
