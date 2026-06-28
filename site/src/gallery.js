@@ -28,6 +28,11 @@ function renderCard(set) {
   const handle = mountFlowAuto(stage, set.states[0].envelope)
   let active = 0
 
+  const openLink = el('a', 'card-open')
+  openLink.href = `viewer.html?id=${set.id}__${set.states[0].slug}`
+  openLink.textContent = 'Open ↗'
+  body.appendChild(openLink)
+
   if (set.states.length > 1) {
     const stepper = el('div', 'card-stepper')
     const buttons = set.states.map((state, i) => {
@@ -47,11 +52,6 @@ function renderCard(set) {
     stepper.append(...buttons)
     body.appendChild(stepper)
   }
-
-  const openLink = el('a', 'card-open')
-  openLink.href = `viewer.html?id=${set.id}__${set.states[active].slug}`
-  openLink.textContent = 'Open ↗'
-  body.appendChild(openLink)
 
   card.appendChild(body)
   return card

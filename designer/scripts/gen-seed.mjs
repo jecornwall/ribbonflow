@@ -16,7 +16,7 @@ function loadSet(dir) {
     title,
     envelope: JSON.parse(readFileSync(path.join(examplesDir, dir, `${slug}.flow.json`), 'utf8')),
   }))
-  return { id: meta.id, title: meta.title, transition: meta.transition, flows }
+  return { id: meta.id, title: meta.title, ...(meta.transition ? { transition: meta.transition } : {}), flows }
 }
 
 const blob = buildSeedBlob(curated.sets.map((s) => loadSet(s.dir)), new Date().toISOString())

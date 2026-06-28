@@ -49,7 +49,7 @@ function seedScratchSet() {
   rmSync(SCRATCH_DIR, { recursive: true, force: true })
   mkdirSync(SCRATCH_DIR, { recursive: true })
   const sampleEnvelope = readFileSync(
-    join(FLOWS_ROOT, 'sample/intake-to-ship.flow.json'),
+    join(HERE, 'fixtures/intake-to-ship.flow.json'),
     'utf8',
   )
   for (const f of SCRATCH_FLOWS) {
