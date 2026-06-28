@@ -51,6 +51,17 @@ mountFlowAuto(el, myFlow)
 `<FlowEmbed :flow="flow" />`. `flow` accepts a flow object, a serialized flow,
 or a flow-set (object or serialized) — the renderer auto-detects.
 
+## Preview site
+
+A live gallery + the interactive designer is published to GitHub Pages:
+**<https://jecornwall.github.io/ribbonflow/>**. It previews a curated set of the
+flows from the talk [*The AI Engineer*](https://jecornwall.com/ai-engineer) — the
+presentation ribbonflow was built for — and launches the designer at
+[`/designer/`](https://jecornwall.github.io/ribbonflow/designer/).
+
+The site is the `@ribbonflow/site` package; CI (`.github/workflows/pages.yml`)
+builds it plus the designer and deploys on every push to `main`.
+
 ## Develop
 
 ```bash
