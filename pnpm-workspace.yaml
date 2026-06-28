@@ -14,3 +14,7 @@ packages:
   - adapters/react
   # Playwright smoke runner for both adapters (Task 6).
   - adapters
+  # Phase 5 flow-collection build CLI (bd ai-engineer-s097). Validates/normalizes
+  # a flows dir through the library format layer, emits an asset bundle + a static
+  # gallery. Becomes @ribbonflow/cli at the repo split.
+  - cli
