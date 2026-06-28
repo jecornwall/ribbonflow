@@ -16,3 +16,4 @@ packages:
   - adapters
   - designer
   - cli
+  - site
