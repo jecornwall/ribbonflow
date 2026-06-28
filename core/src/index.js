@@ -26,6 +26,14 @@ export {
   selectBranch,
 } from './core/useFlowSimulation.js'
 
+// ── Particle stream (generic motion primitive) ──────────────────────────────
+// The pure, station-free foundation under ribbonflow's motion: emit particles
+// along a centreline at a rate/speed and consume them at the end — no nodes,
+// capacities, forks or constraints. createFlowSimulation composes the station
+// pipeline on top; an embedder (e.g. a stock-and-flow pipe) drives one stream
+// per pipe directly. See core/particleStream.js.
+export { createParticleStream } from './core/particleStream.js'
+
 // ── Curve / geometry / width maths ──────────────────────────────────────────
 export {
   // geometry primitives
