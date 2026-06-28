@@ -1,0 +1,11 @@
+# index.json is a GENERATED artifact — the designer dev-server plugin
+# regenerates it from a fresh scan on every write. It mutates (timestamps) on
+# every dev-server GET and would create constant churn, so it is not committed.
+# The CLI (`ribbonflow build`) also builds its own index from a fresh scan.
+index.json
+
+# Throwaway flow-sets the designer Playwright e2e seeds + tears down
+# (imperative-renderer.spec.js → smoke-e2e/, authoring-ux.spec.js → zz-pw-authoring/).
+# Gitignored so a server-backed e2e run never dirties the working tree.
+smoke-e2e/
+zz-pw-authoring/
