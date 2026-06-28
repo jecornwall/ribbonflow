@@ -1,0 +1,461 @@
+{
+  "formatVersion": 5,
+  "flow": {
+    "viewBox": {
+      "x": 0,
+      "y": 0,
+      "w": 1600,
+      "h": 900
+    },
+    "baseSpeed": 200,
+    "initialAgents": 14,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "segmentDividers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [
+      {
+        "from": "gate-arch",
+        "branches": [
+          {
+            "to": "build-a",
+            "rateShare": 0.333
+          },
+          {
+            "to": "build-b",
+            "rateShare": 0.334
+          },
+          {
+            "to": "build-c",
+            "rateShare": 0.333
+          }
+        ]
+      },
+      {
+        "from": "gate-security",
+        "branches": [
+          {
+            "to": "integ-a",
+            "rateShare": 0.333
+          },
+          {
+            "to": "integ-b",
+            "rateShare": 0.334
+          },
+          {
+            "to": "integ-c",
+            "rateShare": 0.333
+          }
+        ]
+      },
+      {
+        "from": "gate-release",
+        "branches": [
+          {
+            "to": "ship-a",
+            "rateShare": 0.333
+          },
+          {
+            "to": "ship-b",
+            "rateShare": 0.334
+          },
+          {
+            "to": "ship-c",
+            "rateShare": 0.333
+          }
+        ]
+      }
+    ],
+    "merges": [
+      {
+        "to": "gate-arch",
+        "from": [
+          "design-a",
+          "design-b",
+          "design-c"
+        ]
+      },
+      {
+        "to": "gate-security",
+        "from": [
+          "build-a",
+          "build-b",
+          "build-c"
+        ]
+      },
+      {
+        "to": "gate-release",
+        "from": [
+          "integ-a",
+          "integ-b",
+          "integ-c"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "intake-a",
+        "x": 140,
+        "y": 250,
+        "label": "team a",
+        "kind": "source",
+        "rate": 0.5,
+        "particleSize": "small",
+        "length": 0.8,
+        "speed": 1,
+        "width": 48,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -48,
+        "successors": [
+          "design-a"
+        ]
+      },
+      {
+        "id": "intake-b",
+        "x": 140,
+        "y": 450,
+        "label": "team b",
+        "kind": "source",
+        "rate": 0.5,
+        "particleSize": "small",
+        "length": 0.8,
+        "speed": 1,
+        "width": 48,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -48,
+        "successors": [
+          "design-b"
+        ]
+      },
+      {
+        "id": "intake-c",
+        "x": 140,
+        "y": 650,
+        "label": "team c",
+        "kind": "source",
+        "rate": 0.5,
+        "particleSize": "small",
+        "length": 0.8,
+        "speed": 1,
+        "width": 48,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 48,
+        "successors": [
+          "design-c"
+        ]
+      },
+      {
+        "id": "design-a",
+        "x": 340,
+        "y": 250,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-arch"
+        ]
+      },
+      {
+        "id": "design-b",
+        "x": 340,
+        "y": 450,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-arch"
+        ]
+      },
+      {
+        "id": "design-c",
+        "x": 340,
+        "y": 650,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-arch"
+        ]
+      },
+      {
+        "id": "gate-arch",
+        "x": 560,
+        "y": 450,
+        "label": "architecture review",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 0.8,
+        "width": 32,
+        "capacity": 2,
+        "coupleSpeedWidth": false,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -150,
+        "successors": [
+          "build-a",
+          "build-b",
+          "build-c"
+        ]
+      },
+      {
+        "id": "build-a",
+        "x": 760,
+        "y": 250,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-security"
+        ]
+      },
+      {
+        "id": "build-b",
+        "x": 760,
+        "y": 450,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-security"
+        ]
+      },
+      {
+        "id": "build-c",
+        "x": 760,
+        "y": 650,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-security"
+        ]
+      },
+      {
+        "id": "gate-security",
+        "x": 980,
+        "y": 450,
+        "label": "security review",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 0.8,
+        "width": 32,
+        "capacity": 2,
+        "coupleSpeedWidth": false,
+        "colorScheme": "red",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 150,
+        "successors": [
+          "integ-a",
+          "integ-b",
+          "integ-c"
+        ]
+      },
+      {
+        "id": "integ-a",
+        "x": 1180,
+        "y": 250,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-release"
+        ]
+      },
+      {
+        "id": "integ-b",
+        "x": 1180,
+        "y": 450,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-release"
+        ]
+      },
+      {
+        "id": "integ-c",
+        "x": 1180,
+        "y": 650,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 56,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": [
+          "gate-release"
+        ]
+      },
+      {
+        "id": "gate-release",
+        "x": 1380,
+        "y": 450,
+        "label": "release approval",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 0.8,
+        "width": 32,
+        "capacity": 2,
+        "coupleSpeedWidth": false,
+        "colorScheme": "red",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -150,
+        "successors": [
+          "ship-a",
+          "ship-b",
+          "ship-c"
+        ]
+      },
+      {
+        "id": "ship-a",
+        "x": 1540,
+        "y": 250,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 52,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -46,
+        "successors": []
+      },
+      {
+        "id": "ship-b",
+        "x": 1540,
+        "y": 450,
+        "label": "ship",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 52,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 46,
+        "successors": []
+      },
+      {
+        "id": "ship-c",
+        "x": 1540,
+        "y": 650,
+        "label": "",
+        "kind": "normal",
+        "length": 0.8,
+        "speed": 1,
+        "width": 52,
+        "coupleSpeedWidth": false,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 46,
+        "successors": []
+      }
+    ],
+    "rejections": [
+      {
+        "from": "gate-arch",
+        "to": "design-b",
+        "rate": 0.1,
+        "bow": {
+          "side": "below",
+          "depth": 90
+        }
+      },
+      {
+        "from": "gate-security",
+        "to": "build-b",
+        "rate": 0.1,
+        "bow": {
+          "side": "below",
+          "depth": 90
+        }
+      },
+      {
+        "from": "gate-release",
+        "to": "integ-b",
+        "rate": 0.1,
+        "bow": {
+          "side": "below",
+          "depth": 90
+        }
+      }
+    ]
+  }
+}

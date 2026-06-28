@@ -1,0 +1,229 @@
+{
+  "formatVersion": 3,
+  "flow": {
+    "viewBox": {
+      "x": -120,
+      "y": 0,
+      "w": 1920,
+      "h": 900
+    },
+    "baseSpeed": 200,
+    "initialAgents": 40,
+    "inkWobble": true,
+    "fenceMarkers": true,
+    "showBoxes": false,
+    "showLegend": false,
+    "forks": [],
+    "merges": [],
+    "nodes": [
+      {
+        "id": "src-a",
+        "x": -40,
+        "y": 200,
+        "label": "",
+        "kind": "source",
+        "rate": 1,
+        "length": 0.01,
+        "speed": 1,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -85,
+        "successors": [
+          "build-a"
+        ]
+      },
+      {
+        "id": "src-b",
+        "x": -40,
+        "y": 440,
+        "label": "",
+        "kind": "source",
+        "rate": 1,
+        "length": 0.01,
+        "speed": 1,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -85,
+        "successors": [
+          "build-b"
+        ]
+      },
+      {
+        "id": "src-c",
+        "x": -40,
+        "y": 700,
+        "label": "",
+        "kind": "source",
+        "rate": 1,
+        "length": 0.01,
+        "speed": 1,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -85,
+        "successors": [
+          "build-c"
+        ]
+      },
+      {
+        "id": "build-a",
+        "x": 320,
+        "y": 200,
+        "label": "build · A",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 0.85,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 320,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "ci-cd"
+        ]
+      },
+      {
+        "id": "build-b",
+        "x": 320,
+        "y": 440,
+        "label": "build · B",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 0.85,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 320,
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": [
+          "ci-cd"
+        ]
+      },
+      {
+        "id": "build-c",
+        "x": 320,
+        "y": 700,
+        "label": "build · C",
+        "kind": "normal",
+        "length": 0.6,
+        "speed": 0.85,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelX": 320,
+        "labelDx": 0,
+        "labelDy": 94,
+        "successors": [
+          "ci-cd"
+        ]
+      },
+      {
+        "id": "ci-cd",
+        "x": 880,
+        "y": 440,
+        "label": "build agent",
+        "kind": "normal",
+        "length": 0.3,
+        "speed": 1,
+        "width": 70,
+        "capacity": 50,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelX": 900,
+        "labelDx": -2,
+        "labelDy": -135,
+        "successors": [
+          "_fanout"
+        ]
+      },
+      {
+        "id": "_fanout",
+        "x": 1080,
+        "y": 440,
+        "label": "",
+        "kind": "normal",
+        "length": 0.01,
+        "speed": 1,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 7,
+        "labelDy": -63,
+        "successors": [
+          "deploy-a",
+          "deploy-b",
+          "deploy-c"
+        ]
+      },
+      {
+        "id": "deploy-a",
+        "x": 1380,
+        "y": 200,
+        "label": "deploy · A",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 0.85,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": []
+      },
+      {
+        "id": "deploy-b",
+        "x": 1380,
+        "y": 450,
+        "label": "deploy · B",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 0.85,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "above",
+        "labelDx": 0,
+        "labelDy": -60,
+        "successors": []
+      },
+      {
+        "id": "deploy-c",
+        "x": 1380,
+        "y": 700,
+        "label": "deploy · C",
+        "kind": "normal",
+        "length": 0.4,
+        "speed": 0.85,
+        "width": 70,
+        "coupleSpeedWidth": true,
+        "colorScheme": "neutral",
+        "labelSide": "below",
+        "labelDx": 0,
+        "labelDy": 60,
+        "successors": []
+      }
+    ]
+  }
+}

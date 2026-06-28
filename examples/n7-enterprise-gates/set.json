@@ -1,0 +1,14 @@
+{
+  "id": "n7-enterprise-gates",
+  "title": "N7 · enterprise coordination & gates",
+  "flows": [
+    {
+      "slug": "gates",
+      "title": "Coordination & gates"
+    },
+    {
+      "slug": "multiteam",
+      "title": "Multiple teams · shared gate sequence"
+    }
+  ]
+}
