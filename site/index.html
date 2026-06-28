@@ -3,10 +3,52 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ribbonflow</title>
+    <title>ribbonflow — animated SVG flow diagrams</title>
+    <meta name="description" content="Animated SVG flow diagrams whose ribbon width shows where work piles up. Built for the talk The AI Engineer, now an open-source library." />
+    <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <div id="app">ribbonflow preview site</div>
+    <header class="hero">
+      <h1>ribbonflow</h1>
+      <p class="tagline">
+        Animated SVG flow diagrams. Particles stream along variable-width ribbons;
+        the ribbon pinches at bottlenecks, so a diagram <em>shows</em> where work piles up.
+      </p>
+      <a class="cta cta-primary" href="https://jecornwall.com/ai-engineer" target="_blank" rel="noopener">
+        See these flows in the talk — <strong>The AI&nbsp;Engineer</strong>
+      </a>
+      <p class="origin">
+        ribbonflow began as the diagram engine for the talk
+        <em>The AI Engineer</em>, then was extracted into a standalone MIT library.
+      </p>
+    </header>
+
+    <main>
+      <section class="gallery-section">
+        <h2>Flows</h2>
+        <p class="section-sub">Each plays live. Sets with multiple states step before &rarr; after.</p>
+        <div id="gallery" class="gallery"></div>
+      </section>
+
+      <section class="designer-section">
+        <h2>Build your own</h2>
+        <p class="section-sub">Open the interactive designer — place nodes, set widths and rates, preview through the real renderer.</p>
+        <a class="cta" href="designer/">Open the designer &rarr;</a>
+      </section>
+
+      <section class="quickstart-section">
+        <h2>Quick start</h2>
+        <pre><code>npm install ribbonflow</code></pre>
+        <pre><code>import { mountFlowAuto } from 'ribbonflow'
+
+const handle = mountFlowAuto(document.getElementById('stage'), flow)
+handle.update(nextFlow)   // before &rarr; after, the deck's click idiom</code></pre>
+        <p><a href="https://github.com/jecornwall/ribbonflow" target="_blank" rel="noopener">Source on GitHub &rarr;</a></p>
+      </section>
+    </main>
+
+    <footer class="site-footer">MIT &copy; 2026 Jason Cornwall</footer>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

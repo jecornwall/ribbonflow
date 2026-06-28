@@ -1,2 +1,5 @@
-// Entry point — Task 4 builds the landing page + gallery here.
-console.log('ribbonflow preview site')
+import './styles.css'
+import { catalog } from './catalog.js'
+import { renderGallery } from './gallery.js'
+
+renderGallery(document.getElementById('gallery'), catalog)
