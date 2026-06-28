@@ -1,20 +1,18 @@
-# Flow Designer project — pnpm workspace.
+# ribbonflow — pnpm workspace.
 #
-# The flow-designer project lives entirely under flow/. M1 ships the shared
-# library; M3 adds the interactive designer app at flow/designer/.
+# The published package set (spec §2):
+#   @ribbonflow/core     — pure, headless: simulation, geometry, scene model, format
+#   ribbonflow           — vanilla SVG renderer (mountFlow); re-exports core
+#   @ribbonflow/vue      — thin <FlowEmbed> wrapper over ribbonflow
+#   @ribbonflow/react    — thin <FlowEmbed> wrapper over ribbonflow
+#   @ribbonflow/designer — the interactive builder app (Vue)
+#   @ribbonflow/cli      — flow-collection build tool (asset bundle + static gallery)
 packages:
-  - library
-  - designer
-  # M5 parity-validation harness (bd ai-engineer-h6sn). Scratch tooling that
-  # renders the deck's real flows through the new library for the swap audit;
-  # not a shipped artefact.
-  - parity
-  # Phase 3 adapter packages — thin framework shells over mountFlowAuto.
+  - core
+  - ribbonflow
   - adapters/vue
   - adapters/react
-  # Playwright smoke runner for both adapters (Task 6).
+  # Playwright smoke runner for both framework adapters.
   - adapters
-  # Phase 5 flow-collection build CLI (bd ai-engineer-s097). Validates/normalizes
-  # a flows dir through the library format layer, emits an asset bundle + a static
-  # gallery. Becomes @ribbonflow/cli at the repo split.
+  - designer
   - cli

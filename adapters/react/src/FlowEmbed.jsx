@@ -1,10 +1,10 @@
 // flow/adapters/react/src/FlowEmbed.jsx
 import { useRef, useEffect } from 'react'
-import { mountFlowAuto } from '@flow-designer/library/render'
+import { mountFlowAuto } from 'ribbonflow'
 
 /**
  * React <FlowEmbed> — renders a flow (or flow-set) through the imperative
- * renderer via @flow-designer/library's mountFlowAuto. The kind-switch remount
+ * renderer via @ribbonflow/core's mountFlowAuto. The kind-switch remount
  * and the visibility-gated rAF loop live in the library; this is lifecycle
  * wiring only. Becomes @ribbonflow/react at the repo split.
  *

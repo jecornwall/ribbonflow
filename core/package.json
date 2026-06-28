@@ -1,0 +1,26 @@
+{
+  "name": "@ribbonflow/core",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pure, headless heart of ribbonflow — simulation engine, curve/width/glyph geometry, the scene model (buildFlowScene/agentsView), and the flow format layer (serialize/deserialize/migrate/model/flow-set). No DOM, no framework.",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.json",
+    "test": "node --test src/core/*.test.js src/format/*.test.js test/*.test.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

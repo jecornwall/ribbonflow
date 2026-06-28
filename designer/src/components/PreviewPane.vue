@@ -2,7 +2,7 @@
   PreviewPane.vue — the live preview.
 
   Renders the flow under edit through the REAL library renderer — the imperative
-  mountFlow renderer (imported from @flow-designer/library/internals). This is
+  mountFlow renderer (imported from ribbonflow). This is
   the M1 package boundary proven in anger: "see what it looks like" is the actual
   renderer a slide would use, animating, not an approximation (M3 §2.2). Phase A
   (bd ai-engineer-cr1x) swapped the Vue <FlowGraph> for mountFlow so the designer
@@ -20,7 +20,7 @@
 -->
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { mountFlow } from '@flow-designer/library/internals'
+import { mountFlow } from 'ribbonflow'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 
 const doc = useFlowDoc()
@@ -48,7 +48,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="preview-pane">
-    <div class="pp-header">Live preview — rendered through @flow-designer/library</div>
+    <div class="pp-header">Live preview — rendered through ribbonflow</div>
     <div class="pp-stage">
       <div ref="host" class="pp-host"></div>
     </div>

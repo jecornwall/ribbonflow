@@ -12,20 +12,20 @@
  * the whole build never throws on one bad flow.
  *
  * Format access goes through the library's public faces (charter §Architecture):
- *   - slide face (@flow-designer/library): normalizeFlowInput, deserializeFlowSet,
+ *   - slide face (@ribbonflow/core): normalizeFlowInput, deserializeFlowSet,
  *     isFlowSetEnvelope.
  *   - designer face (/internals): isFlowSet, normalizeFlowSet, validateFlowSet,
  *     validateFlow. The CLI is a tool that manipulates the format, so it is
  *     allowed the broad face — exactly as the designer is.
  */
-import { normalizeFlowInput } from '@flow-designer/library'
+import { normalizeFlowInput } from '@ribbonflow/core'
 import {
   isFlowSet,
   normalizeFlowSet,
   deserializeFlowSet,
   validateFlowSet,
   validateFlow,
-} from '@flow-designer/library/internals'
+} from '@ribbonflow/core'
 import { readFile as fsReadFile } from 'node:fs/promises'
 import { collectFlows } from './collect.js'
 

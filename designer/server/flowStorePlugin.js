@@ -41,8 +41,8 @@ import {
 } from './indexBuilder.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-/** Default persistence root: flow/flows/, a workspace-level peer of designer/. */
-const DEFAULT_ROOT = path.resolve(HERE, '../../flows')
+/** Default persistence root: examples/, a workspace-level peer of designer/. */
+const DEFAULT_ROOT = path.resolve(HERE, '../../examples')
 
 const API_PREFIX = '/__flows'
 

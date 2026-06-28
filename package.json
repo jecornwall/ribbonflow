@@ -1,8 +1,11 @@
 {
-  "name": "flow-designer-workspace",
+  "name": "ribbonflow-monorepo",
   "private": true,
-  "description": "pnpm workspace root for the flow-designer project (library + designer + parity). Holds DX convenience scripts only — see pnpm-workspace.yaml for the package list.",
+  "description": "pnpm workspace root for ribbonflow — the animated SVG flow-diagram library (@ribbonflow/core + ribbonflow renderer), framework adapters (@ribbonflow/vue, @ribbonflow/react), the interactive designer app (@ribbonflow/designer), and the collection-build CLI (@ribbonflow/cli). See pnpm-workspace.yaml for the package list.",
+  "license": "MIT",
   "scripts": {
-    "design": "pnpm --filter @flow-designer/designer dev"
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "design": "pnpm --filter @ribbonflow/designer dev"
   }
 }

@@ -29,7 +29,7 @@ import {
   rejectionEdgeAnchors,
   quadBezierPoint,
   REJECTION_COLOR,
-} from '@flow-designer/library/internals'
+} from '@ribbonflow/core'
 
 const props = defineProps({
   // endpoint nodes — live references, so the arc follows a dragged node

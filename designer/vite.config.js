@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { flowStorePlugin } from './server/flowStorePlugin.js'
 
-// The designer depends on @flow-designer/library as a pnpm WORKSPACE package
+// The designer depends on @ribbonflow/core as a pnpm WORKSPACE package
 // (see M3 spec §2.1). Vite treats workspace-linked packages as source, so
 // @vitejs/plugin-vue compiles the library's .vue files directly in this
 // build — there is no pre-bundled artefact between the designer and the

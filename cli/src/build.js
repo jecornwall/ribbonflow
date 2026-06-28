@@ -5,7 +5,7 @@
  * collect → buildCollection → emit (bundle and/or gallery) → write everything
  * under outDir. For gallery (or both), it ALSO bundles the vanilla renderer to
  * `<outDir>/gallery/assets/ribbonflow.mjs` — a self-contained ESM the gallery
- * pages import. The render face (@flow-designer/library/render) is vue-free and
+ * pages import. The render face (ribbonflow) is vue-free and
  * .vue-free, so esbuild bundles it to ESM with zero bare imports; we assert that.
  *
  * Output layout (under outDir):
@@ -21,19 +21,25 @@ import { emitBundle } from './emitBundle.js'
 import { emitGallery } from './emitGallery.js'
 
 const RENDERER_ASSET_REL = './assets/ribbonflow.mjs'
-// A bare (non-relative, non-absolute) module specifier in a `from "…"` clause.
-const BARE_IMPORT = /\bfrom\s*["'][^."'/][^"']*["']/
+// A genuine bare (non-relative) ESM import/export-from STATEMENT in the bundled
+// output. Anchored to line start (esbuild emits each external import as its own
+// top-level statement; we do not minify) so it never matches a `from "…"`
+// substring inside a string literal — e.g. validateFlow's `missing "from" node`
+// error message. Two shapes: `import|export … from "bare"` and a bare
+// side-effect `import "bare"`. A leading `.` or `/` means relative/absolute → OK.
+const BARE_IMPORT = /^\s*(?:import|export)\b[^\n]*\bfrom\s*["'][^."'/]/m
+const BARE_SIDE_EFFECT_IMPORT = /^\s*import\s+["'][^."'/]/m
 
 /**
- * Resolve the library's vanilla render entry. Prefers the package export map via
- * import.meta.resolve; falls back to the in-repo relative path.
+ * Resolve the `ribbonflow` vanilla render entry. Prefers the package export map
+ * via import.meta.resolve; falls back to the in-repo relative source path.
  * @returns {string} an absolute filesystem path
  */
 function resolveRenderEntry() {
   try {
-    return fileURLToPath(import.meta.resolve('@flow-designer/library/render'))
+    return fileURLToPath(import.meta.resolve('ribbonflow'))
   } catch {
-    return fileURLToPath(new URL('../../library/src/render/index.js', import.meta.url))
+    return fileURLToPath(new URL('../../ribbonflow/src/index.js', import.meta.url))
   }
 }
 
@@ -65,7 +71,7 @@ async function bundleRenderer(outfile) {
     outfile,
   })
   const code = await readFile(outfile, 'utf8')
-  if (BARE_IMPORT.test(code)) {
+  if (BARE_IMPORT.test(code) || BARE_SIDE_EFFECT_IMPORT.test(code)) {
     throw new Error(
       `renderer bundle ${outfile} contains a bare import — the render face is ` +
       `expected to bundle to a self-contained ESM with zero external imports`,

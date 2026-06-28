@@ -7,6 +7,6 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     lib: { entry: 'src/index.js', formats: ['es'], fileName: 'index' },
-    rollupOptions: { external: ['react', 'react-dom', 'react/jsx-runtime', '@flow-designer/library/render'] },
+    rollupOptions: { external: ['react', 'react-dom', 'react/jsx-runtime', 'ribbonflow'] },
   },
 })

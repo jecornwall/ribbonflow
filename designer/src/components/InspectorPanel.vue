@@ -26,7 +26,7 @@ import {
   CAPACITY_CONTROL_RANGE,
   RED_RATIO_RANGE,
   capacityFromWidth,
-} from '@flow-designer/library/internals'
+} from '@ribbonflow/core'
 
 const doc = useFlowDoc()
 const state = doc.state

@@ -1,0 +1,37 @@
+{
+  "name": "ribbonflow",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Vanilla SVG flow renderer — mountFlow(el, flow) → animated, variable-width ribbon diagrams with streaming agents. The no-framework headline of ribbonflow; re-exports @ribbonflow/core. Vue/React adapters wrap this.",
+  "license": "MIT",
+  "keywords": [
+    "svg",
+    "animation",
+    "diagram",
+    "flow",
+    "visualization",
+    "renderer"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.json",
+    "test": "node --test src/render/*.test.js"
+  },
+  "dependencies": {
+    "@ribbonflow/core": "workspace:*"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.12",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

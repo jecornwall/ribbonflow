@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# CLI default output
+dist-flows/
+gallery/
+
+# Test / tooling artifacts
+test-results/
+playwright-report/
+.playwright-mcp/
+
+# OS / editor
+.DS_Store
+*.log

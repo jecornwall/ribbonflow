@@ -1,5 +1,5 @@
 {
-  "name": "@flow-designer/adapters-smoke",
+  "name": "@ribbonflow/adapters-smoke",
   "private": true,
   "type": "module",
   "scripts": { "smoke": "playwright test --config=playwright.config.js" },

@@ -1,7 +1,7 @@
 <!--
-  FlowEmbed.vue — @flow-designer/vue. The Vue slide face of the flow library.
+  FlowEmbed.vue — @ribbonflow/vue. The Vue slide face of the flow library.
 
-  A thin <script setup> shell over @flow-designer/library/render's
+  A thin <script setup> shell over ribbonflow's
   mountFlowAuto: mount on init, update() on flow-prop swap, destroy() on
   unmount. The kind-switch remount (single ↔ flow-set) and the visibility-gated
   rAF loop live in the library; this component only wires lifecycle. Public
@@ -10,7 +10,7 @@
 -->
 <script setup>
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import { mountFlowAuto } from '@flow-designer/library/render'
+import { mountFlowAuto } from 'ribbonflow'
 
 const props = defineProps({
   flow: { type: [Object, String], required: true },

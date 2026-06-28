@@ -7,6 +7,6 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     lib: { entry: 'src/index.js', formats: ['es'], fileName: 'index' },
-    rollupOptions: { external: ['vue', '@flow-designer/library/render'] },
+    rollupOptions: { external: ['vue', 'ribbonflow'] },
   },
 })

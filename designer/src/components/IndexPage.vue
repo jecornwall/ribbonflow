@@ -17,7 +17,7 @@ import {
   serializeFlowSet,
   deserializeFlowSet,
   assembleFlowSet,
-} from '@flow-designer/library/internals'
+} from '@ribbonflow/core'
 import { slugify, uniqueSlug } from '../../server/indexBuilder.js'
 
 const doc = useFlowDoc()

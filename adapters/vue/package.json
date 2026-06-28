@@ -1,5 +1,5 @@
 {
-  "name": "@flow-designer/vue",
+  "name": "@ribbonflow/vue",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -17,7 +17,7 @@
     "vue": "^3.4.0"
   },
   "dependencies": {
-    "@flow-designer/library": "workspace:*"
+    "ribbonflow": "workspace:*"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.0",

@@ -23,7 +23,7 @@
 -->
 <script setup>
 import { ref, computed, onBeforeUnmount, watch } from 'vue'
-import { mountFlow, EASINGS } from '@flow-designer/library/internals'
+import { mountFlow, EASINGS } from 'ribbonflow'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { useFlowSetPreview } from '../state/useFlowSetPreview.js'
 

@@ -25,7 +25,7 @@ import {
   widthFromSpeed,
   capacityFromWidth,
   DEFAULT_NODE_WIDTH,
-} from '@flow-designer/library/internals'
+} from '@ribbonflow/core'
 import { makeSampleFlow } from './sampleFlow.js'
 import { GRID_SIZE, NODE_RADIUS } from '../lib/constants.js'
 import {

@@ -20,7 +20,7 @@
 -->
 <script setup>
 import { computed } from 'vue'
-import { transformGlyphFor } from '@flow-designer/library/internals'
+import { transformGlyphFor } from '@ribbonflow/core'
 import { NODE_RADIUS } from '../lib/constants.js'
 
 const props = defineProps({

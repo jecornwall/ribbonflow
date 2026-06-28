@@ -16,7 +16,7 @@ import {
   REJECTION_COLOR,
   computeNodeWidths,
   rejectionEdgeAnchors,
-} from '@flow-designer/library/internals'
+} from '@ribbonflow/core'
 import { useFlowDoc } from '../state/useFlowDoc.js'
 import { clientToSvg } from '../lib/svgCoords.js'
 import { GRID_SIZE } from '../lib/constants.js'

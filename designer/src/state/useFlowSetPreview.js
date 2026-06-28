@@ -24,7 +24,7 @@ import {
   assembleFlowSet,
   validateFlowSet,
   TRANSITION_DEFAULTS,
-} from '@flow-designer/library/internals'
+} from '@ribbonflow/core'
 import { useFlowStore } from './flowStore.js'
 import { createTransitionSaver } from './transitionSaver.js'
 

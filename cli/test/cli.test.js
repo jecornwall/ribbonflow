@@ -50,9 +50,13 @@ test('buildCommand: bundles the vanilla renderer to gallery/assets/ribbonflow.mj
   assert.ok(await exists(asset), 'renderer asset written')
   const code = await readFile(asset, 'utf8')
   assert.ok(code.length > 0, 'asset is non-empty')
-  // a fully-bundled ESM has no bare (non-relative) import specifiers
-  const bareImport = /\bfrom\s*["'][^."'/][^"']*["']/
+  // a fully-bundled ESM has no bare (non-relative) import/export-from STATEMENTS.
+  // Anchored to line start so it doesn't match a `from "…"` substring inside a
+  // string literal (e.g. validateFlow's `missing "from" node` message).
+  const bareImport = /^\s*(?:import|export)\b[^\n]*\bfrom\s*["'][^."'/]/m
+  const bareSideEffect = /^\s*import\s+["'][^."'/]/m
   assert.doesNotMatch(code, bareImport, 'renderer bundle is self-contained (no bare imports)')
+  assert.doesNotMatch(code, bareSideEffect, 'renderer bundle has no bare side-effect imports')
   // and it exports the mount entry the gallery pages import
   assert.match(code, /mountFlowAuto/)
 })

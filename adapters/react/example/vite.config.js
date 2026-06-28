@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     fs: {
       // Allow Vite to serve files from the workspace root so workspace-linked
-      // packages (@flow-designer/library) resolve correctly.
+      // packages (@ribbonflow/core) resolve correctly.
       allow: [resolve(__dirname, '../../../..')],
     },
   },

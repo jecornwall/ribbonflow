@@ -1,9 +1,9 @@
 {
-  "name": "@flow-designer/cli",
+  "name": "@ribbonflow/cli",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Flow-collection build CLI — validates/normalizes/migrates a directory of *.flow.json through the library format layer, then emits a referenceable asset bundle and/or a hostable static gallery. Becomes @ribbonflow/cli at the repo split.",
+  "description": "Flow-collection build CLI — validates/normalizes/migrates a directory of *.flow.json through @ribbonflow/core, then emits a referenceable asset bundle and/or a hostable static gallery. Becomes @ribbonflow/cli at the repo split.",
   "bin": {
     "ribbonflow": "./bin/ribbonflow.js"
   },
@@ -11,7 +11,8 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@flow-designer/library": "workspace:*",
+    "@ribbonflow/core": "workspace:*",
+    "ribbonflow": "workspace:*",
     "esbuild": "^0.25.0"
   }
 }

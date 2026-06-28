@@ -1,9 +1,9 @@
 {
-  "name": "@flow-designer/designer",
+  "name": "@ribbonflow/designer",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Interactive flow designer app — place/move nodes & edges, label & width editing, source rates, live preview through @flow-designer/library, export/import a single flow.",
+  "description": "Interactive flow designer app — place/move nodes & edges, label & width editing, source rates, live preview through ribbonflow, export/import a single flow.",
   "scripts": {
     "dev": "VITE_FLOW_BACKEND=server vite",
     "dev:local": "vite --port 5175",
@@ -14,7 +14,8 @@
     "test:e2e:local": "playwright test --config=playwright.local.config.js"
   },
   "dependencies": {
-    "@flow-designer/library": "workspace:*",
+    "@ribbonflow/core": "workspace:*",
+    "ribbonflow": "workspace:*",
     "vue": "^3.4.0"
   },
   "devDependencies": {
