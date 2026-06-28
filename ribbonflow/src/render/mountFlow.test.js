@@ -66,6 +66,28 @@ test('mountFlow: paints one <svg.flow-graph> with the static paint group', () =>
   handle.destroy()
 })
 
+test('mountFlow: the mounted svg fills its host via an inline style (no external CSS)', () => {
+  // Regression guard: the svg must carry width/height:100% as an INLINE style so
+  // a flow is visible at its host's size with zero stylesheet. A Vite-lib build
+  // of the framework adapters extracts their SFC <style> into a dist CSS file
+  // consumers don't import, which silently collapsed embeds to 0×0 after the repo
+  // split — the renderer, not the adapter's CSS, must own svg sizing.
+  const h = host()
+  const { value } = opts(h)
+  const handle = mountFlow(h.el, bareV1Flow(), value)
+  const svg = h.el.querySelector('svg.flow-graph')
+  const style = (svg.getAttribute('style') || '').replace(/\s/g, '')
+  assert.ok(style.includes('width:100%'), 'svg has inline width:100%')
+  assert.ok(style.includes('height:100%'), 'svg has inline height:100%')
+  // …and the inline sizing survives an update() (which swaps the svg).
+  handle.update(bareV1Flow())
+  const svg2 = h.el.querySelector('svg.flow-graph')
+  const style2 = (svg2.getAttribute('style') || '').replace(/\s/g, '')
+  assert.ok(style2.includes('width:100%') && style2.includes('height:100%'),
+    'the swapped svg keeps the inline fill style after update()')
+  handle.destroy()
+})
+
 test('mountFlow: builds an empty agents group (filled per frame, not at mount)', () => {
   const h = host()
   const { value } = opts(h)

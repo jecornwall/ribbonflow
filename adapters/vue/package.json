@@ -1,6 +1,6 @@
 {
   "name": "@ribbonflow/vue",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Thin Vue <FlowEmbed> adapter over ribbonflow's mountFlowAuto — renders an animated flow (or flow-set) diagram and updates on prop change.",
   "license": "MIT",

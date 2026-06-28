@@ -30,6 +30,14 @@ import { observeVisibility } from './visibilityWiring.js'
 import { reconcileAgents, agentCircleSpec } from './agentsLayer.js'
 import { mountFlowSet } from './mountFlowSet.js'
 
+// The mounted <svg> fills its host element. Set as an inline attribute on the
+// svg itself (not via a stylesheet) so a flow renders at its host's size with
+// NO external CSS — matching mountFlowSet's SVG_FILL_STYLE. Without this a bare
+// inline svg falls back to the replaced-element default (~300×150) or collapses
+// when the host has no intrinsic size, so every consumer would otherwise have to
+// ship sizing CSS (the bug that hid flows after the @ribbonflow/vue split).
+const SVG_FILL_STYLE = 'width:100%;height:100%;display:block;'
+
 // The single-flow handle's update() is mode-locked: a flow-set cannot be
 // swapped into a single-flow renderer (different DOM + handle shape). A kind
 // switch is a remount — destroy + a fresh mountFlow — mirroring how FlowEmbed
@@ -114,6 +122,7 @@ export function mountFlow(el, flow, opts = {}) {
     // momentarily empty); leaves exactly ONE svg in the host.
     if (prevSvg && prevSvg.parentNode) prevSvg.parentNode.removeChild(prevSvg)
     svg = nextSvg
+    if (svg && svg.setAttribute) svg.setAttribute('style', SVG_FILL_STYLE)
     agentsGroup = svg.querySelector('g.' + AGENTS_GROUP_CLASS)
     return freshSim
   }
