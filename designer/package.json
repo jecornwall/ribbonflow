@@ -8,6 +8,7 @@
     "dev": "VITE_FLOW_BACKEND=server vite",
     "dev:local": "vite --port 5175",
     "build": "vite build",
+    "build:site": "node scripts/gen-seed.mjs && VITE_DESIGNER_SEED=1 vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.js",
     "test:e2e": "playwright test --config=playwright.config.js",
