@@ -1,0 +1,54 @@
+{
+  "indexVersion": 1,
+  "generatedAt": "2026-06-28T00:39:03.850Z",
+  "sets": [
+    {
+      "id": "sample",
+      "title": "Sample",
+      "flows": [
+        {
+          "id": "sample/intake-to-ship",
+          "slug": "intake-to-ship",
+          "title": "Intake to Ship",
+          "file": "sample/intake-to-ship.flow.json",
+          "formatVersion": 3,
+          "nodeCount": 4,
+          "updatedAt": "2026-06-28T00:15:07.780Z"
+        }
+      ]
+    },
+    {
+      "id": "zz-pw-authoring",
+      "title": "ZZ · Playwright authoring-UX scratch",
+      "flows": [
+        {
+          "id": "zz-pw-authoring/state-three",
+          "slug": "state-three",
+          "title": "State Three",
+          "file": "zz-pw-authoring/state-three.flow.json",
+          "formatVersion": 3,
+          "nodeCount": 4,
+          "updatedAt": "2026-06-28T00:39:02.716Z"
+        },
+        {
+          "id": "zz-pw-authoring/state-one",
+          "slug": "state-one",
+          "title": "State One",
+          "file": "zz-pw-authoring/state-one.flow.json",
+          "formatVersion": 3,
+          "nodeCount": 4,
+          "updatedAt": "2026-06-28T00:39:02.714Z"
+        },
+        {
+          "id": "zz-pw-authoring/state-two",
+          "slug": "state-two",
+          "title": "State Two",
+          "file": "zz-pw-authoring/state-two.flow.json",
+          "formatVersion": 3,
+          "nodeCount": 4,
+          "updatedAt": "2026-06-28T00:39:02.715Z"
+        }
+      ]
+    }
+  ]
+}

@@ -32,7 +32,7 @@ import { dirname, join } from 'path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 // flow/designer/test → flow/flows (the dev-server persistence root).
-const FLOWS_ROOT = join(HERE, '..', '..', 'flows')
+const FLOWS_ROOT = join(HERE, '..', '..', 'examples')
 const SMOKE_ID = 'smoke-e2e'
 const SMOKE_DIR = join(FLOWS_ROOT, SMOKE_ID)
 const SAMPLE_FLOW = join(FLOWS_ROOT, 'sample', 'intake-to-ship.flow.json')

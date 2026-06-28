@@ -26,7 +26,7 @@ import { dirname, join } from 'path'
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const FLOWS_ROOT = join(HERE, '../../flows')
+const FLOWS_ROOT = join(HERE, '../../examples')
 
 // Scratch flow-set — `zz-` prefix sorts it last in the index, well clear of
 // the repo's authored sets. Removed in afterAll.
