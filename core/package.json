@@ -1,6 +1,6 @@
 {
   "name": "@ribbonflow/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Pure, headless heart of ribbonflow — simulation engine, curve/width/glyph geometry, the scene model (buildFlowScene/agentsView), and the flow format layer (serialize/deserialize/migrate/model/flow-set). No DOM, no framework.",
   "license": "MIT",
