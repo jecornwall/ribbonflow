@@ -53,14 +53,18 @@ or a flow-set (object or serialized) — the renderer auto-detects.
 
 ## Preview site
 
-A live gallery + the interactive designer is published to GitHub Pages:
-**<https://jecornwall.github.io/ribbonflow/>**. It previews a curated set of the
-flows from the talk [*The AI Engineer*](https://jecornwall.com/ai-engineer) — the
-presentation ribbonflow was built for — and launches the designer at
-[`/designer/`](https://jecornwall.github.io/ribbonflow/designer/).
+A live gallery + the interactive designer is published at
+**<https://jecornwall.com/ribbonflow/>** — alongside the talk
+[*The AI Engineer*](https://jecornwall.com/ai-engineer), the presentation
+ribbonflow was built for. It previews a curated set of flows and launches the
+designer at [`/designer/`](https://jecornwall.com/ribbonflow/designer/).
 
-The site is the `@ribbonflow/site` package; CI (`.github/workflows/pages.yml`)
-builds it plus the designer and deploys on every push to `main`.
+The site is the `@ribbonflow/site` package. On every push to `main`,
+[`.github/workflows/bundle.yml`](.github/workflows/bundle.yml) builds it plus the
+seeded designer, publishes the assembled site as a `ribbonflow-bundle.tar.gz`
+GitHub Release, and pings the jecornwall.com Cloudflare Pages deploy hook — which
+fetches the bundle into `/ribbonflow/` and rebuilds the site (the same mechanism
+that serves `/ai-engineer`).
 
 ## Develop
 

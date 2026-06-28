@@ -1,0 +1,99 @@
+# Build the ribbonflow preview-site bundle, publish a GitHub Release, and
+# trigger a jecornwall.com Cloudflare Pages rebuild — mirroring how
+# jecornwall/ai-engineer-2026 publishes its bundle.
+#
+# Steps:
+#   1. Checkout + pnpm/Node toolchain (pnpm version comes from the root
+#      package.json `packageManager` field — do NOT set `version:` here, it
+#      conflicts with packageManager and errors ERR_PNPM_BAD_PM_VERSION).
+#   2. Build the framework-free site (base /ribbonflow/) and the seeded designer
+#      (base /ribbonflow/designer/), then assemble _site (site at root, designer
+#      under designer/).
+#   3. tar -czf ribbonflow-bundle.tar.gz -C _site .  — the -C flag archives the
+#      directory CONTENTS, so the tarball root is index.html / viewer.html /
+#      assets/ / designer/ — NOT a wrapper ribbonflow/ dir. jecornwall.com
+#      extracts it directly into public/ribbonflow/.
+#   4. Roll the 'latest' release: delete the old release+tag, publish a fresh
+#      one with the tarball as its sole asset.
+#   5. POST the jecornwall.com Cloudflare Pages deploy hook (if configured),
+#      which re-fetches the bundle into /ribbonflow/ and rebuilds the site.
+
+name: Build, release, and deploy preview-site bundle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ribbonflow-bundle
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build preview site
+        run: pnpm --filter @ribbonflow/site build
+        env:
+          SITE_BASE: /ribbonflow/
+      - name: Build designer (seeded)
+        run: pnpm --filter @ribbonflow/designer build:site
+        env:
+          DESIGNER_BASE: /ribbonflow/designer/
+
+      - name: Assemble bundle tree
+        run: |
+          rm -rf _site
+          mkdir -p _site/designer
+          cp -r site/dist/* _site/
+          cp -r designer/dist/* _site/designer/
+
+      - name: Create tarball
+        run: tar -czf ribbonflow-bundle.tar.gz -C _site .
+
+      - name: Roll the 'latest' release
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push --delete origin refs/tags/latest 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest preview-site bundle (${{ github.sha }})"
+          body: |
+            Preview-site bundle built from [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) on `${{ github.ref_name }}`.
+
+            Extracts into a host's `public/ribbonflow/`:
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/latest/download/ribbonflow-bundle.tar.gz \
+              | tar -xz -C public/ribbonflow/
+            ```
+
+            Contents: `index.html`, `viewer.html`, `assets/`, `designer/`.
+          files: ribbonflow-bundle.tar.gz
+          make_latest: true
+
+      - name: Ping jecornwall.com deploy hook
+        env:
+          DEPLOY_HOOK: ${{ secrets.MAIN_SITE_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$DEPLOY_HOOK" ]; then
+            curl -s -X POST "$DEPLOY_HOOK" && echo "deploy hook pinged"
+          else
+            echo "MAIN_SITE_DEPLOY_HOOK not set — skipping (set it to your jecornwall.com Cloudflare Pages deploy hook)."
+          fi
