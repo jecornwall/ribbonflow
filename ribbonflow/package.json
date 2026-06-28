@@ -1,6 +1,6 @@
 {
   "name": "ribbonflow",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Vanilla SVG flow renderer — mountFlow(el, flow) → animated, variable-width ribbon diagrams with streaming agents. The no-framework headline of ribbonflow; re-exports @ribbonflow/core. Vue/React adapters wrap this.",
   "license": "MIT",

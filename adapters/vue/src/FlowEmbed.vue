@@ -39,10 +39,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="rootEl" class="flow-embed"></div>
+  <!--
+    Sizing is INLINE (not a scoped <style>) on purpose: a Vite lib build extracts
+    SFC <style> into a separate dist/index.css that consumers don't auto-import,
+    which silently collapsed the embed to 0×0 (flows invisible) after the repo
+    split. The container fills its host here; the svg fills the container via
+    mountFlow's inline SVG_FILL_STYLE — so @ribbonflow/vue needs no CSS file.
+  -->
+  <div ref="rootEl" class="flow-embed" style="width: 100%; height: 100%;"></div>
 </template>
-
-<style scoped>
-.flow-embed { width: 100%; height: 100%; }
-.flow-embed :deep(svg) { width: 100%; height: 100%; }
-</style>
